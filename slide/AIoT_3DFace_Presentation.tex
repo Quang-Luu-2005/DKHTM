@@ -402,23 +402,26 @@
   Mạng VggEncoder trích xuất vector 257 chiều (identity + expression + pose) từ ảnh 2D.
 \end{frame}
 
-\begin{frame}{Pipeline xử lý AI -- Hậu xử lý \& Xác thực}
-  \small
+\begin{frame}{Pipeline xử lý AI -- Hậu xử lý mesh}
+  \textbf{Bước 4: Laplacian Smoothing}
+
+  \vspace{0.4em}
+  Hiệu chỉnh tọa độ đỉnh mesh theo trung bình lân cận:
+  \[
+    L(v_i) = \frac{1}{|N(i)|} \sum_{j \in N(i)} (v_j - v_i)
+  \]
+
+  \vspace{0.2em}
+  \begin{itemize}
+    \item Loại bỏ nhiễu răng cưa trên bề mặt mesh sau khi tái tạo.
+    \item Làm mượt các vùng bị méo do ảnh đầu vào mờ, nhiễu hoặc thiếu sáng.
+    \item Giữ nguyên cấu trúc tổng thể khuôn mặt, tránh làm mất đặc trưng nhận dạng.
+    \item Mesh mịn hơn giúp bước so khớp 3D ổn định và chính xác hơn.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Pipeline xử lý AI -- Texture \& Xác thực}
   \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Bước 4: Laplacian Smoothing}
-
-      \vspace{0.2em}
-      Hiệu chỉnh tọa độ đỉnh mesh theo trung bình lân cận:
-      \[
-        L(v_i) = \frac{1}{|N(i)|} \sum_{j \in N(i)} (v_j - v_i)
-      \]
-      \begin{itemize}
-        \item Loại bỏ nhiễu răng cưa trên bề mặt
-        \item Giữ nguyên cấu trúc tổng thể khuôn mặt
-        \item Mesh mịn $\to$ so khớp chính xác hơn
-      \end{itemize}
-
     \column{0.48\textwidth}
       \textbf{Bước 4b: Texture Fusion}
 
@@ -431,16 +434,22 @@
         \item $\vec{n}$: pháp tuyến đỉnh mesh
         \item $\vec{v}$: hướng camera
         \item Chọn màu từ góc nhìn tốt nhất
+        \item Giảm vùng texture bị kéo giãn hoặc thiếu chi tiết
       \end{itemize}
 
-      \vspace{0.3em}
+    \column{0.48\textwidth}
       \textbf{Bước 5: Xác thực danh tính}
 
       \vspace{0.2em}
-      So sánh $\alpha_{\text{id}}$ với database:\\
-      $\text{sim}(\alpha_{\text{id}}^{\text{input}},\; \alpha_{\text{id}}^{\text{DB}}) \geq \theta$\\[3pt]
-      $\to$ \texttt{PASS} (mở cửa)\\
-      $< \theta$ $\to$ \texttt{DENY} (từ chối)
+      So sánh $\alpha_{\text{id}}$ với database:
+      \[
+        \text{sim}(\alpha_{\text{id}}^{\text{input}},\; \alpha_{\text{id}}^{\text{DB}}) \geq \theta
+      \]
+      \begin{itemize}
+        \item Nếu đạt ngưỡng: \texttt{PASS} $\to$ gửi lệnh mở relay.
+        \item Nếu không đạt: \texttt{DENY} $\to$ từ chối và ghi log.
+        \item Threshold $\theta$ được tinh chỉnh trên laptop/server trước khi triển khai.
+      \end{itemize}
   \end{columns}
 \end{frame}
 
