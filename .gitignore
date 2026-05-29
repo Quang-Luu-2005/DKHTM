@@ -1,0 +1,6 @@
+# Only keep LaTeX sources and compiled PDFs in git.
+*
+!*/
+!*.tex
+!*.pdf
+!.gitignore
