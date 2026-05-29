@@ -20,6 +20,20 @@
 \institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
 \date{Tháng 5, 2026}
 
+\AtBeginSection[]{
+  \begin{frame}[plain]
+    \vfill
+    \centering
+      {\Large Phần \insertsectionnumber}\par\vspace{0.6em}
+      \makebox[\textwidth][c]{%
+      \begin{beamercolorbox}[wd=0.78\paperwidth,sep=12pt,center,rounded=true,shadow=true]{title}
+        {\LARGE\bfseries \insertsectionhead}
+      \end{beamercolorbox}
+      }
+    \vfill
+  \end{frame}
+}
+
 \begin{document}
 
 %------- TITLE -------
@@ -54,16 +68,18 @@
 \begin{frame}{Nội dung trình bày}
   \vspace{0.4em}
   \begin{enumerate}
-    \item Giới thiệu đề tài
-    \item Mô tả bài toán
-    \item Góc nhìn điều khiển thiết bị thông minh
-    \item Kiến trúc hệ thống
-    \item Công nghệ tái tạo khuôn mặt 3D
+    \item Bài toán, phạm vi và bối cảnh
+    \item Related Work và lựa chọn công nghệ
+    \item Kiến trúc hệ thống và vòng lặp điều khiển
+    \item Pipeline AI tái tạo khuôn mặt 3D
+    \item Rủi ro, thách thức và hướng giải quyết
+    \item Dataset và cách đánh giá
+    \item Mockup sản phẩm và giao diện
   \end{enumerate}
 \end{frame}
 
 %============================
-\section{Giới thiệu đề tài}
+\section{Bài toán, phạm vi và bối cảnh}
 %============================
 
 \begin{frame}{Giới thiệu đề tài}
@@ -110,10 +126,6 @@
   \end{columns}
 \end{frame}
 
-%============================
-\section{Mô tả bài toán}
-%============================
-
 \begin{frame}[t]{Mô tả bài toán}
   \footnotesize
   \textbf{Mục tiêu bài toán và phạm vi}
@@ -146,7 +158,43 @@
 \end{frame}
 
 %============================
-\section{Góc nhìn điều khiển thiết bị thông minh}
+\section{Related Work và lựa chọn công nghệ}
+%============================
+
+\begin{frame}{Related Work -- Vì sao chọn MVFNet?}
+  \scriptsize
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{p{0.16\textwidth}p{0.27\textwidth}p{0.27\textwidth}p{0.21\textwidth}}
+    \toprule
+    \textbf{Giải pháp} & \textbf{Mục tiêu chính} & \textbf{Ưu / nhược với đồ án} & \textbf{Kết luận} \\
+    \midrule
+    \textbf{3DDFA-V2} \cite{3ddfav2}
+      & Dense face alignment, ước lượng pose và landmark 3D.
+      & Nhanh, ổn định; output nghiêng về căn chỉnh hơn xác thực danh tính.
+      & Không chọn làm lõi. \\
+    \textbf{DECA} \cite{deca}
+      & Tái tạo khuôn mặt 3D chi tiết, biểu cảm và texture.
+      & Kết quả đẹp; mô hình nặng hơn, thiên về animation/detail.
+      & Tham khảo phần texture. \\
+    \textbf{Deep3DFace} \cite{deep3dface}
+      & Tái tạo 3DMM từ một ảnh khuôn mặt.
+      & Nền tảng tốt; cần gắn thêm matching, log và điều khiển thiết bị.
+      & Dùng làm baseline. \\
+    \textbf{MVFNet} \cite{mvfnet}
+      & Hồi quy tham số 3DMM đa góc nhìn, có vector identity $\alpha_{\text{id}}$.
+      & Cân bằng giữa mesh 3D, đặc trưng nhận dạng và độ phức tạp.
+      & Chọn làm lõi. \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.5em}
+  \textbf{Kết luận:}
+  MVFNet phù hợp nhất vì đồ án cần vector khuôn mặt 3D để so khớp danh tính, còn phần xử lý nặng vẫn chạy trên laptop/server.
+\end{frame}
+
+%============================
+\section{Kiến trúc hệ thống và vòng lặp điều khiển}
 %============================
 
 \begin{frame}{Vòng lặp điều khiển thiết bị thông minh}
@@ -201,9 +249,7 @@
   \end{alertblock}
 \end{frame}
 
-%============================
-\section{Kiến trúc hệ thống}
-%============================
+\subsection{Kiến trúc hệ thống}
 
 \begin{frame}{Kiến trúc tổng thể -- 3 lớp}
   \begin{center}
@@ -345,7 +391,7 @@
 \end{frame}
 
 %============================
-\section{Công nghệ tái tạo khuôn mặt 3D}
+\section{Pipeline AI tái tạo khuôn mặt 3D}
 %============================
 
 \begin{frame}{Pipeline xử lý AI -- Tổng quan}
@@ -453,11 +499,168 @@
   \end{columns}
 \end{frame}
 
+%============================
+\section{Rủi ro, thách thức và hướng giải quyết}
+%============================
+
+\begin{frame}{Rủi ro / thách thức và hướng giải quyết}
+  \footnotesize
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Chất lượng ảnh ESP32-CAM}
+      \begin{itemize}\setlength{\itemsep}{0.15em}
+        \item Ảnh ban đêm yếu sáng, mờ, nhiễu hoặc ngược sáng.
+        \item Khuôn mặt nhỏ, lệch góc, bị che bởi khẩu trang/nón.
+        \item \textbf{Xử lý:} thêm LED/IR, kiểm tra chất lượng ảnh, chụp lại nhiều frame, crop đúng mặt và dùng GFPGAN trước MVFNet.
+      \end{itemize}
+
+      \vspace{0.25em}
+      \textbf{Độ trễ hệ thống}
+      \begin{itemize}\setlength{\itemsep}{0.15em}
+        \item Latency mạng khi ESP32-CAM gửi ảnh JPEG lên server.
+        \item AI inference có thể vượt mục tiêu phản hồi nhanh.
+        \item \textbf{Xử lý:} giảm kích thước ảnh gửi, timeout rõ ràng, cache model trên server, log thời gian từng bước.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Sai nhận dạng}
+      \begin{itemize}\setlength{\itemsep}{0.15em}
+        \item False positive: mở cửa cho người không hợp lệ.
+        \item False negative: từ chối người hợp lệ khi ảnh xấu.
+        \item \textbf{Xử lý:} tinh chỉnh ngưỡng $\theta$, yêu cầu chụp lại khi confidence thấp, lưu ảnh sự kiện để kiểm tra sau.
+      \end{itemize}
+
+      \vspace{0.25em}
+      \textbf{Bảo mật và vận hành}
+      \begin{itemize}\setlength{\itemsep}{0.15em}
+        \item Dữ liệu khuôn mặt là dữ liệu sinh trắc nhạy cảm.
+        \item Thiết bị IoT có thể mất kết nối hoặc bị gọi API giả.
+        \item \textbf{Xử lý:} xác thực device\_id/token, giới hạn quyền dashboard, mã hóa dữ liệu nhạy cảm và có chế độ fail-safe.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+%============================
+\section{Dataset và cách đánh giá}
+%============================
+
+\begin{frame}{Dataset kiểm thử}
+  \footnotesize
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Dataset công khai}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item \textbf{AFLW2000-3D} \cite{aflw}: ảnh khuôn mặt có pose lớn và annotation 3D.
+        \item Dùng để kiểm tra detect/crop, pose khó và độ ổn định tái tạo 3D.
+        \item Phù hợp đánh giá phần AI trước khi gắn với phần cứng thật.
+      \end{itemize}
+
+      \vspace{0.35em}
+      \textbf{Dataset tự chụp}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item Chụp bằng ESP32-CAM trong đúng bối cảnh cửa ra/vào.
+        \item Mỗi người: chính diện, nghiêng trái/phải, xa/gần, sáng/yếu sáng.
+        \item Thêm mẫu không hợp lệ để đo khả năng từ chối người lạ.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Chia tập thử nghiệm}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item \textbf{Enroll set}: ảnh đăng ký khuôn mặt hợp lệ.
+        \item \textbf{Test same-user}: ảnh cùng người nhưng khác góc/ánh sáng.
+        \item \textbf{Test unknown}: ảnh người không có trong database.
+      \end{itemize}
+
+      \vspace{0.35em}
+      \textbf{Kịch bản kiểm thử}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item Kiểm thử offline trên laptop/server trước.
+        \item Sau đó kiểm thử end-to-end: ESP32-CAM $\to$ server $\to$ relay/log.
+        \item Ghi lại ảnh, kết quả, confidence và thời gian xử lý.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Chỉ số đánh giá}
+  \footnotesize
+  \begin{columns}[T]
+    \column{0.5\textwidth}
+      \textbf{Xác thực danh tính}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item \textbf{Accuracy}: tỷ lệ quyết định đúng trên toàn bộ lượt thử.
+        \item \textbf{FAR}: tỷ lệ người lạ bị nhận nhầm là hợp lệ.
+        \item \textbf{FRR}: tỷ lệ người hợp lệ bị từ chối.
+        \item Ma trận nhầm lẫn: \texttt{PASS}/\texttt{DENY} so với nhãn thật.
+      \end{itemize}
+
+      \vspace{0.25em}
+      \[
+        \text{FAR} = \frac{\text{False Accept}}{\text{Unknown Attempts}},
+        \quad
+        \text{FRR} = \frac{\text{False Reject}}{\text{Valid Attempts}}
+      \]
+
+    \column{0.46\textwidth}
+      \textbf{Chất lượng pipeline}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Tỷ lệ phát hiện được mặt trong frame.
+        \item Tỷ lệ ảnh phải chụp lại hoặc enhance.
+        \item Similarity score trung bình theo từng điều kiện ánh sáng/góc nhìn.
+      \end{itemize}
+
+      \vspace{0.25em}
+      \textbf{Hiệu năng hệ thống}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Tổng latency: chụp ảnh + gửi mạng + inference + trả lệnh.
+        \item Mục tiêu phản hồi: dưới 3 giây trong điều kiện mạng ổn định.
+        \item Tỷ lệ lỗi kết nối và số lần timeout.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+%============================
+\section{Mockup sản phẩm và giao diện}
+%============================
+
+\begin{frame}{Mockup sản phẩm -- Cửa an ninh}
+  \begin{columns}[T]
+    \column{0.62\textwidth}
+      \begin{center}
+        \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{images/smart_door_mockup.png}
+      \end{center}
+
+    \column{0.34\textwidth}
+      \footnotesize
+      \textbf{Bố trí phần cứng tại cửa}
+      \begin{itemize}\setlength{\itemsep}{0.18em}
+        \item ESP32-CAM đặt ngang tầm mặt, chụp ảnh người đứng trước cửa.
+        \item Relay nối khóa điện từ, chỉ mở khi server trả \texttt{PASS}.
+        \item LED/buzzer báo trạng thái xử lý, cho phép vào hoặc từ chối.
+      \end{itemize}
+
+      \vspace{0.2em}
+      \textbf{Luồng triển khai}
+      \begin{itemize}\setlength{\itemsep}{0.18em}
+        \item AI chạy trên laptop/server để tránh quá tải phần cứng.
+        \item ESP32-CAM chỉ gửi ảnh, nhận lệnh và điều khiển relay.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Mockup giao diện Web Dashboard}
+  \begin{center}
+    \includegraphics[width=0.95\textwidth,height=0.78\textheight,keepaspectratio]{images/dashboard_mockup.png}
+  \end{center}
+\end{frame}
+
 %------- TÀI LIỆU THAM KHẢO -------
 \begin{frame}{Tài liệu tham khảo}
   \footnotesize
-  \begin{thebibliography}{9}
+  \begin{thebibliography}{99}
     \bibitem{mvfnet} F. Wu \textit{et al.}, ``MVFNet: Multi-View 3D Face Morphable Model Regression,'' \textit{CVPR}, 2019.
+    \bibitem{3ddfav2} J. Guo \textit{et al.}, ``Towards Fast, Accurate and Stable 3D Dense Face Alignment,'' \textit{ECCV}, 2020.
+    \bibitem{deca} Y. Feng \textit{et al.}, ``Learning an Animatable Detailed 3D Face Model from In-the-Wild Images,'' \textit{SIGGRAPH}, 2021.
+    \bibitem{deep3dface} Y. Deng \textit{et al.}, ``Accurate 3D Face Reconstruction with Weakly-Supervised Learning,'' \textit{ICCV Workshops}, 2019.
     \bibitem{yolo} Ultralytics, ``YOLOv11,'' GitHub, 2024.
     \bibitem{gfpgan} X. Wang \textit{et al.}, ``GFPGAN: Towards Real-World Blind Face Restoration with Generative Facial Prior,'' \textit{CVPR}, 2021.
     \bibitem{3dmm} V. Blanz \& T. Vetter, ``A Morphable Model for the Synthesis of 3D Faces,'' \textit{SIGGRAPH}, 1999.

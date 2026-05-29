@@ -3,4 +3,9 @@
 !*/
 !*.tex
 !*.pdf
+!slide/images/
+!slide/images/*.png
+!slide/images/*.jpg
+!slide/images/*.jpeg
+!slide/images/*.webp
 !.gitignore
