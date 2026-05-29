@@ -1,0 +1,470 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\useinnertheme{circles}
+\usecolortheme{default}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+
+\title[Cửa an ninh thông minh]{Cửa an ninh xác thực bằng khuôn mặt}
+\subtitle{YOLOv11-Face $\cdot$ ArcFace $\cdot$ Liveness Detection $\cdot$ ESP32-CAM}
+\author[ĐH Khoa học Tự nhiên]{Lưu Huy Minh Quang -- 23127016 \\ Hoàng Nhân -- 23127094 \\ Trần Cao Vân -- 23127141 \\ Nguyễn Trần Thiên Phú -- 23127246}
+\institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
+\date{Tháng 5, 2026}
+
+\AtBeginSection[]{
+  \begin{frame}[plain]
+    \vfill
+    \centering
+      {\Large Phần \insertsectionnumber}\par\vspace{0.6em}
+      \makebox[\textwidth][c]{%
+      \begin{beamercolorbox}[wd=0.78\paperwidth,sep=12pt,center,rounded=true,shadow=true]{title}
+        {\LARGE\bfseries \insertsectionhead}
+      \end{beamercolorbox}
+      }
+    \vfill
+  \end{frame}
+}
+
+\begin{document}
+
+%------- TITLE -------
+\begin{frame}
+  \begin{center}
+    \vspace{0.4em}
+    \begin{beamercolorbox}[sep=8pt,center,shadow=true,rounded=true]{title}
+      {\usebeamerfont{title}\inserttitle\par}
+      \vspace{0.3em}
+      {\usebeamerfont{subtitle}\insertsubtitle\par}
+    \end{beamercolorbox}
+
+    \vspace{0.8em}
+    \begin{block}{\centering Nhóm thực hiện}
+      \centering
+      \begin{tabular}{ll}
+        Lưu Huy Minh Quang & 23127016 \\
+        Hoàng Nhân & 23127094 \\
+        Trần Cao Vân & 23127141 \\
+        Nguyễn Trần Thiên Phú & 23127246 \\
+      \end{tabular}\\[0.5em]
+      \textit{Khoa CNTT -- ĐH Khoa học Tự nhiên, ĐHQG TP.HCM}\\
+      \textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}
+    \end{block}
+
+    \vspace{0.5em}
+    {\large \insertdate}
+  \end{center}
+\end{frame}
+
+%------- MỤC LỤC -------
+\begin{frame}{Nội dung trình bày}
+  \vspace{0.4em}
+  \begin{enumerate}
+    \item Giới thiệu đề tài và bài toán
+    \item Lựa chọn công nghệ và lý do
+    \item Phương pháp đề xuất
+    \item Kiến trúc hệ thống
+  \end{enumerate}
+\end{frame}
+
+%============================
+\section{Giới thiệu đề tài và bài toán}
+%============================
+
+\begin{frame}{Giới thiệu đề tài}
+  \begin{block}{Sản phẩm đề xuất}
+    \textbf{Cửa an ninh thông minh} -- xác thực danh tính bằng khuôn mặt, tự động mở/khóa cửa thông qua hệ thống ESP32-CAM + Server AI.
+  \end{block}
+
+  \vspace{0.6em}
+  \textbf{Ý tưởng:}
+  \begin{itemize}
+    \item ESP32-CAM gắn tại cửa, chụp ảnh khuôn mặt
+    \item Server nhận dạng bằng AI (YOLOv11 + ArcFace)
+    \item Kiểm tra mặt thật bằng liveness detection (nháy mắt)
+    \item Khớp danh tính $\to$ mở cửa; không khớp $\to$ từ chối + cảnh báo
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Ứng dụng thực tế}
+  \begin{alertblock}{Tại sao dùng AI face embedding?}
+    So sánh pixel trực tiếp nhạy với ánh sáng, góc chụp và biểu cảm.
+    ArcFace mã hóa khuôn mặt thành vector 512 chiều -- chỉ giữ lại danh tính, bỏ qua nhiễu.
+  \end{alertblock}
+
+  \vspace{0.6em}
+  \textbf{Ứng dụng:}
+  \begin{itemize}
+    \item Nhà thông minh (smart home)
+    \item Văn phòng, phòng server, phòng lab
+    \item Chung cư, ký túc xá
+    \item Mở rộng: chấm công, điểm danh
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Mô tả bài toán -- Input / Output}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \begin{block}{Đầu vào (Input)}
+        \begin{itemize}
+          \item Ảnh 2D từ ESP32-CAM (640$\times$480)
+          \item Có thể mờ, nhiễu, thiếu sáng
+          \item Có thể góc nghiêng, nhiều người
+        \end{itemize}
+      \end{block}
+
+    \column{0.48\textwidth}
+      \begin{block}{Đầu ra (Output)}
+        \begin{itemize}
+          \item Kết quả: \texttt{PASS} hoặc \texttt{DENY}
+          \item Lệnh relay mở/khóa cửa
+          \item Log nhật ký ra/vào
+        \end{itemize}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Mô tả bài toán -- Ràng buộc}
+  \begin{alertblock}{Ràng buộc kỹ thuật}
+    \begin{itemize}
+      \item ESP32-CAM giới hạn RAM/CPU $\to$ AI phải chạy trên server
+      \item Ảnh độ phân giải thấp $\to$ cần detect/crop đúng vùng mặt
+      \item Dữ liệu sinh trắc cần bảo mật
+      \item Phản hồi nhanh ($<$3 giây)
+      \item Chống giả mạo bằng ảnh in/video
+    \end{itemize}
+  \end{alertblock}
+\end{frame}
+
+%============================
+\section{Lựa chọn công nghệ và lý do}
+%============================
+
+\begin{frame}{Tại sao chọn ArcFace?}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{p{2.2cm}p{4.5cm}p{4.5cm}p{1.3cm}}
+    \toprule
+    \textbf{Giải pháp} & \textbf{Ưu điểm} & \textbf{Nhược điểm} & \textbf{Chọn?} \\
+    \midrule
+    dlib (HOG) & Nhẹ, chạy CPU & Accuracy thấp, nhạy góc & Không \\
+    FaceNet & Embedding 128-d tốt & Train phức tạp & Không \\
+    DeepFace & Wrapper tiện & Nặng, khó customize & Không \\
+    \textbf{ArcFace} & 512-d, 99.8\% LFW & Cần GPU inference & \textbf{Có} \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{ArcFace -- Lý do chi tiết}
+  \begin{block}{Tại sao phù hợp đồ án?}
+    \begin{itemize}
+      \item Pretrained trên 5.8 triệu ảnh (MS1MV2) $\to$ \textbf{không cần train lại}
+      \item Embedding 512 chiều bất biến với ánh sáng, góc, biểu cảm
+      \item Thư viện \texttt{insightface} dễ dùng, hỗ trợ Python tốt
+      \item Chỉ cần inference trên laptop/server
+      \item ESP32-CAM chỉ gửi ảnh, không cần xử lý nặng
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Tại sao chọn YOLOv11-Face?}
+  \begin{block}{YOLOv11-Face -- Detect khuôn mặt}
+    \textbf{Vai trò:} tìm và crop mặt trước khi đưa vào ArcFace
+  \end{block}
+
+  \vspace{0.5em}
+  \begin{itemize}
+    \item Nhanh, real-time trên server
+    \item Xử lý nhiều mặt trong 1 frame
+    \item Crop chính xác giúp ArcFace hoạt động tốt hơn
+    \item Tốt hơn MTCNN (cũ) và dlib (chậm hơn)
+  \end{itemize}
+
+  \vspace{0.5em}
+  \begin{alertblock}{Kết hợp}
+    YOLOv11 tìm mặt $\to$ crop $\to$ resize 112$\times$112 $\to$ đưa vào ArcFace.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Tại sao cần Liveness Detection?}
+  \begin{block}{Liveness Detection -- Chống giả mạo}
+    \textbf{Vai trò:} đảm bảo mặt thật, không phải ảnh in hoặc video phát lại
+  \end{block}
+
+  \vspace{0.5em}
+  \begin{itemize}
+    \item Dùng Eye Aspect Ratio (EAR) -- phát hiện nháy mắt
+    \item Không cần thêm phần cứng (camera IR, depth sensor)
+    \item Đơn giản nhưng hiệu quả với ảnh in
+    \item Có thể mở rộng: quay đầu, mở miệng
+  \end{itemize}
+
+  \vspace{0.5em}
+  \begin{alertblock}{Tóm lại}
+    Cả 3 thành phần (YOLOv11 + ArcFace + Liveness) đều có pretrained/code sẵn, không cần train from scratch, phù hợp đồ án với ESP32-CAM.
+  \end{alertblock}
+\end{frame}
+
+%============================
+\section{Phương pháp đề xuất}
+%============================
+
+\begin{frame}{Phương pháp -- Tổng quan}
+  \begin{center}
+  \begin{tikzpicture}[
+    step/.style={rectangle, rounded corners=4pt, draw=blue!70, fill=blue!8,
+      text width=2.4cm, align=center, font=\small, minimum height=1cm},
+    arr/.style={-{Stealth[length=2.5mm]}, thick, blue!70}
+  ]
+    \node[step] (capture) {ESP32-CAM\\chụp ảnh};
+    \node[step, right=0.6cm of capture] (detect) {YOLOv11\\detect mặt};
+    \node[step, right=0.6cm of detect] (embed) {ArcFace\\embedding};
+    \node[step, right=0.6cm of embed] (live) {Liveness\\Detection};
+    \node[step, right=0.6cm of live] (match) {Matching\\PASS/DENY};
+
+    \draw[arr] (capture) -- (detect);
+    \draw[arr] (detect) -- (embed);
+    \draw[arr] (embed) -- (live);
+    \draw[arr] (live) -- (match);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{1em}
+  \begin{block}{4 bước xử lý}
+    \begin{enumerate}
+      \item ESP32-CAM chụp ảnh, gửi lên server
+      \item YOLOv11 detect + crop khuôn mặt
+      \item ArcFace trích xuất embedding 512 chiều
+      \item Liveness check + cosine matching với database
+    \end{enumerate}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Phương pháp -- Đăng ký khuôn mặt}
+  \begin{block}{Quy trình đăng ký (1 lần cho mỗi user)}
+    \begin{enumerate}
+      \item Chụp 5--10 ảnh user qua ESP32-CAM (nhiều góc, ánh sáng)
+      \item YOLOv11 detect + crop mặt từng ảnh
+      \item ArcFace trích xuất embedding 512-d cho mỗi ảnh
+      \item Tính embedding trung bình $\to$ lưu vào database
+    \end{enumerate}
+  \end{block}
+
+  \vspace{0.6em}
+  \begin{block}{Quy trình xác thực (mỗi lần vào cửa)}
+    \begin{enumerate}
+      \item ESP32-CAM chụp ảnh, gửi server
+      \item Detect + crop + trích embedding
+      \item Kiểm tra liveness (nháy mắt)
+      \item So cosine similarity với DB; nếu $\geq \theta$ $\to$ \texttt{PASS}
+    \end{enumerate}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Phương pháp -- ArcFace hoạt động thế nào?}
+  \textbf{Cách hoạt động:}
+  \begin{itemize}
+    \item Mã hóa khuôn mặt thành vector 512 chiều
+    \item Cùng 1 người $\to$ vector gần nhau (cosine $\approx$ 0.7--0.9)
+    \item Khác người $\to$ vector xa nhau (cosine $<$ 0.3)
+    \item Bất biến với ánh sáng, góc, biểu cảm
+  \end{itemize}
+
+  \vspace{0.5em}
+  \textbf{Công thức xác thực:}
+  \[
+    \text{sim} = \frac{e_{\text{input}} \cdot e_{\text{DB}}}{\lVert e_{\text{input}} \rVert \, \lVert e_{\text{DB}} \rVert}
+  \]
+
+  \vspace{0.3em}
+  $\text{sim} \geq 0.5$ $\to$ \texttt{PASS} (mở cửa) \qquad $\text{sim} < 0.5$ $\to$ \texttt{DENY} (từ chối)
+\end{frame}
+
+\begin{frame}{Phương pháp -- Tại sao không so pixel?}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \begin{alertblock}{So pixel trực tiếp}
+        \begin{itemize}
+          \item Pixel thay đổi khi ánh sáng đổi
+          \item Pixel thay đổi khi góc chụp khác
+          \item Pixel thay đổi khi biểu cảm khác
+          \item $\to$ Không ổn định, dễ sai
+        \end{itemize}
+      \end{alertblock}
+
+    \column{0.48\textwidth}
+      \begin{block}{Face embedding (ArcFace)}
+        \begin{itemize}
+          \item Embedding \textbf{chỉ giữ lại danh tính}
+          \item Bỏ qua ánh sáng, góc, biểu cảm
+          \item Ảnh 112$\times$112 sau crop là đủ
+          \item $\to$ Ổn định, chính xác cao
+        \end{itemize}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.6em}
+  \begin{block}{Phù hợp ESP32-CAM}
+    Ảnh 640$\times$480 chất lượng thấp vẫn hoạt động tốt vì ArcFace chỉ cần vùng mặt 112$\times$112 sau crop.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Phương pháp -- Liveness Detection (EAR)}
+  \textbf{Vấn đề:} Ai cầm ảnh in hoặc phát video khuôn mặt lên $\to$ ArcFace vẫn match.
+
+  \vspace{0.5em}
+  \textbf{Giải pháp: Eye Aspect Ratio (EAR)}
+  \[
+    \text{EAR} = \frac{\lVert p_2-p_6\rVert + \lVert p_3-p_5\rVert}{2\lVert p_1-p_4\rVert}
+  \]
+
+  \begin{itemize}
+    \item Mắt mở: EAR $\approx$ 0.25--0.30
+    \item Đang nháy: EAR $<$ 0.2
+    \item Ảnh in: EAR cố định, không bao giờ thay đổi $\to$ phát hiện giả
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Phương pháp -- Liveness Flow}
+  \begin{block}{Flow kiểm tra liveness}
+    \begin{enumerate}
+      \item LED/LCD hiển thị ``Hãy nháy mắt''
+      \item Server theo dõi EAR trong 2--3 giây
+      \item Phát hiện nháy $\to$ mặt thật $\to$ tiếp tục xác thực
+      \item Không nháy trong 3s $\to$ nghi giả mạo $\to$ \texttt{DENY}
+    \end{enumerate}
+  \end{block}
+
+  \vspace{0.6em}
+  \begin{block}{Mở rộng (nếu đủ thời gian)}
+    \begin{itemize}
+      \item Random challenge: ``quay trái'', ``mở miệng''
+      \item Phát hiện texture giấy/màn hình
+      \item Kiểm tra chuyển động tự nhiên
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+%============================
+\section{Kiến trúc hệ thống}
+%============================
+
+\begin{frame}{Kiến trúc tổng thể -- 3 lớp}
+  \begin{center}
+  \begin{tikzpicture}[
+    layerbox/.style={rectangle, rounded corners=4pt, text width=3.6cm,
+      align=center, minimum height=1.6cm, font=\small\bfseries, inner sep=6pt},
+    iotbox/.style={layerbox, draw=teal!70!black, fill=teal!9},
+    aibox/.style={layerbox, draw=blue!70, fill=blue!8},
+    appbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
+  ]
+    \node[iotbox] (iot) {Lớp IoT\\{\scriptsize ESP32-CAM + Relay + PIR}};
+    \node[aibox, right=0.8cm of iot] (ai) {Lớp AI\\{\scriptsize YOLOv11 + ArcFace + Liveness}};
+    \node[appbox, right=0.8cm of ai] (app) {Lớp Ứng dụng\\{\scriptsize Web đăng ký + log}};
+
+    \draw[arr] (iot) -- node[above, font=\scriptsize]{ảnh JPEG} (ai);
+    \draw[arr] (ai) -- node[above, font=\scriptsize]{log / kết quả} (app);
+    \draw[arr] (ai.south) to[out=-100,in=-80,looseness=1.2]
+      node[below, font=\scriptsize]{PASS/DENY + relay cmd} (iot.south);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.6em}
+  \begin{block}{Phân chia trách nhiệm}
+    ESP32-CAM chỉ chụp ảnh và điều khiển relay. Toàn bộ AI chạy trên laptop/server.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Kiến trúc -- Chi tiết từng lớp}
+  \begin{columns}[T]
+    \column{0.32\textwidth}
+      \textbf{ESP32-CAM (IoT)}
+      \begin{itemize}\small
+        \item Chụp ảnh
+        \item Gửi HTTP POST
+        \item Nhận lệnh relay
+        \item LED/Buzzer báo
+      \end{itemize}
+
+    \column{0.36\textwidth}
+      \textbf{Laptop/Server (AI)}
+      \begin{itemize}\small
+        \item YOLOv11 detect
+        \item ArcFace embedding
+        \item Liveness check
+        \item Cosine matching
+      \end{itemize}
+
+    \column{0.30\textwidth}
+      \textbf{Web Dashboard}
+      \begin{itemize}\small
+        \item Đăng ký khuôn mặt
+        \item Quản lý user
+        \item Xem nhật ký
+        \item Cấu hình ngưỡng
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Vòng lặp điều khiển thông minh}
+  \begin{center}
+  \begin{tikzpicture}[
+    box/.style={rectangle, rounded corners=3pt, draw=blue!70, fill=blue!7,
+      text width=2.5cm, align=center, font=\small, minimum height=0.9cm},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
+  ]
+    \node[box, fill=teal!8, draw=teal!70!black] (sense) {Cảm nhận\\{\scriptsize ESP32-CAM}};
+    \node[box, right=0.6cm of sense] (detect) {Nhận thức\\{\scriptsize YOLOv11 detect}};
+    \node[box, right=0.6cm of detect] (process) {Xử lý\\{\scriptsize ArcFace + Liveness}};
+    \node[box, right=0.6cm of process, fill=orange!10, draw=orange!80!black] (decide) {Quyết định\\{\scriptsize Match $\geq \theta$?}};
+    \node[box, below=0.8cm of decide, fill=green!9, draw=green!55!black] (act) {Hành động\\{\scriptsize Relay mở/khóa}};
+
+    \draw[arr] (sense) -- (detect);
+    \draw[arr] (detect) -- (process);
+    \draw[arr] (process) -- (decide);
+    \draw[arr] (decide) -- (act);
+    \draw[-{Stealth[length=2mm]}, thick, red!60] (act.west) -| node[below, font=\scriptsize, red!60, near start]{Feedback} (sense.south);
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Vòng lặp -- Ý nghĩa điều khiển}
+  \begin{alertblock}{Đặc trưng ``điều khiển thiết bị thông minh''}
+    \begin{itemize}
+      \item Vòng lặp kín: cảm biến $\to$ AI xử lý $\to$ thiết bị thực thi $\to$ phản hồi
+      \item Nếu ảnh kém chất lượng $\to$ yêu cầu chụp lại (feedback)
+      \item Nếu liveness fail $\to$ yêu cầu nháy mắt lại (retry)
+      \item Hệ thống tự ra quyết định dựa trên ngưỡng đã cấu hình
+    \end{itemize}
+  \end{alertblock}
+\end{frame}
+
+%------- TÀI LIỆU THAM KHẢO -------
+\begin{frame}{Tài liệu tham khảo}
+  \footnotesize
+  \begin{thebibliography}{99}
+    \bibitem{arcface} J. Deng \textit{et al.}, ``ArcFace: Additive Angular Margin Loss for Deep Face Recognition,'' \textit{CVPR}, 2019.
+    \bibitem{yolo} Ultralytics, ``YOLOv11,'' GitHub, 2024.
+    \bibitem{ear} T. Soukupova \& J. Cech, ``Eye Blink Detection Using Facial Landmarks,'' \textit{Computer Vision Winter Workshop}, 2016.
+    \bibitem{lfw} G. B. Huang \textit{et al.}, ``Labeled Faces in the Wild,'' UMass Tech Report, 2007.
+    \bibitem{insightface} InsightFace, ``InsightFace: 2D and 3D Face Analysis Project,'' GitHub, 2024.
+  \end{thebibliography}
+\end{frame}
+
+%------- CLOSING -------
+\begin{frame}[plain]
+  \begin{center}
+    \vspace{2.5cm}
+    {\Huge \textbf{Cảm ơn!}}\\[0.8em]
+    {\Large Câu hỏi \& Thảo luận}
+  \end{center}
+\end{frame}
+
+\end{document}
