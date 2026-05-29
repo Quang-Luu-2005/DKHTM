@@ -69,7 +69,7 @@
   \vspace{0.4em}
   \begin{enumerate}
     \item Bài toán, phạm vi và bối cảnh
-    \item Related Work và lựa chọn công nghệ
+    \item Lý do chọn công nghệ
     \item Kiến trúc hệ thống và vòng lặp điều khiển
     \item Pipeline AI tái tạo khuôn mặt 3D
     \item Rủi ro, thách thức và hướng giải quyết
@@ -158,39 +158,44 @@
 \end{frame}
 
 %============================
-\section{Related Work và lựa chọn công nghệ}
+\section{Lý do chọn công nghệ}
 %============================
 
-\begin{frame}{Related Work -- Vì sao chọn MVFNet?}
-  \scriptsize
-  \setlength{\tabcolsep}{4pt}
-  \renewcommand{\arraystretch}{1.2}
-  \begin{tabular}{p{0.16\textwidth}p{0.27\textwidth}p{0.27\textwidth}p{0.21\textwidth}}
-    \toprule
-    \textbf{Giải pháp} & \textbf{Mục tiêu chính} & \textbf{Ưu / nhược với đồ án} & \textbf{Kết luận} \\
-    \midrule
-    \textbf{3DDFA-V2} \cite{3ddfav2}
-      & Dense face alignment, ước lượng pose và landmark 3D.
-      & Nhanh, ổn định; output nghiêng về căn chỉnh hơn xác thực danh tính.
-      & Không chọn làm lõi. \\
-    \textbf{DECA} \cite{deca}
-      & Tái tạo khuôn mặt 3D chi tiết, biểu cảm và texture.
-      & Kết quả đẹp; mô hình nặng hơn, thiên về animation/detail.
-      & Tham khảo phần texture. \\
-    \textbf{Deep3DFace} \cite{deep3dface}
-      & Tái tạo 3DMM từ một ảnh khuôn mặt.
-      & Nền tảng tốt; cần gắn thêm matching, log và điều khiển thiết bị.
-      & Dùng làm baseline. \\
-    \textbf{MVFNet} \cite{mvfnet}
-      & Hồi quy tham số 3DMM đa góc nhìn, có vector identity $\alpha_{\text{id}}$.
-      & Cân bằng giữa mesh 3D, đặc trưng nhận dạng và độ phức tạp.
-      & Chọn làm lõi. \\
-    \bottomrule
-  \end{tabular}
+\begin{frame}{Lý do chọn công nghệ}
+  \footnotesize
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{YOLOv11-Face -- phát hiện khuôn mặt}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Phù hợp bước đầu pipeline: tìm mặt nhanh trong ảnh ESP32-CAM.
+        \item Hỗ trợ nhiều khuôn mặt trong một frame, dễ crop vùng cần xử lý.
+      \end{itemize}
 
-  \vspace{0.5em}
-  \textbf{Kết luận:}
-  MVFNet phù hợp nhất vì đồ án cần vector khuôn mặt 3D để so khớp danh tính, còn phần xử lý nặng vẫn chạy trên laptop/server.
+      \vspace{0.35em}
+      \textbf{GFPGAN -- tăng cường ảnh đầu vào}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item ESP32-CAM có thể cho ảnh mờ, nhiễu, thiếu sáng hoặc độ phân giải thấp.
+        \item GFPGAN giúp phục hồi chi tiết mặt trước khi tái tạo 3D.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{MVFNet + 3DMM -- lõi tái tạo 3D}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Tạo mesh 3D và tham số nhận dạng từ ảnh khuôn mặt 2D.
+        \item Vector identity $\alpha_{\text{id}}$ có thể dùng để so khớp danh tính.
+      \end{itemize}
+
+      \vspace{0.35em}
+      \textbf{Hậu xử lý và matching}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Laplacian smoothing giảm nhiễu hình học trên mesh.
+        \item Matching theo ngưỡng $\theta$ giúp chuyển kết quả AI thành \texttt{PASS}/\texttt{DENY}.
+      \end{itemize}
+  \end{columns}
+
+  \vspace{0.8em}
+  \textbf{Tóm lại:}
+  ESP32-CAM chỉ thu ảnh và điều khiển relay; phần AI nặng chạy trên laptop/server.
 \end{frame}
 
 %============================
@@ -658,9 +663,6 @@
   \footnotesize
   \begin{thebibliography}{99}
     \bibitem{mvfnet} F. Wu \textit{et al.}, ``MVFNet: Multi-View 3D Face Morphable Model Regression,'' \textit{CVPR}, 2019.
-    \bibitem{3ddfav2} J. Guo \textit{et al.}, ``Towards Fast, Accurate and Stable 3D Dense Face Alignment,'' \textit{ECCV}, 2020.
-    \bibitem{deca} Y. Feng \textit{et al.}, ``Learning an Animatable Detailed 3D Face Model from In-the-Wild Images,'' \textit{SIGGRAPH}, 2021.
-    \bibitem{deep3dface} Y. Deng \textit{et al.}, ``Accurate 3D Face Reconstruction with Weakly-Supervised Learning,'' \textit{ICCV Workshops}, 2019.
     \bibitem{yolo} Ultralytics, ``YOLOv11,'' GitHub, 2024.
     \bibitem{gfpgan} X. Wang \textit{et al.}, ``GFPGAN: Towards Real-World Blind Face Restoration with Generative Facial Prior,'' \textit{CVPR}, 2021.
     \bibitem{3dmm} V. Blanz \& T. Vetter, ``A Morphable Model for the Synthesis of 3D Faces,'' \textit{SIGGRAPH}, 1999.
