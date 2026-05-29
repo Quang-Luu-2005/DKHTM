@@ -15,7 +15,7 @@
 \usetikzlibrary{arrows.meta, positioning}
 
 \title[Cửa an ninh thông minh]{Cửa an ninh xác thực bằng khuôn mặt}
-\subtitle{MVFNet $\cdot$ YOLOv11-Face $\cdot$ GFPGAN $\cdot$ Hiệu chỉnh hình học}
+\subtitle{YOLOv11-Face $\cdot$ ArcFace $\cdot$ Liveness Detection $\cdot$ ESP32-CAM}
 \author[ĐH Khoa học Tự nhiên]{Lưu Huy Minh Quang -- 23127016 \\ Hoàng Nhân -- 23127094 \\ Trần Cao Vân -- 23127141 \\ Nguyễn Trần Thiên Phú -- 23127246}
 \institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
 \date{Tháng 5, 2026}
@@ -69,12 +69,13 @@
   \vspace{0.4em}
   \begin{enumerate}
     \item Bài toán, phạm vi và bối cảnh
-    \item Lý do chọn công nghệ
+    \item Related Work và lựa chọn công nghệ
     \item Kiến trúc hệ thống và vòng lặp điều khiển
-    \item Pipeline AI tái tạo khuôn mặt 3D
+    \item Pipeline AI nhận dạng khuôn mặt
+    \item Chống giả mạo (Liveness Detection)
     \item Rủi ro, thách thức và hướng giải quyết
     \item Dataset và cách đánh giá
-    \item Mockup sản phẩm và giao diện
+    \item Kế hoạch \& phân công nhóm
   \end{enumerate}
 \end{frame}
 
@@ -83,22 +84,25 @@
 %============================
 
 \begin{frame}{Giới thiệu đề tài}
+  \footnotesize
   \begin{block}{Sản phẩm đề xuất}
-    \textbf{Cửa an ninh thông minh} -- xác thực danh tính người dùng bằng khuôn mặt 3D, tự động mở/khóa cửa thông qua hệ thống thiết bị thông minh.
+    \textbf{Cửa an ninh thông minh} -- xác thực danh tính người dùng bằng khuôn mặt 2D, tự động mở/khóa cửa thông qua hệ thống thiết bị thông minh.
   \end{block}
 
-  \vspace{0.4em}
+  \vspace{0.25em}
   \textbf{Ý tưởng cốt lõi:}
-  \begin{itemize}
-    \item Camera IoT gắn tại cửa thu ảnh khuôn mặt người đứng trước
-    \item Hệ thống AI phía server \textbf{tái tạo mô hình 3D} từ ảnh 2D
-    \item So khớp mô hình 3D với cơ sở dữ liệu danh tính đã đăng ký
-    \item Nếu khớp $\to$ gửi tín hiệu mở cửa; nếu không $\to$ từ chối + cảnh báo
+  \begin{itemize}\setlength{\itemsep}{0.1em}
+    \item Camera ESP32-CAM gắn tại cửa thu ảnh khuôn mặt người đứng trước
+    \item Server chạy YOLOv11-Face detect mặt $\to$ ArcFace trích xuất embedding 512-d
+    \item So khớp embedding với database đã đăng ký bằng cosine similarity
+    \item Liveness detection (nháy mắt) chống giả mạo bằng ảnh in/video
+    \item Nếu khớp + mặt thật $\to$ mở cửa; ngược lại $\to$ từ chối
   \end{itemize}
 
-  \vspace{0.4em}
-  \begin{alertblock}{Tại sao dùng 3D thay vì 2D?}
-    Xác thực 2D dễ bị đánh lừa bởi ảnh in, video phát lại hoặc màn hình. Tái tạo mesh 3D buộc hệ thống phải hiểu \textbf{cấu trúc hình học} khuôn mặt -- khó giả mạo hơn nhiều.
+  \vspace{0.25em}
+  \begin{alertblock}{Tại sao dùng AI face embedding?}
+    So sánh pixel trực tiếp nhạy với ánh sáng, góc chụp và biểu cảm.
+    ArcFace mã hóa khuôn mặt thành vector 512 chiều ổn định hơn và tập trung vào danh tính.
   \end{alertblock}
 \end{frame}
 
@@ -145,57 +149,60 @@
   \vspace{0.2em}
   \textbf{Ràng buộc kỹ thuật}
   \begin{itemize}\setlength{\itemsep}{0pt}
-    \item Chỉ có 1 ảnh 2D nên thiếu thông tin chiều sâu.
+    \item Ảnh ESP32-CAM độ phân giải thấp nên cần detect/crop đúng vùng mặt trước khi nhận dạng.
     \item ESP32-CAM giới hạn RAM, CPU và băng thông nên không huấn luyện/tinh chỉnh model trực tiếp trên thiết bị.
-    \item Laptop/server dùng để chạy model, xuất tham số/cấu hình cần thiết rồi nạp xuống thiết bị; dữ liệu sinh trắc cần bảo mật.
+    \item Laptop/server chạy model ArcFace và liveness; dữ liệu embedding sinh trắc cần bảo mật.
   \end{itemize}
 
   \vspace{0.2em}
   \textbf{Đầu ra (Output)}
   \begin{itemize}\setlength{\itemsep}{0pt}
-    \item Mesh 3D + texture khuôn mặt; kết quả \texttt{PASS}/\texttt{DENY}; lệnh relay; log ra/vào.
+    \item Face embedding 512 chiều; kết quả \texttt{PASS}/\texttt{DENY}; lệnh relay; log ra/vào.
   \end{itemize}
 \end{frame}
 
 %============================
-\section{Lý do chọn công nghệ}
+\section{Related Work và lựa chọn công nghệ}
 %============================
 
-\begin{frame}{Lý do chọn công nghệ}
+\begin{frame}{Lựa chọn công nghệ nhận dạng khuôn mặt}
   \footnotesize
   \begin{columns}[T]
     \column{0.48\textwidth}
-      \textbf{YOLOv11-Face -- phát hiện khuôn mặt}
-      \begin{itemize}\setlength{\itemsep}{0.2em}
-        \item Phù hợp bước đầu pipeline: tìm mặt nhanh trong ảnh ESP32-CAM.
-        \item Hỗ trợ nhiều khuôn mặt trong một frame, dễ crop vùng cần xử lý.
+      \textbf{Các hướng đã khảo sát}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item \textbf{dlib}: nhẹ, chạy CPU tốt nhưng độ chính xác thấp hơn các mô hình deep learning hiện đại.
+        \item \textbf{FaceNet}: nền tảng tốt với triplet loss, nhưng training/tuning phức tạp hơn.
+        \item \textbf{DeepFace}: wrapper tiện dùng nhiều model, nhưng nặng và khó tùy biến pipeline thiết bị.
       \end{itemize}
 
       \vspace{0.35em}
-      \textbf{GFPGAN -- tăng cường ảnh đầu vào}
-      \begin{itemize}\setlength{\itemsep}{0.2em}
-        \item ESP32-CAM có thể cho ảnh mờ, nhiễu, thiếu sáng hoặc độ phân giải thấp.
-        \item GFPGAN giúp phục hồi chi tiết mặt trước khi tái tạo 3D.
+      \textbf{YOLOv11-Face -- detect/crop}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item Tìm khuôn mặt nhanh trong frame ESP32-CAM.
+        \item Crop đúng vùng mặt để đưa về input chuẩn cho ArcFace.
       \end{itemize}
 
     \column{0.48\textwidth}
-      \textbf{MVFNet + 3DMM -- lõi tái tạo 3D}
-      \begin{itemize}\setlength{\itemsep}{0.2em}
-        \item Tạo mesh 3D và tham số nhận dạng từ ảnh khuôn mặt 2D.
-        \item Vector identity $\alpha_{\text{id}}$ có thể dùng để so khớp danh tính.
+      \textbf{ArcFace -- lõi nhận dạng}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item Mô hình pretrained sẵn, chỉ cần inference, không cần train trên phần cứng.
+        \item Trích xuất embedding 512 chiều ổn định với ánh sáng, góc chụp và biểu cảm.
+        \item Accuracy khoảng 99.8\% trên benchmark LFW.
+        \item Thư viện \texttt{insightface} hỗ trợ Python tốt.
       \end{itemize}
 
       \vspace{0.35em}
-      \textbf{Hậu xử lý và matching}
-      \begin{itemize}\setlength{\itemsep}{0.2em}
-        \item Laplacian smoothing giảm nhiễu hình học trên mesh.
-        \item Matching theo ngưỡng $\theta$ giúp chuyển kết quả AI thành \texttt{PASS}/\texttt{DENY}.
+      \textbf{Liveness Detection -- chống giả mạo}
+      \begin{itemize}\setlength{\itemsep}{0.25em}
+        \item Dùng thử thách nháy mắt dựa trên Eye Aspect Ratio (EAR).
+        \item Không cần thêm camera depth/IR, phù hợp prototype ESP32-CAM.
       \end{itemize}
   \end{columns}
 
   \vspace{0.8em}
   \textbf{Tóm lại:}
-  ESP32-CAM chỉ thu ảnh và điều khiển relay; phần AI nặng chạy trên laptop/server.
+  ESP32-CAM chỉ thu ảnh và điều khiển relay; nhận dạng và chống giả mạo chạy trên laptop/server.
 \end{frame}
 
 %============================
@@ -226,11 +233,11 @@
     };
     \node[ai, right=0.55cm of perceive] (process) {
       \textbf{3. Xử lý}\\
-      GFPGAN tăng cường ảnh, MVFNet tái tạo mesh 3D.
+      ArcFace trích xuất face embedding 512-d từ ảnh đã crop.
     };
     \node[decision, below=0.9cm of process] (eval) {
       \textbf{4. Ra quyết định}\\
-      So khớp đặc trưng 3D với database và ngưỡng xác thực.
+      So cosine similarity embedding với database + kiểm tra liveness.
     };
     \node[action, left=0.55cm of eval] (act) {
       \textbf{5. Hành động}\\
@@ -250,7 +257,7 @@
   \vspace{0.3em}
   \begin{alertblock}{Điểm điều khiển chính}
     \small
-    Hệ thống tạo vòng lặp kín: cảm biến thu ảnh $\to$ AI xử lý và ra quyết định $\to$ thiết bị thực thi $\to$ phản hồi khi ảnh đầu vào chưa đạt chất lượng.
+    Hệ thống tạo vòng lặp kín: cảm biến thu ảnh $\to$ AI xác thực danh tính và kiểm tra mặt thật $\to$ thiết bị thực thi $\to$ phản hồi khi ảnh đầu vào chưa đạt chất lượng.
   \end{alertblock}
 \end{frame}
 
@@ -267,7 +274,7 @@
     arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
   ]
     \node[iotbox] (iot) {Lớp IoT\\{\scriptsize Thu ảnh, điều khiển relay}};
-    \node[aibox, right=0.9cm of iot] (ai) {Lớp AI\\{\scriptsize Phát hiện, tái tạo 3D, xác thực}};
+    \node[aibox, right=0.9cm of iot] (ai) {Lớp AI\\{\scriptsize Phát hiện, embedding, liveness, xác thực}};
     \node[appbox, right=0.9cm of ai] (app) {Lớp Ứng dụng\\{\scriptsize Đăng ký, quản lý, giám sát}};
 
     \draw[arr] (iot) -- node[above, font=\scriptsize]{ảnh 2D} (ai);
@@ -291,6 +298,7 @@
         \begin{itemize}
           \item \textbf{ESP32-CAM}: camera nhúng giá rẻ, Wi-Fi tích hợp
           \item \textbf{Relay module}: điều khiển khóa điện từ
+          \item \textbf{PIR sensor}: phát hiện có người đứng trước cửa
           \item \textbf{LCD/LED}: hiển thị trạng thái xanh/đỏ
           \item \textbf{Buzzer}: cảnh báo âm thanh
         \end{itemize}
@@ -318,19 +326,17 @@
 \begin{frame}{Lớp AI -- Laptop/Server xử lý}
   \begin{block}{Pipeline xử lý chính}
     \begin{enumerate}
-      \item \textbf{Chuẩn bị model}: chạy thử, huấn luyện/tinh chỉnh và xuất weight, threshold hoặc cấu hình triển khai trên laptop/server.
-      \item \textbf{YOLOv11-Face}: phát hiện khuôn mặt và crop vùng cần xử lý.
-      \item \textbf{GFPGAN}: tăng cường chất lượng ảnh mờ, nhiễu hoặc thiếu sáng.
-      \item \textbf{MVFNet + 3DMM}: tái tạo mesh 3D từ ảnh khuôn mặt 2D.
-      \item \textbf{Laplacian Smoothing}: làm mịn mesh, giảm nhiễu hình học.
-      \item \textbf{Matching Engine}: so khớp đặc trưng 3D với database đã đăng ký.
+      \item \textbf{YOLOv11-Face}: phát hiện khuôn mặt, crop vùng mặt từ frame.
+      \item \textbf{ArcFace}: trích xuất face embedding (vector 512 chiều).
+      \item \textbf{Liveness check}: kiểm tra EAR (Eye Aspect Ratio) để xác nhận mặt thật.
+      \item \textbf{Matching}: cosine similarity giữa embedding input và database $\to$ \texttt{PASS}/\texttt{DENY}.
     \end{enumerate}
   \end{block}
 
   \vspace{0.3em}
   \begin{alertblock}{Kết quả trả về}
     \small
-    Laptop/server trả về kết quả xác thực \texttt{PASS}/\texttt{DENY}, độ tin cậy, lệnh điều khiển relay và các tham số/cấu hình cần nạp xuống thiết bị.
+    Laptop/server trả về kết quả xác thực \texttt{PASS}/\texttt{DENY}, độ tin cậy, trạng thái liveness và lệnh điều khiển relay.
   \end{alertblock}
 \end{frame}
 
@@ -373,7 +379,7 @@
 
     \draw[data, teal] (iot.north east) -- node[above]{ảnh 2D (JPEG)} (ai.north west);
     \draw[data, blue] (ai.south west) -- node[below]{PASS/DENY + relay cmd} (iot.south east);
-    \draw[data, orange] (ai.north east) -- node[above]{log, mesh 3D} (app.north west);
+    \draw[data, orange] (ai.north east) -- node[above]{log, embedding} (app.north west);
     \draw[data, orange!70!red] (app.south west) -- node[below]{config, user DB} (ai.south east);
   \end{tikzpicture}
   \end{center}
@@ -396,110 +402,144 @@
 \end{frame}
 
 %============================
-\section{Pipeline AI tái tạo khuôn mặt 3D}
+\section{Pipeline AI nhận dạng khuôn mặt}
 %============================
 
 \begin{frame}{Pipeline xử lý AI -- Tổng quan}
-  \textbf{Quy trình 5 bước}
+  \textbf{Quy trình 4 bước}
 
-  \vspace{0.2em}
+  \vspace{0.4em}
   \begin{center}
     \footnotesize
     \texttt{Ảnh 2D}
     $\xrightarrow{\text{\textbf{1.} YOLOv11}}$ \texttt{Crop mặt}
-    $\xrightarrow{\text{\textbf{2.} GFPGAN}}$ \texttt{Ảnh nét}
-    $\xrightarrow{\text{\textbf{3.} MVFNet}}$ \texttt{Mesh 3D thô}
-    $\xrightarrow{\text{\textbf{4.} Smooth}}$ \texttt{Mesh mịn}
-    $\xrightarrow{\text{\textbf{5.} Match}}$ \texttt{Kết quả}
+    $\xrightarrow{\text{\textbf{2.} ArcFace}}$ \texttt{Embedding 512-d}
+    $\xrightarrow{\text{\textbf{3.} Liveness}}$ \texttt{Mặt thật?}
+    $\xrightarrow{\text{\textbf{4.} Match}}$ \texttt{PASS/DENY}
   \end{center}
 
-  \vspace{0.4em}
+  \vspace{0.8em}
   \begin{columns}[T]
     \column{0.48\textwidth}
-      \textbf{Bước 1: YOLOv11-Face}
+      \textbf{Input}
       \begin{itemize}
-        \item Phát hiện bounding box khuôn mặt
-        \item Crop với hệ số mở rộng $s = 1.2$:
-          \[ \text{Size} = \max(w, h) \times 1.2 \]
-        \item Dịch tâm xuống $0.14 \times$ Size (bao phủ cằm)
-        \item Xử lý được nhiều mặt trong 1 frame
+        \item Ảnh JPEG từ ESP32-CAM
+        \item Metadata: device\_id, timestamp
+        \item Ảnh có thể mờ, thiếu sáng hoặc góc nghiêng nhẹ
       \end{itemize}
 
     \column{0.48\textwidth}
-      \textbf{Bước 2: GFPGAN (Image Enhancement)}
+      \textbf{Output}
       \begin{itemize}
-        \item Phục hồi ảnh mờ, nhiễu, độ phân giải thấp
-        \item Sử dụng GAN với \textit{generative facial prior}
-        \item Tái tạo chi tiết vùng mắt, mũi, môi
-        \item Đảm bảo ảnh đầu vào cho MVFNet luôn đạt chất lượng tối ưu
+        \item Embedding khuôn mặt 512 chiều
+        \item Điểm similarity với database
+        \item Kết quả liveness
+        \item Lệnh relay: mở hoặc từ chối
       \end{itemize}
   \end{columns}
 \end{frame}
 
-\begin{frame}{Pipeline xử lý AI -- Tái tạo 3D}
-  \textbf{Bước 3: MVFNet + 3DMM -- Hồi quy khuôn mặt 3D}
+\begin{frame}{Pipeline xử lý AI -- YOLOv11-Face}
+  \textbf{Bước 1: Phát hiện và crop khuôn mặt}
 
   \vspace{0.3em}
-  Mô hình hóa khuôn mặt bằng \textbf{3D Morphable Model}:
-  \[
-    S = \bar{S} + B_{\text{id}}\,\alpha_{\text{id}} + B_{\text{exp}}\,\alpha_{\text{exp}}
-  \]
-  \begin{itemize}
-    \item $\bar{S}$: hình dạng khuôn mặt trung bình (mean face)
-    \item $B_{\text{id}} \in \mathbb{R}^{3N \times 199}$: cơ sở hình dạng nhận dạng (PCA)
-    \item $B_{\text{exp}} \in \mathbb{R}^{3N \times 29}$: cơ sở biểu cảm
-    \item $\alpha_{\text{id}}, \alpha_{\text{exp}}$: tham số cá nhân -- \textbf{đây là vector dùng để xác thực}
-  \end{itemize}
-  Mạng VggEncoder trích xuất vector 257 chiều (identity + expression + pose) từ ảnh 2D.
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      \begin{itemize}
+        \item Phát hiện bounding box khuôn mặt trong frame.
+        \item Crop với hệ số mở rộng $s = 1.2$:
+          \[
+            \text{Size} = \max(w, h) \times 1.2
+          \]
+        \item Xử lý được nhiều mặt trong một frame.
+        \item Nhanh, phù hợp real-time trên server.
+      \end{itemize}
+
+    \column{0.42\textwidth}
+      \textbf{Đầu ra cho bước sau}
+      \begin{itemize}
+        \item Ảnh mặt đã crop
+        \item Resize về kích thước input của ArcFace
+        \item Loại bớt nền và người đứng xung quanh
+      \end{itemize}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{Pipeline xử lý AI -- Hậu xử lý mesh}
-  \textbf{Bước 4: Laplacian Smoothing}
-
-  \vspace{0.4em}
-  Hiệu chỉnh tọa độ đỉnh mesh theo trung bình lân cận:
-  \[
-    L(v_i) = \frac{1}{|N(i)|} \sum_{j \in N(i)} (v_j - v_i)
-  \]
+\begin{frame}{Pipeline xử lý AI -- ArcFace}
+  \footnotesize
+  \textbf{Bước 2: Trích xuất đặc trưng nhận dạng}
 
   \vspace{0.2em}
-  \begin{itemize}
-    \item Loại bỏ nhiễu răng cưa trên bề mặt mesh sau khi tái tạo.
-    \item Làm mượt các vùng bị méo do ảnh đầu vào mờ, nhiễu hoặc thiếu sáng.
-    \item Giữ nguyên cấu trúc tổng thể khuôn mặt, tránh làm mất đặc trưng nhận dạng.
-    \item Mesh mịn hơn giúp bước so khớp 3D ổn định và chính xác hơn.
+  ArcFace mã hóa khuôn mặt thành vector embedding 512 chiều:
+  \begin{itemize}\setlength{\itemsep}{0.15em}
+    \item Bất biến tương đối với ánh sáng, góc chụp và biểu cảm.
+    \item Chỉ phụ thuộc vào danh tính (identity).
+    \item Pretrained trên MS1MV2, dùng inference, không cần train lại trên ESP32-CAM.
   \end{itemize}
+
+  \vspace{0.25em}
+  ArcFace loss:
+  \[
+    L_i = -\log
+    \frac{e^{s\cos(\theta_{y_i}+m)}}
+    {e^{s\cos(\theta_{y_i}+m)} + \sum_{j \ne y_i} e^{s\cos(\theta_j)}}
+  \]
+  \[
+    m = 0.5,\quad s = 64
+  \]
+
+  \vspace{0.1em}
+  \textbf{Xác thực:}
+  \[
+    \mathrm{sim}(e_{\text{input}}, e_{\text{DB}})
+    =
+    \frac{e_{\text{input}} \cdot e_{\text{DB}}}
+    {\lVert e_{\text{input}} \rVert \lVert e_{\text{DB}} \rVert}
+  \]
+  Nếu $\mathrm{sim} \geq \theta$ (ví dụ $0.5$) $\to$ \texttt{PASS}; ngược lại $\to$ \texttt{DENY}.
 \end{frame}
 
-\begin{frame}{Pipeline xử lý AI -- Texture \& Xác thực}
+%============================
+\section{Chống giả mạo (Liveness Detection)}
+%============================
+
+\begin{frame}{Liveness Detection -- Nháy mắt}
+  \footnotesize
   \begin{columns}[T]
     \column{0.48\textwidth}
-      \textbf{Bước 4b: Texture Fusion}
+      \textbf{Mục đích}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Chống giả mạo bằng ảnh in, video phát lại hoặc màn hình điện thoại.
+        \item Kiểm tra người trước cửa là mặt thật trước khi so khớp hoặc mở relay.
+      \end{itemize}
 
-      \vspace{0.2em}
-      Hòa trộn màu sắc đa góc nhìn:
+      \vspace{0.3em}
+      \textbf{Eye Aspect Ratio (EAR)}
       \[
-        w = \max(0,\; \vec{n} \cdot \vec{v})
+        \mathrm{EAR} =
+        \frac{\lVert p_2-p_6\rVert + \lVert p_3-p_5\rVert}
+        {2\lVert p_1-p_4\rVert}
       \]
-      \begin{itemize}
-        \item $\vec{n}$: pháp tuyến đỉnh mesh
-        \item $\vec{v}$: hướng camera
-        \item Chọn màu từ góc nhìn tốt nhất
-        \item Giảm vùng texture bị kéo giãn hoặc thiếu chi tiết
+      \begin{itemize}\setlength{\itemsep}{0.15em}
+        \item EAR bình thường $\approx 0.25$--$0.30$
+        \item EAR $< 0.2$ $\to$ mắt nhắm / đang nháy
       \end{itemize}
 
     \column{0.48\textwidth}
-      \textbf{Bước 5: Xác thực danh tính}
+      \textbf{Flow kiểm tra}
+      \begin{enumerate}\setlength{\itemsep}{0.2em}
+        \item Yêu cầu user nháy mắt qua LED/LCD.
+        \item Theo dõi EAR trong 2--3 giây.
+        \item Nếu phát hiện nháy $\to$ mặt thật $\to$ tiếp tục xác thực.
+        \item Nếu không nháy trong 3s $\to$ nghi giả mạo $\to$ \texttt{DENY}.
+      \end{enumerate}
 
-      \vspace{0.2em}
-      So sánh $\alpha_{\text{id}}$ với database:
-      \[
-        \text{sim}(\alpha_{\text{id}}^{\text{input}},\; \alpha_{\text{id}}^{\text{DB}}) \geq \theta
-      \]
-      \begin{itemize}
-        \item Nếu đạt ngưỡng: \texttt{PASS} $\to$ gửi lệnh mở relay.
-        \item Nếu không đạt: \texttt{DENY} $\to$ từ chối và ghi log.
-        \item Threshold $\theta$ được tinh chỉnh trên laptop/server trước khi triển khai.
+      \vspace{0.3em}
+      \textbf{Tại sao hiệu quả?}
+      \begin{itemize}\setlength{\itemsep}{0.2em}
+        \item Ảnh in không nháy mắt được.
+        \item Có thể thêm random challenge: nháy mắt, quay trái/phải.
+        \item Không cần thêm depth sensor hoặc camera IR.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -509,22 +549,23 @@
 %============================
 
 \begin{frame}{Rủi ro / thách thức và hướng giải quyết}
-  \footnotesize
+  \scriptsize
   \begin{columns}[T]
     \column{0.48\textwidth}
       \textbf{Chất lượng ảnh ESP32-CAM}
       \begin{itemize}\setlength{\itemsep}{0.15em}
         \item Ảnh ban đêm yếu sáng, mờ, nhiễu hoặc ngược sáng.
         \item Khuôn mặt nhỏ, lệch góc, bị che bởi khẩu trang/nón.
-        \item \textbf{Xử lý:} thêm LED/IR, kiểm tra chất lượng ảnh, chụp lại nhiều frame, crop đúng mặt và dùng GFPGAN trước MVFNet.
+        \item Ảnh 640$\times$480 vẫn dùng được vì ArcFace nhận ảnh crop/resize 112$\times$112.
+        \item \textbf{Xử lý:} thêm LED, kiểm tra chất lượng ảnh, chụp lại nhiều frame và crop đúng mặt.
       \end{itemize}
 
       \vspace{0.25em}
       \textbf{Độ trễ hệ thống}
       \begin{itemize}\setlength{\itemsep}{0.15em}
         \item Latency mạng khi ESP32-CAM gửi ảnh JPEG lên server.
-        \item AI inference có thể vượt mục tiêu phản hồi nhanh.
-        \item \textbf{Xử lý:} giảm kích thước ảnh gửi, timeout rõ ràng, cache model trên server, log thời gian từng bước.
+        \item Inference có thể vượt mục tiêu phản hồi nhanh.
+        \item \textbf{Xử lý:} giảm kích thước ảnh, timeout rõ ràng, cache model và log thời gian từng bước.
       \end{itemize}
 
     \column{0.48\textwidth}
@@ -532,15 +573,16 @@
       \begin{itemize}\setlength{\itemsep}{0.15em}
         \item False positive: mở cửa cho người không hợp lệ.
         \item False negative: từ chối người hợp lệ khi ảnh xấu.
-        \item \textbf{Xử lý:} tinh chỉnh ngưỡng $\theta$, yêu cầu chụp lại khi confidence thấp, lưu ảnh sự kiện để kiểm tra sau.
+        \item \textbf{Xử lý:} tinh chỉnh ngưỡng $\theta$, chụp lại khi confidence thấp, lưu ảnh sự kiện.
       \end{itemize}
 
       \vspace{0.25em}
-      \textbf{Bảo mật và vận hành}
+      \textbf{Spoofing và bảo mật}
       \begin{itemize}\setlength{\itemsep}{0.15em}
+        \item Ảnh in hoặc ảnh trên điện thoại có thể đánh lừa nhận dạng 2D.
+        \item \textbf{Xử lý:} liveness bằng nháy mắt; có thể thêm random challenge quay trái/phải.
         \item Dữ liệu khuôn mặt là dữ liệu sinh trắc nhạy cảm.
-        \item Thiết bị IoT có thể mất kết nối hoặc bị gọi API giả.
-        \item \textbf{Xử lý:} xác thực device\_id/token, giới hạn quyền dashboard, mã hóa dữ liệu nhạy cảm và có chế độ fail-safe.
+        \item Xác thực device\_id/token, giới hạn quyền dashboard và mã hóa dữ liệu.
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -555,17 +597,17 @@
     \column{0.48\textwidth}
       \textbf{Dataset công khai}
       \begin{itemize}\setlength{\itemsep}{0.25em}
-        \item \textbf{AFLW2000-3D} \cite{aflw}: ảnh khuôn mặt có pose lớn và annotation 3D.
-        \item Dùng để kiểm tra detect/crop, pose khó và độ ổn định tái tạo 3D.
-        \item Phù hợp đánh giá phần AI trước khi gắn với phần cứng thật.
+        \item \textbf{LFW} \cite{lfw}: benchmark chuẩn cho face verification.
+        \item ArcFace pretrained đạt khoảng 99.8\% trên LFW.
+        \item Dùng để tham khảo độ chính xác nhận dạng trước khi test thực tế.
       \end{itemize}
 
       \vspace{0.35em}
       \textbf{Dataset tự chụp}
       \begin{itemize}\setlength{\itemsep}{0.25em}
         \item Chụp bằng ESP32-CAM trong đúng bối cảnh cửa ra/vào.
-        \item Mỗi người: chính diện, nghiêng trái/phải, xa/gần, sáng/yếu sáng.
-        \item Thêm mẫu không hợp lệ để đo khả năng từ chối người lạ.
+        \item Mỗi người: 5--10 ảnh đăng ký, gồm chính diện, nghiêng nhẹ, sáng/tối.
+        \item Tập test gồm ảnh mới của người đã đăng ký và ảnh người lạ.
       \end{itemize}
 
     \column{0.48\textwidth}
@@ -574,6 +616,7 @@
         \item \textbf{Enroll set}: ảnh đăng ký khuôn mặt hợp lệ.
         \item \textbf{Test same-user}: ảnh cùng người nhưng khác góc/ánh sáng.
         \item \textbf{Test unknown}: ảnh người không có trong database.
+        \item \textbf{Test spoof}: ảnh in hoặc ảnh trên điện thoại để test liveness.
       \end{itemize}
 
       \vspace{0.35em}
@@ -592,9 +635,10 @@
     \column{0.5\textwidth}
       \textbf{Xác thực danh tính}
       \begin{itemize}\setlength{\itemsep}{0.2em}
-        \item \textbf{Accuracy}: tỷ lệ quyết định đúng trên toàn bộ lượt thử.
+        \item \textbf{Accuracy}: tỷ lệ quyết định đúng trên tập tự chụp.
         \item \textbf{FAR}: tỷ lệ người lạ bị nhận nhầm là hợp lệ.
         \item \textbf{FRR}: tỷ lệ người hợp lệ bị từ chối.
+        \item Đánh giá ở nhiều ngưỡng similarity $\theta$ khác nhau.
         \item Ma trận nhầm lẫn: \texttt{PASS}/\texttt{DENY} so với nhãn thật.
       \end{itemize}
 
@@ -609,7 +653,7 @@
       \textbf{Chất lượng pipeline}
       \begin{itemize}\setlength{\itemsep}{0.2em}
         \item Tỷ lệ phát hiện được mặt trong frame.
-        \item Tỷ lệ ảnh phải chụp lại hoặc enhance.
+        \item Liveness detection rate: \% phát hiện đúng mặt thật vs giả.
         \item Similarity score trung bình theo từng điều kiện ánh sáng/góc nhìn.
       \end{itemize}
 
@@ -624,8 +668,35 @@
 \end{frame}
 
 %============================
-\section{Mockup sản phẩm và giao diện}
-%============================
+%------- MOCKUP SẢN PHẨM -------
+
+\section{Kế hoạch \& phân công nhóm}
+
+\begin{frame}{Kế hoạch \& phân công nhóm}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.18}
+  \begin{tabular}{p{0.08\textwidth}p{0.38\textwidth}p{0.28\textwidth}p{0.1\textwidth}}
+    \toprule
+    \textbf{GĐ} & \textbf{Nội dung} & \textbf{Phụ trách} & \textbf{Tuần} \\
+    \midrule
+    1 & ESP32-CAM + relay + PIR + LED & Trần Cao Vân & 1--2 \\
+    2 & YOLOv11-Face detect + crop & Lưu Huy Minh Quang & 2--3 \\
+    3 & ArcFace embedding + matching & Nguyễn Trần Thiên Phú & 3--5 \\
+    4 & Liveness detection (EAR) & Hoàng Nhân & 4--6 \\
+    5 & Web dashboard (đăng ký + log) & Hoàng Nhân + Trần Cao Vân & 6--8 \\
+    6 & Tích hợp end-to-end + demo & Cả nhóm & 8--10 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.7em}
+  \textbf{Demo cuối kỳ}
+  \begin{itemize}\setlength{\itemsep}{0.15em}
+    \item Prototype phần cứng: ESP32-CAM + relay + LED chạy thực tế.
+    \item Server AI pipeline đầy đủ: detect $\to$ embedding $\to$ liveness $\to$ matching.
+    \item Web dashboard đăng ký/quản lý user và xem log.
+    \item Video demo: người đến cửa $\to$ nháy mắt $\to$ xác thực $\to$ mở cửa.
+  \end{itemize}
+\end{frame}
 
 \begin{frame}{Mockup sản phẩm -- Cửa an ninh}
   \begin{columns}[T]
@@ -662,12 +733,12 @@
 \begin{frame}{Tài liệu tham khảo}
   \footnotesize
   \begin{thebibliography}{99}
-    \bibitem{mvfnet} F. Wu \textit{et al.}, ``MVFNet: Multi-View 3D Face Morphable Model Regression,'' \textit{CVPR}, 2019.
+    \bibitem{arcface} J. Deng \textit{et al.}, ``ArcFace: Additive Angular Margin Loss for Deep Face Recognition,'' \textit{CVPR}, 2019.
     \bibitem{yolo} Ultralytics, ``YOLOv11,'' GitHub, 2024.
-    \bibitem{gfpgan} X. Wang \textit{et al.}, ``GFPGAN: Towards Real-World Blind Face Restoration with Generative Facial Prior,'' \textit{CVPR}, 2021.
-    \bibitem{3dmm} V. Blanz \& T. Vetter, ``A Morphable Model for the Synthesis of 3D Faces,'' \textit{SIGGRAPH}, 1999.
-    \bibitem{lap} D. A. Field, ``Laplacian smoothing and Delaunay triangulations,'' \textit{Comm. in Applied Numerical Methods}, 1988.
-    \bibitem{aflw} X. Zhu \textit{et al.}, ``Face Alignment Across Large Poses: A 3D Solution,'' \textit{CVPR}, 2016.
+    \bibitem{blazeface} V. Bazarevsky \textit{et al.}, ``BlazeFace: Sub-millisecond Neural Face Detection on Mobile GPUs,'' \textit{CVPR Workshop}, 2019.
+    \bibitem{ear} T. Soukupova \& J. Cech, ``Eye Blink Detection Using Facial Landmarks,'' \textit{Computer Vision Winter Workshop}, 2016.
+    \bibitem{lfw} G. B. Huang \textit{et al.}, ``Labeled Faces in the Wild: A Database for Studying Face Recognition,'' UMass Tech Report, 2007.
+    \bibitem{insightface} InsightFace, ``InsightFace: 2D and 3D Face Analysis Project,'' GitHub, 2024.
   \end{thebibliography}
 \end{frame}
 
