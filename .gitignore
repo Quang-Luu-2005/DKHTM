@@ -9,3 +9,10 @@
 !slide/images/*.jpeg
 !slide/images/*.webp
 !.gitignore
+
+# 4. Code exceptions: Keep everything in "Cam test" EXCEPT the build folder
+!"Cam test"/
+!"Cam test"/**
+
+# Re-ignore the PlatformIO build output inside "Cam test"
+"Cam test"/build/
