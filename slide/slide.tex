@@ -140,27 +140,15 @@
     \toprule
     \textbf{MT} & \textbf{Nội dung} & \textbf{Chỉ tiêu chính} \\
     \midrule
-    1 & Phát hiện khuôn mặt \newline (Face Detection) & Độ chính xác $>95\%$ ở 0.5--1.5\,m \\
-    2 & Nhận dạng khuôn mặt \newline (Face Recognition) & Định danh $>92\%$ trên 20 người, FAR $<2\%$, phản hồi $<1.5$\,s \\
+    1 & Nhận diện khuôn mặt \newline (Face Recognition) & Thời gian xác nhận vi phạm , FAR $<2\%$, phản hồi $<1.5$\,s  \\
+    2 & Phát hiện có người vi phạm \newline (Violation detection (jump through door)) & Thời gian xác nhận $<2$ giây, Cổng chỉ được mở lại qua admin, khoảng cách vi phạm $<$ khoảng cách 2 bên cổng. \\
     3 & Kết nối và điều khiển IoT & Tỷ lệ truyền nhận thành công $99\%$, độ trễ $<2$\,s \\
     \bottomrule
   \end{tabular}
 \end{frame}
 
-\begin{frame}{Mục tiêu 1 -- Phát hiện khuôn mặt}
-  \textbf{Face Detection}
 
-  \vspace{0.4em}
-  Triển khai thành công mô hình quét ảnh, phát hiện sự xuất hiện của khuôn mặt người trong khung hình.
-
-  \vspace{0.8em}
-  \begin{itemize}
-    \item Tỷ lệ phát hiện chính xác \textbf{$>95\%$} (ở khoảng cách \textbf{0.5m -- 1.5m}).
-    \item Đảm bảo \textbf{không bỏ sót} đối tượng bước đến cửa.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{Mục tiêu 2 -- Nhận dạng khuôn mặt}
+\begin{frame}{Mục tiêu 1 -- Nhận dạng khuôn mặt}
   \textbf{Face Recognition}
 
   \vspace{0.4em}
@@ -171,6 +159,19 @@
     \item Tỷ lệ định danh chính xác \textbf{$>92\%$} trên database \textbf{20 người}.
     \item Tỷ lệ nhận nhầm người (False Acceptance) \textbf{$<2\%$}.
     \item Thời gian phản hồi \textbf{$<1.5$ giây}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Mục tiêu 2 -- Phát hiện tín hiệu có người trèo qua cổng}
+  \textbf{Violation detection (jump through door)}
+
+  \vspace{0.4em}
+  Phát hiện người trèo qua cổng bằng cảm biến khoảng cách và báo động bằng tín hiệu tại chỗ và trên dashboard.
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Thời gian xác nhận có vi phạm \textbf{$<2$ giây}.
+    \item Cổng không thể mở lại cho đến khi được admin mở trên dashboard.
+    \item Khoảng cách xác nhận vi phạm \textbf{$<$ khoảng cách 2 bên cổng}.
   \end{itemize}
 \end{frame}
 
@@ -410,14 +411,15 @@
     \toprule
     \textbf{STT} & \textbf{Linh kiện} & \textbf{Chi tiết kỹ thuật} & \textbf{SL} & \textbf{Giá (VNĐ)} \\
     \midrule
-    1 & ESP32-S3-CAM & Bản N16R8 (16MB Flash, 8MB PSRAM) + Camera OV2640 & 1 & $\sim$280.000 \\
-    2 & Cảm biến hồng ngoại & E18-D80NK hoặc TCRT5000 (liveness bản rẻ) & 1 & $\sim$35.000 \\
-    3 & Động cơ Servo & SG90 (nhựa) hoặc MG996R (bánh răng kim loại) & 1 & $\sim$30.000 \\
-    4 & Breadboard & MB-102, 830 lỗ cắm & 1 & $\sim$60.000 \\
-    5 & Adapter 12V-2A & Nguồn DC, Jack 5.5$\times$2.1\,mm & 1 & $\sim$70.000 \\
-    6 & Phụ kiện & Dây jump (Đực-Cái, Cái-Cái, Đực-Đực) + LED Phi 5mm (Xanh/Đỏ) + Buzzer 5V + Điện trở 220\,$\Omega$ & 1 bộ & $\sim$50.000 \\
+    1 & ESP32-38 pin &  wifi 2.4Ghz và bluethooth TSMC công nghệ 40nm năng lượng thấp. 5V DC input. Wifi: 802.11 B/g/n/E/I (802.11N @ 2.4 GHz lên đến 150 Mbit/S) Bluetooth: 4.2 BR/EDR BLE 2 chế độ điều khiển & 1 & $\sim$260.000 \\
+    2 & ESP32-CAM-AI-Thinker & Bản N16R8 (16MB Flash, 8MB PSRAM) + Camera OV2640 & 1 & $\sim$280.000 \\
+    3 & Cảm biến ultrasonic & HC-SR04 & 1 & $\sim$35.000 \\
+    4 & Động cơ Servo & SG90 (nhựa) & 2 & $\sim$60.000 \\
+    5 & Breadboard & 170 lỗ cắm & 1 & $\sim$60.000 \\
+    6 & Adapter 12V-2A & Nguồn DC, Jack 5.5$\times$2.1\,mm & 1 & $\sim$70.000 \\
+    7 & Phụ kiện & Dây jump (Đực-Cái, Cái-Cái, Đực-Đực) + LED Phi 5mm (Xanh/Đỏ) + Buzzer 5V + Điện trở 220\,$\Omega$ & 1 bộ & $\sim$50.000 \\
     \midrule
-    \multicolumn{4}{r}{\textbf{Tổng cộng (ước tính):}} & \textbf{$\sim$525.000} \\
+    \multicolumn{4}{r}{\textbf{Tổng cộng (ước tính):}} & \textbf{$\sim$815.000} \\
     \bottomrule
   \end{tabular}
 \end{frame}
