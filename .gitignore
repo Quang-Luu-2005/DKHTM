@@ -1,11 +1,37 @@
-# Only keep LaTeX sources and compiled PDFs in git.
-*
-!*/
-!*.tex
-!*.pdf
-!slide/images/
-!slide/images/*.png
-!slide/images/*.jpg
-!slide/images/*.jpeg
-!slide/images/*.webp
-!.gitignore
+# =========================================================================
+# 1. Ignore ALL LaTeX temporary build/auxiliary files everywhere
+# =========================================================================
+*.aux
+*.log
+*.toc
+*.out
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+
+# =========================================================================
+# 2. PlatformIO Build Targets (Ignore only code compilation artifacts)
+# =========================================================================
+Cam\ test/build/
+Cam\ test/.pio/
+Cam\ test/.pioenvs/
+Cam\ test/.piolibdeps/
+
+# =========================================================================
+# 3. VS Code Configuration & PlatformIO Local Files
+# =========================================================================
+# Fixes the missing dot (.) in .vscode
+Cam\ test/.vscode/.browse.c_cpp.db*
+Cam\ test/.vscode/c_cpp_properties.json
+Cam\ test/.vscode/launch.json
+Cam\ test/.vscode/ipch/
+
+# Tip: If you want to ignore ALL personal VS Code settings files 
+# but keep recommended tasks, you can just ignore the whole folder 
+# or specific files like settings.json:
+# Cam\ test/.vscode/settings.json
