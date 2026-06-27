@@ -14,13 +14,13 @@
 \usetikzlibrary{arrows.meta, positioning}
 
 \hypersetup{
-  pdftitle={Cua an ninh nhan dien khuon mat - AIoT},
+  pdftitle={He thong kiem soat ra vao thong minh - AIoT},
   pdfauthor={Nhom: Quang, Nhan, Van, Phu},
-  pdfsubject={Smart Access Control with Edge AI Face Recognition},
+  pdfsubject={Smart Access Control with Camera, RFID and Web Alerts},
 }
 
-\title[Cửa an ninh AIoT]{Cửa an ninh nhận diện khuôn mặt}
-\subtitle{Edge AI $\cdot$ ESP-WHO $\cdot$ ESP32-S3-CAM}
+\title[Kiểm soát ra vào AIoT]{Hệ thống kiểm soát ra vào thông minh}
+\subtitle{Camera $\cdot$ RFID/NFC $\cdot$ Cảnh báo web}
 \author[Nhóm thực hiện]{Lưu Huy Minh Quang -- 23127016 \and Hoàng Nhân -- 23127094 \and Trần Cao Vân -- 23127141 \and Nguyễn Trần Thiên Phú -- 23127246}
 \institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
 \date{Tháng 6, 2026}
@@ -66,8 +66,8 @@
   \vspace{0.4em}
   \begin{enumerate}
     \item Giới thiệu project
-    \item Mục đích cần đạt được
-    \item Các mục tiêu của project
+    \item Mục đích của project
+    \item Mục tiêu của project
     \item Phương pháp đề xuất
     \item Kiến trúc hệ thống
   \end{enumerate}
@@ -77,240 +77,181 @@
 \section{Giới thiệu project}
 %============================
 
-\begin{frame}{Chúng tôi đang làm gì?}
-  \textbf{Sản phẩm:} Xây dựng \textbf{Hệ thống kiểm soát ra vào thông minh} (Smart Access Control) -- một cánh cửa an ninh tự động \textbf{nhận diện khuôn mặt} để cho phép hoặc từ chối người ra vào.
+\begin{frame}{Nhóm đang làm gì?}
+  \textbf{Sản phẩm:} Nhóm xây dựng một \textbf{hệ thống kiểm soát ra vào thông minh} giúp quản lý cửa ra vào an toàn và thuận tiện hơn. Hệ thống kết hợp \textbf{camera}, \textbf{RFID/NFC}, \textbf{servo} và \textbf{web dashboard} để nhận diện người, xác thực mở cửa và gửi cảnh báo khi có xâm nhập.
 
   \vspace{0.8em}
   \begin{itemize}
-    \item Đây là một hệ thống \textbf{AIoT}: kết hợp Trí tuệ nhân tạo (AI) với Internet vạn vật (IoT).
-    \item Phần cứng lõi: \textbf{ESP32-S3-CAM} -- vừa chụp ảnh, vừa chạy mô hình AI ngay trên chip (\textit{Edge AI}).
-    \item Cơ cấu chấp hành: \textbf{Servo} chỉnh góc để đóng/mở cánh cửa (mô hình bằng bìa).
-    \item Giám sát từ xa: gửi nhật ký và cảnh báo qua \textbf{Wi-Fi} tới Dashboard / Telegram.
+    \item Camera hỗ trợ phát hiện và nhận diện người đứng trước cửa.
+    \item RFID/NFC giúp xác thực nhanh cho người dùng hợp lệ.
+    \item Servo thực hiện đóng/mở cửa tự động sau khi xác thực.
+    \item Hệ thống web nhận log ra vào và cảnh báo sự cố.
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Dùng cho việc gì?}
-  \textbf{Đối tượng và bối cảnh sử dụng:} các \textbf{không gian giới hạn}, quy mô nhỏ (khoảng 15--20 người) như Phòng Lab, văn phòng nhỏ, phòng server, phòng nghiên cứu.
+\begin{frame}{Dùng cho việc gì? -- Bối cảnh}
+  \textbf{Bối cảnh sử dụng:} hệ thống phù hợp với các khu vực cần kiểm soát ra vào như phòng lab, văn phòng nhỏ, phòng server hoặc khu vực nội bộ.
 
   \vspace{0.8em}
-  \begin{columns}[T]
-    \column{0.5\textwidth}
-      \textbf{Vấn đề hiện tại}
-      \begin{itemize}
-        \item Chìa khóa / thẻ từ dễ mất, dễ sao chép
-        \item Khó biết ai đã ra vào, lúc nào
-        \item Khó cảnh báo khi có người lạ
-      \end{itemize}
+  \begin{itemize}
+    \item Quy mô sử dụng khoảng \textbf{20--30 người}.
+    \item Cần quản lý người ra vào rõ ràng hơn.
+    \item Cần hỗ trợ theo dõi và cảnh báo khi có bất thường.
+  \end{itemize}
+\end{frame}
 
-    \column{0.5\textwidth}
-      \textbf{Giải pháp đề xuất}
-      \begin{itemize}
-        \item Khuôn mặt là ``chìa khóa'' -- không thể quên
-        \item Tự động ghi nhật ký ra/vào
-        \item Cảnh báo kèm ảnh khi phát hiện người lạ
-      \end{itemize}
-  \end{columns}
+\begin{frame}{Dùng cho việc gì? -- Hạn chế hiện tại}
+  \textbf{Hạn chế của cách quản lý thủ công}
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Dễ xảy ra sai sót hoặc bỏ sót khi kiểm soát ra vào.
+    \item Khó theo dõi đầy đủ lịch sử ra vào của từng người.
+    \item Khó phản ứng kịp thời khi có người vào không đúng quy trình.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Dùng cho việc gì? -- Giải pháp đề xuất}
+  \textbf{Giải pháp của nhóm}
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Xác thực người dùng nhanh hơn tại cửa.
+    \item Ghi nhận lịch sử ra vào tự động trên hệ thống web.
+    \item Cảnh báo sớm khi phát hiện vi phạm hoặc hành vi bất thường.
+  \end{itemize}
 \end{frame}
 
 %============================
-\section{Mục đích cần đạt được}
+\section{Mục đích của project}
 %============================
 
 \begin{frame}{Mục đích}
-  Xây dựng một hệ thống kiểm soát ra vào \textbf{tự động, an toàn và phản hồi nhanh}, hoạt động theo cơ chế kết hợp chặt chẽ giữa \textbf{Edge AI} và \textbf{IoT}.
-
-  \vspace{0.8em}
-  \begin{itemize}
-    \item Toàn bộ việc chụp ảnh, phát hiện và nhận diện khuôn mặt được xử lý \textbf{trực tiếp trên chip} (Local), không cần truyền video stream lên Cloud.
-    \item Điều này giúp \textbf{tối ưu bảo mật} hình ảnh cá nhân và \textbf{giảm tối đa độ trễ} phản hồi.
-    \item Khi xác thực thành công, hệ thống \textbf{tự động} đóng/mở khóa và \textbf{ghi nhận} sự kiện về trung tâm quản lý.
-  \end{itemize}
+  Sản phẩm được xây dựng nhằm tạo ra một hệ thống kiểm soát ra vào thông minh, giúp nhận diện hoặc xác thực người dùng hợp lệ để mở cửa tự động, đồng thời phát hiện xâm nhập trái phép và gửi cảnh báo nhanh cho người quản lý.
 \end{frame}
 
 %============================
-\section{Các mục tiêu của project}
+\section{Mục tiêu của project}
 %============================
 
-\begin{frame}{Mục tiêu theo chuẩn SMART}
-  Các mục tiêu được lượng hóa cụ thể theo nguyên tắc \textbf{S}pecific, \textbf{M}easurable, \textbf{A}chievable, \textbf{R}elevant, \textbf{T}ime-bound.
+\begin{frame}{Mục tiêu 1 -- Phát hiện và nhận diện người}
+  \textbf{Human Detection \& Recognition}
 
   \vspace{0.8em}
-  \renewcommand{\arraystretch}{1.35}
-  \begin{tabular}{p{0.6cm}p{6.0cm}p{5.5cm}}
-    \toprule
-    \textbf{MT} & \textbf{Nội dung} & \textbf{Chỉ tiêu chính} \\
-    \midrule
-    1 & Nhận diện khuôn mặt \newline (Face Recognition) & Thời gian xác nhận vi phạm , FAR $<2\%$, phản hồi $<1.5$\,s  \\
-    2 & Phát hiện có người vi phạm \newline (Violation detection (jump through door)) & Thời gian xác nhận $<2$ giây, Cổng chỉ được mở lại qua admin, khoảng cách vi phạm $<$ khoảng cách 2 bên cổng. \\
-    3 & Kết nối và điều khiển IoT & Tỷ lệ truyền nhận thành công $99\%$, độ trễ $<2$\,s \\
-    \bottomrule
-  \end{tabular}
+  Hệ thống dùng camera để phát hiện và nhận diện người đứng trước cửa trong phạm vi \textbf{$0.5$ m}, với độ chính xác \textbf{trên $95\%$} và thời gian phản hồi \textbf{dưới $1.5$ giây}.
 \end{frame}
 
-
-\begin{frame}{Mục tiêu 1 -- Nhận dạng khuôn mặt}
-  \textbf{Face Recognition}
-
-  \vspace{0.4em}
-  Triển khai mô hình đối khớp đặc trưng để định danh chính xác người dùng trong database.
+\begin{frame}{Mục tiêu 2 -- Phát hiện trèo/nhảy qua cổng}
+  \textbf{Gate Intrusion Detection}
 
   \vspace{0.8em}
-  \begin{itemize}
-    \item Tỷ lệ định danh chính xác \textbf{$>92\%$} trên database \textbf{20 người}.
-    \item Tỷ lệ nhận nhầm người (False Acceptance) \textbf{$<2\%$}.
-    \item Thời gian phản hồi \textbf{$<1.5$ giây}.
-  \end{itemize}
+  Hệ thống theo dõi khu vực cổng để phát hiện người trèo hoặc nhảy qua trong vòng \textbf{$2$ giây}, sau đó báo động tại chỗ và gửi cảnh báo lên hệ thống web để người quản lý xử lý kịp thời.
 \end{frame}
 
-\begin{frame}{Mục tiêu 2 -- Phát hiện tín hiệu có người trèo qua cổng}
-  \textbf{Violation detection (jump through door)}
-
-  \vspace{0.4em}
-  Phát hiện người trèo qua cổng bằng cảm biến khoảng cách và báo động bằng tín hiệu tại chỗ và trên dashboard.
-  \vspace{0.8em}
-  \begin{itemize}
-    \item Thời gian xác nhận có vi phạm \textbf{$<2$ giây}.
-    \item Cổng không thể mở lại cho đến khi được admin mở trên dashboard.
-    \item Khoảng cách xác nhận vi phạm \textbf{$<$ khoảng cách 2 bên cổng}.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{Mục tiêu 3 -- Kết nối và Điều khiển IoT}
-  \textbf{IoT Connectivity \& Control}
-
-  \vspace{0.4em}
-  Thiết kế mạch điều khiển Servo và đồng bộ dữ liệu ra vào về Dashboard/Telegram qua Wi-Fi.
+\begin{frame}{Mục tiêu 3 -- Xác thực RFID/NFC và mở cửa tự động}
+  \textbf{RFID/NFC Authentication \& Auto Unlock}
 
   \vspace{0.8em}
-  \begin{itemize}
-    \item Tỷ lệ truyền nhận tin thành công \textbf{$99\%$}.
-    \item Độ trễ tín hiệu \textbf{$<2$ giây}.
-  \end{itemize}
+  Hệ thống dùng RFID/NFC để xác thực người dùng hợp lệ và mở cửa tự động trong vòng \textbf{$3$ giây}, giúp việc ra vào nhanh và thuận tiện hơn.
 \end{frame}
 
 %============================
 \section{Phương pháp đề xuất}
 %============================
 
-\begin{frame}{Lựa chọn Mô hình AI (Edge AI)}
-  \textbf{Framework: ESP-WHO} (Espressif). Để tối ưu hiệu năng trên ESP32-S3-CAM, hệ thống dùng cấu trúc mô hình \textbf{hai giai đoạn}.
+\begin{frame}{Phương pháp thực hiện}
+  Hệ thống được triển khai theo quy trình đơn giản: nhận tín hiệu từ camera, RFID/NFC và cảm biến; xử lý tại bộ điều khiển; sau đó mở cửa hoặc kích hoạt cảnh báo và cập nhật trạng thái lên web.
 
   \vspace{0.8em}
   \begin{center}
   \begin{tikzpicture}[
     pipestep/.style={rectangle, rounded corners=4pt, draw=blue!70, fill=blue!8,
-      text width=3.0cm, align=center, font=\small, minimum height=1.1cm},
+      text width=2.8cm, align=center, font=\small, minimum height=1.0cm},
     arr/.style={-{Stealth[length=2.5mm]}, thick, blue!70}
   ]
-    \node[pipestep, fill=teal!8, draw=teal!70!black] (cam) {Camera\\stream};
-    \node[pipestep, right=0.7cm of cam] (detect) {GĐ 1: Face Detection\\{\scriptsize tìm \& cắt vùng mặt}};
-    \node[pipestep, right=0.7cm of detect] (rec) {GĐ 2: Face Recognition\\{\scriptsize định danh người dùng}};
-    \node[pipestep, right=0.7cm of rec, fill=orange!10, draw=orange!80!black] (out) {PASS / DENY};
+    \node[pipestep, fill=teal!8, draw=teal!70!black] (input) {Nhận tín hiệu\\{\scriptsize Camera / RFID / cảm biến}};
+    \node[pipestep, right=0.7cm of input] (process) {Xử lý tại thiết bị\\{\scriptsize kiểm tra dữ liệu}};
+    \node[pipestep, right=0.7cm of process] (decision) {Ra quyết định\\{\scriptsize hợp lệ hay vi phạm}};
+    \node[pipestep, right=0.7cm of decision, fill=orange!10, draw=orange!80!black] (output) {Hành động\\{\scriptsize mở cửa / báo động / gửi web}};
 
-    \draw[arr] (cam) -- (detect);
-    \draw[arr] (detect) -- node[above, font=\scriptsize]{bounding box} (rec);
-    \draw[arr] (rec) -- (out);
+    \draw[arr] (input) -- (process);
+    \draw[arr] (process) -- (decision);
+    \draw[arr] (decision) -- (output);
   \end{tikzpicture}
   \end{center}
 \end{frame}
 
-\begin{frame}{Giai đoạn 1 -- Phát hiện khuôn mặt}
-  \textbf{Face Detection} -- Mô hình: Human Face Detector (MNN) hoặc MobileNetV2-SSD (phiên bản rút gọn).
+\begin{frame}{Luồng 1 -- Nhận diện bằng camera}
+  Camera được đặt trước cửa để ghi nhận hình ảnh người đến gần. Dữ liệu ảnh được xử lý tại thiết bị nhằm phát hiện có người đứng trước cửa và hỗ trợ nhận diện người dùng đã đăng ký trong hệ thống.
 
   \vspace{0.8em}
-  \textbf{Nhiệm vụ:}
   \begin{itemize}
-    \item Xác định \textbf{vị trí} khuôn mặt trong luồng camera theo \textbf{thời gian thực}.
-    \item Cắt ra \textbf{vùng khuôn mặt} (Bounding Box) từ khung hình.
-    \item Chuẩn hóa vùng mặt để đưa sang giai đoạn nhận dạng.
+    \item Phát hiện người trong phạm vi hoạt động yêu cầu.
+    \item Đối chiếu dữ liệu nhận diện với thông tin đã lưu.
+    \item Gửi kết quả sang bộ điều khiển để quyết định mở cửa hoặc từ chối.
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Giai đoạn 2 -- Nhận dạng khuôn mặt}
-  \textbf{Face Recognition} -- Mô hình: ESP-FaceRecognizer (dựa trên kiến trúc dạng \textbf{MobileFaceNet}).
+\begin{frame}{Luồng 2 -- Xác thực RFID/NFC}
+  Người dùng hợp lệ có thể sử dụng thẻ RFID/NFC để xác thực nhanh khi ra vào. Sau khi quét thẻ, bộ điều khiển kiểm tra thông tin và thực hiện mở cửa tự động nếu dữ liệu hợp lệ.
 
   \vspace{0.8em}
-  \textbf{Cơ chế hoạt động:}
   \begin{itemize}
-    \item Trích xuất khuôn mặt thành một \textbf{vector đặc trưng} (feature vector).
-    \item \textbf{So sánh khoảng cách hình học} của vector với dữ liệu đã lưu sẵn.
-    \item Nếu khoảng cách đủ nhỏ (dưới ngưỡng) $\to$ \textbf{định danh} người dùng.
+    \item Đọc mã thẻ từ đầu đọc RFID/NFC.
+    \item Kiểm tra mã thẻ với danh sách người dùng đã đăng ký.
+    \item Mở cửa và ghi nhận log khi xác thực thành công.
   \end{itemize}
-
-  \vspace{0.6em}
-  \textbf{Vì sao chọn cách này?} MobileFaceNet nhẹ, tối ưu cho thiết bị nhúng $\to$ chạy được \textbf{ngay trên ESP32-S3} mà vẫn đạt độ chính xác cao.
 \end{frame}
 
-\begin{frame}{Hướng đi của nhóm -- Web Node-RED điều phối}
-  Nhóm chọn xây dựng \textbf{Web quản lý bằng Node-RED} để điều phối việc đăng ký nhân viên, sinh vector đặc trưng và đồng bộ xuống thiết bị.
+\begin{frame}{Luồng 3 -- Phát hiện trèo/nhảy qua cổng}
+  Hệ thống theo dõi khu vực cổng bằng camera hoặc cảm biến để nhận biết các hành vi xâm nhập bất thường như trèo hoặc nhảy qua cổng mà không thực hiện xác thực hợp lệ.
 
-  \vspace{0.6em}
-  \begin{center}
-  \begin{tikzpicture}[
-    pipestep/.style={rectangle, rounded corners=4pt, draw=blue!70, fill=blue!8,
-      text width=2.5cm, align=center, font=\scriptsize, minimum height=1.0cm},
-    arr/.style={-{Stealth[length=2.5mm]}, thick, blue!70}
-  ]
-    \node[pipestep, fill=orange!10, draw=orange!80!black] (web) {1. Web Node-RED\\nhân viên upload ảnh};
-    \node[pipestep, right=0.5cm of web] (server) {2. Backend\\trích xuất vector};
-    \node[pipestep, right=0.5cm of server, fill=violet!10, draw=violet!70!black] (db) {3. DB + Sync\\xuống ESP32 (MQTT/HTTP)};
-    \node[pipestep, right=0.5cm of db, fill=teal!8, draw=teal!70!black] (esp) {4. ESP32-S3\\so khớp tại chỗ \& xoay Servo};
-
-    \draw[arr] (web) -- (server);
-    \draw[arr] (server) -- (db);
-    \draw[arr] (db) -- (esp);
-  \end{tikzpicture}
-  \end{center}
-
-  \vspace{0.4em}
-  \textbf{Điểm mấu chốt:} ảnh gốc chỉ nằm trên Server; ESP32 chỉ lưu \textbf{vector mã hóa} trong Flash/NVS.
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Theo dõi khu vực cổng liên tục trong thời gian hoạt động.
+    \item Phát hiện nhanh các trường hợp vượt cổng trái phép.
+    \item Kích hoạt báo động và gửi cảnh báo lên web cho người quản lý.
+  \end{itemize}
 \end{frame}
 
-\begin{frame}{Luồng hoạt động chi tiết}
+\begin{frame}{Web quản lý và cảnh báo}
+  Hệ thống web đóng vai trò theo dõi và quản lý tập trung. Người quản lý có thể xem thông tin người dùng, lịch sử ra vào, trạng thái cửa và các cảnh báo phát sinh từ thiết bị.
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Quản lý danh sách người dùng và thẻ RFID/NFC.
+    \item Hiển thị log ra vào theo thời gian thực.
+    \item Nhận cảnh báo khi phát hiện trèo/nhảy qua cổng.
+    \item Hỗ trợ theo dõi trạng thái hoạt động của hệ thống.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Luồng hoạt động tổng quát}
   \begin{enumerate}
-    \item Nhân viên truy cập \textbf{Web quản lý (Node-RED)} của công ty, nhập thông tin và upload ảnh đại diện.
-    \item \textbf{Server (Backend)} nhận ảnh, dùng thư viện Python nhẹ (hoặc backend xử lý) để trích xuất khuôn mặt thành \textbf{1 vector đặc trưng} (chuỗi số mã hóa).
-    \item Server lưu chuỗi số này vào \textbf{Database}, đồng thời gửi vector xuống lưu vào \textbf{Flash/NVS của ESP32-S3-CAM} qua Wi-Fi (\textbf{MQTT} hoặc \textbf{HTTP}).
-    \item Khi có người đứng trước cửa, \textbf{cảm biến hồng ngoại} xác nhận đó là vật thể 3D thật (không phải ảnh phẳng), ESP32-S3-CAM mới \textbf{tự chụp hình}, \textbf{tự trích xuất vector} của người đang đứng đó, rồi \textbf{so sánh trực tiếp} với các vector mẫu đã đồng bộ. Nếu khớp $\to$ chip \textbf{tự xoay Servo} để mở cửa.
+    \item Khi có người đến cửa, hệ thống nhận tín hiệu từ camera hoặc RFID/NFC.
+    \item Bộ điều khiển xử lý dữ liệu để xác định người dùng hợp lệ hay trường hợp bất thường.
+    \item Nếu hợp lệ, servo mở cửa và hệ thống lưu lại log ra vào.
+    \item Nếu phát hiện trèo/nhảy qua cổng, hệ thống bật báo động và gửi cảnh báo lên web.
   \end{enumerate}
-\end{frame}
-
-\begin{frame}{Chống giả mạo bằng cảm biến hồng ngoại}
-  \textbf{Vấn đề:} nếu chỉ dựa vào camera, hệ thống có thể bị qua mặt bằng \textbf{ảnh in} hoặc \textbf{màn hình điện thoại} -- AI vẫn nhận đúng khuôn mặt và mở cửa.
-
-  \vspace{0.6em}
-  \textbf{Giải pháp:} thêm một lớp xác thực vật lý bằng \textbf{cảm biến hồng ngoại} (E18-D80NK hoặc TCRT5000) gắn ở vị trí trước cửa.
-
-  \vspace{0.6em}
-  \textbf{Cơ chế hoạt động:}
-  \begin{itemize}
-    \item Cảm biến phát tia hồng ngoại và đo lượng tín hiệu phản xạ về.
-    \item Người thật là vật thể 3D có chiều sâu $\to$ tín hiệu phản xạ ổn định ở khoảng cách hợp lệ.
-    \item Ảnh in / màn hình phẳng $\to$ đặc tính phản xạ khác, dễ rơi ngoài ngưỡng.
-    \item Chỉ khi cảm biến xác nhận có vật thể thật, ESP32 mới kích hoạt camera và chạy AI.
-  \end{itemize}
-
-  \vspace{0.4em}
-  \textbf{Lợi ích:} thêm 1 lớp chống giả mạo độc lập với AI, đồng thời \textbf{tiết kiệm năng lượng} -- camera + mô hình AI chỉ chạy khi thực sự có người tới gần.
 \end{frame}
 
 \begin{frame}{Ưu điểm}
   \begin{itemize}
-    \item \textbf{Đáp ứng hoàn hảo tiêu chí AI + IoT:} đăng ký và quản lý tập trung qua mạng (IoT), nhưng xử lý nhận diện độc lập tại thiết bị (Edge AI).
+    \item \textbf{Ra vào thuận tiện:} hỗ trợ nhận diện người và xác thực bằng RFID/NFC, giúp mở cửa nhanh hơn.
     \vspace{0.4em}
-    \item \textbf{Hoạt động Offline:} nếu công ty mất mạng Internet, thiết bị vẫn nhận diện và mở cửa bình thường cho 20 người đã được đồng bộ dữ liệu trước đó.
+    \item \textbf{Quản lý dễ dàng:} toàn bộ lịch sử ra vào và trạng thái hệ thống được theo dõi trên web.
     \vspace{0.4em}
-    \item \textbf{Bảo mật tuyệt đối:} hình ảnh gốc của nhân viên \textbf{chỉ nằm trên Server}; trên ESP32 chỉ lưu các \textbf{chuỗi số mã hóa}, không thể tái tạo lại ảnh khuôn mặt.
+    \item \textbf{An toàn hơn:} hệ thống có thể phát hiện vượt cổng và cảnh báo ngay tại chỗ lẫn trên web.
   \end{itemize}
 \end{frame}
 
 \begin{frame}{Các khó khăn có thể gặp phải}
   \begin{itemize}
-    \item \textbf{Hiệu năng ESP32-S3 hạn chế:} chạy đồng thời 2 mô hình AI (Detect + Recognize) đòi hỏi tinh chỉnh kỹ về RAM/PSRAM và độ phân giải ảnh để đạt được phản hồi $<1.5$\,s.
+    \item \textbf{Môi trường thực tế:} ánh sáng, góc đứng và khoảng cách có thể ảnh hưởng đến chất lượng nhận diện bằng camera.
     \vspace{0.3em}
-    \item \textbf{Chất lượng ảnh ESP32-CAM thấp:} cảm biến nhạy với ánh sáng yếu, góc nghiêng, đeo kính/khẩu trang $\to$ ảnh hưởng tới độ chính xác nhận diện.
+    \item \textbf{Độ ổn định phần cứng:} đầu đọc RFID/NFC, cảm biến và servo cần hoạt động đồng bộ để tránh lỗi khi vận hành.
     \vspace{0.3em}
-    \item \textbf{Cơ cấu chấp hành (mô hình bìa):} servo nhỏ, độ bền cơ học thấp $\to$ chỉ phù hợp demo, cần thay khóa điện từ thật khi triển khai.
+    \item \textbf{Tích hợp hệ thống:} cần đồng bộ tốt giữa thiết bị, web và cảnh báo để bảo đảm phản hồi đúng lúc.
   \end{itemize}
 \end{frame}
 
@@ -321,59 +262,56 @@
 \begin{frame}{Kiến trúc tổng thể}
   \begin{center}
   \begin{tikzpicture}[
-    layerbox/.style={rectangle, rounded corners=4pt, text width=3.5cm,
+    layerbox/.style={rectangle, rounded corners=4pt, text width=3.2cm,
       align=center, minimum height=1.5cm, font=\small\bfseries, inner sep=5pt},
-    edgebox/.style={layerbox, draw=blue!70, fill=blue!8},
+    inputbox/.style={layerbox, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
     actbox/.style={layerbox, draw=green!55!black, fill=green!9},
     webbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
-    dbbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
     arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
   ]
-    \node[webbox] (web) {Web Node-RED\\{\scriptsize đăng ký + dashboard}};
-    \node[dbbox, below=0.7cm of web] (db) {Backend + DB\\{\scriptsize trích xuất vector}};
-    \node[edgebox, right=1.6cm of db] (edge) {ESP32-S3-CAM (Edge AI)\\{\scriptsize ESP-WHO + vector NVS}};
-    \node[actbox, right=1.0cm of edge] (act) {Cơ cấu chấp hành\\{\scriptsize Servo xoay đóng/mở cửa}};
+    \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + cảm biến cổng}};
+    \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM}};
+    \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED/Buzzer}};
+    \node[webbox, above=1.3cm of ctrl] (web) {Web dashboard\\{\scriptsize log + trạng thái + cảnh báo}};
 
-    \draw[arr, orange!80!black] (web) -- node[right, font=\scriptsize]{ảnh + thông tin} (db);
-    \draw[arr, violet!70!black] (db) -- node[above, font=\scriptsize, align=center]{sync vector\\(MQTT/HTTP)} (edge);
-    \draw[arr, green!55!black] (edge) -- node[above, font=\scriptsize]{lệnh mở} (act);
-    \draw[-{Stealth[length=2mm]}, thick, gray!70] (edge) to[out=120,in=0]
-      node[above, font=\scriptsize, align=center, near end]{log + cảnh báo} (web.east);
+    \draw[arr] (input) -- (ctrl);
+    \draw[arr] (ctrl) -- (act);
+    \draw[arr] (ctrl) -- (web);
   \end{tikzpicture}
   \end{center}
 
   \vspace{0.4em}
-  \textbf{Phân chia trách nhiệm:} Web Node-RED \& Server lo \textbf{đăng ký + quản lý}; ESP32-S3 lo \textbf{nhận diện + điều khiển} tại chỗ.
+  \textbf{Cách hoạt động:} khối đầu vào nhận tín hiệu, khối xử lý trung tâm ra quyết định, khối chấp hành thực hiện mở cửa hoặc báo động, còn web dùng để theo dõi và quản lý.
 \end{frame}
 
 \begin{frame}{Kiến trúc -- Chi tiết thành phần}
   \begin{columns}[T]
     \column{0.33\textwidth}
-      \textbf{Web \& Server}
+      \textbf{Khối đầu vào}
       \begin{itemize}
-        \item Node-RED dashboard
-        \item Backend + Python lib trích xuất vector
-        \item Database lưu vector
-        \item Quản lý user, log
+        \item Camera trước cửa
+        \item Đầu đọc RFID/NFC
+        \item Cảm biến phát hiện vượt cổng
+        \item Tín hiệu người dùng và môi trường
       \end{itemize}
 
     \column{0.33\textwidth}
-      \textbf{Edge AI (ESP32-S3)}
+      \textbf{Khối xử lý}
       \begin{itemize}
-        \item ESP-WHO framework
-        \item Face Detection (MNN/SSD)
-        \item ESP-FaceRecognizer
-        \item Vector lưu trên Flash/NVS
-        \item So khớp tại chỗ
+        \item ESP32 / ESP32-CAM
+        \item Xử lý nhận diện và xác thực
+        \item So khớp dữ liệu người dùng
+        \item Ra quyết định mở cửa hoặc cảnh báo
       \end{itemize}
 
     \column{0.33\textwidth}
-      \textbf{Điều khiển \& Giám sát}
+      \textbf{Khối đầu ra \& giám sát}
       \begin{itemize}
-        \item Servo (mô hình cửa bằng bìa, xoay góc đóng/mở)
+        \item Servo đóng/mở cửa
         \item LED / Buzzer báo trạng thái
-        \item Wi-Fi (MQTT/HTTP)
-        \item Telegram Bot cảnh báo
+        \item Web dashboard
+        \item Log ra vào và cảnh báo
       \end{itemize}
   \end{columns}
 \end{frame}
@@ -386,22 +324,22 @@
       text width=2.5cm, align=center, font=\small, minimum height=0.9cm},
     arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
   ]
-    \node[box, fill=teal!8, draw=teal!70!black] (sense) {Cảm nhận\\{\scriptsize Camera chụp ảnh}};
-    \node[box, right=0.6cm of sense] (detect) {Nhận thức\\{\scriptsize Face Detection}};
-    \node[box, right=0.6cm of detect] (process) {Xử lý\\{\scriptsize Face Recognition}};
-    \node[box, right=0.6cm of process, fill=orange!10, draw=orange!80!black] (decide) {Quyết định\\{\scriptsize Khớp ngưỡng?}};
-    \node[box, below=0.8cm of decide, fill=green!9, draw=green!55!black] (act) {Hành động\\{\scriptsize Servo xoay mở cửa}};
+    \node[box, fill=teal!8, draw=teal!70!black] (sense) {Cảm nhận\\{\scriptsize Camera / RFID / cảm biến}};
+    \node[box, right=0.6cm of sense] (detect) {Xử lý\\{\scriptsize kiểm tra dữ liệu}};
+    \node[box, right=0.6cm of detect] (process) {Quyết định\\{\scriptsize hợp lệ hay vi phạm}};
+    \node[box, right=0.6cm of process, fill=orange!10, draw=orange!80!black] (decide) {Hành động\\{\scriptsize mở cửa / báo động}};
+    \node[box, below=0.8cm of decide, fill=green!9, draw=green!55!black] (act) {Giám sát\\{\scriptsize ghi log lên web}};
 
     \draw[arr] (sense) -- (detect);
     \draw[arr] (detect) -- (process);
     \draw[arr] (process) -- (decide);
     \draw[arr] (decide) -- (act);
-    \draw[-{Stealth[length=2mm]}, thick, red!60] (act.west) -| node[below, font=\scriptsize, red!60, near start]{Feedback / log} (sense.south);
+    \draw[-{Stealth[length=2mm]}, thick, red!60] (act.west) -| node[below, font=\scriptsize, red!60, near start]{Phản hồi trạng thái} (sense.south);
   \end{tikzpicture}
   \end{center}
 
   \vspace{0.6em}
-  \textbf{Đặc trưng ``điều khiển thiết bị thông minh'':} vòng lặp kín cảm biến $\to$ AI tại chỗ $\to$ thiết bị thực thi $\to$ phản hồi \& ghi log.
+  \textbf{Ý tưởng chính:} hệ thống liên tục nhận tín hiệu, xử lý, ra quyết định, thực hiện hành động và cập nhật trạng thái để người quản lý theo dõi.
 \end{frame}
 
 \begin{frame}{Danh mục linh kiện dự kiến}
@@ -411,15 +349,15 @@
     \toprule
     \textbf{STT} & \textbf{Linh kiện} & \textbf{Chi tiết kỹ thuật} & \textbf{SL} & \textbf{Giá (VNĐ)} \\
     \midrule
-    1 & ESP32-38 pin &  wifi 2.4Ghz và bluethooth TSMC công nghệ 40nm năng lượng thấp. 5V DC input. Wifi: 802.11 B/g/n/E/I (802.11N @ 2.4 GHz lên đến 150 Mbit/S) Bluetooth: 4.2 BR/EDR BLE 2 chế độ điều khiển & 1 & $\sim$260.000 \\
-    2 & ESP32-CAM-AI-Thinker & Bản N16R8 (16MB Flash, 8MB PSRAM) + Camera OV2640 & 1 & $\sim$280.000 \\
-    3 & Cảm biến ultrasonic & HC-SR04 & 1 & $\sim$35.000 \\
-    4 & Động cơ Servo & SG90 (nhựa) & 2 & $\sim$60.000 \\
-    5 & Breadboard & 170 lỗ cắm & 1 & $\sim$60.000 \\
-    6 & Adapter 12V-2A & Nguồn DC, Jack 5.5$\times$2.1\,mm & 1 & $\sim$70.000 \\
-    7 & Phụ kiện & Dây jump (Đực-Cái, Cái-Cái, Đực-Đực) + LED Phi 5mm (Xanh/Đỏ) + Buzzer 5V + Điện trở 220\,$\Omega$ & 1 bộ & $\sim$50.000 \\
+    1 & ESP32-38 pin & Bộ điều khiển trung tâm, Wi-Fi 2.4GHz, dùng để nhận tín hiệu và điều khiển thiết bị & 1 & $\sim$260.000 \\
+    2 & ESP32-S3-CAM & Camera OV2640, dùng để thu hình và hỗ trợ xử lý nhận diện & 1 & $\sim$280.000 \\
+    3 & Module RFID/NFC & RC522, dùng để đọc thẻ xác thực người dùng & 1 & $\sim$45.000 \\
+    4 & Cảm biến khoảng cách / hồng ngoại & Dùng để phát hiện người đến gần hoặc vượt cổng & 1 & $\sim$35.000 \\
+    5 & Động cơ Servo & SG90, dùng để mô phỏng cơ chế đóng/mở cửa & 2 & $\sim$60.000 \\
+    6 & Breadboard & 170 lỗ cắm, phục vụ lắp ráp và thử nghiệm mạch & 1 & $\sim$60.000 \\
+    7 & Phụ kiện và nguồn & Dây jump, LED, Buzzer, điện trở, adapter cấp nguồn & 1 bộ & $\sim$120.000 \\
     \midrule
-    \multicolumn{4}{r}{\textbf{Tổng cộng (ước tính):}} & \textbf{$\sim$815.000} \\
+    \multicolumn{4}{r}{\textbf{Tổng cộng (ước tính):}} & \textbf{$\sim$860.000} \\
     \bottomrule
   \end{tabular}
 \end{frame}
