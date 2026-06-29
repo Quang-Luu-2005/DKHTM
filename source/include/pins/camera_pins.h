@@ -1,6 +1,6 @@
-#ifndef CAMERA_PINS_H
-#define CAMERA_PINS_H
+#pragma once
 
+// AI Thinker ESP32-CAM pin map.
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -16,8 +16,7 @@
 #define Y4_GPIO_NUM       19
 #define Y3_GPIO_NUM       18
 #define Y2_GPIO_NUM        5
+
 #define VSYNC_GPIO_NUM    25
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
-
-#endif

@@ -17,21 +17,24 @@
 # =========================================================================
 # 2. PlatformIO Build Targets (Ignore only code compilation artifacts)
 # =========================================================================
-Cam\ test/build/
-Cam\ test/.pio/
-Cam\ test/.pioenvs/
-Cam\ test/.piolibdeps/
+source/.pio/
+source/build/
 
 # =========================================================================
 # 3. VS Code Configuration & PlatformIO Local Files
 # =========================================================================
 # Fixes the missing dot (.) in .vscode
-Cam\ test/.vscode/.browse.c_cpp.db*
-Cam\ test/.vscode/c_cpp_properties.json
-Cam\ test/.vscode/launch.json
-Cam\ test/.vscode/ipch/
+source/.vscode/.browse.c_cpp.db*
+source/.vscode/c_cpp_properties.json
+source/.vscode/launch.json
+source/.vscode/ipch/
 
-# Tip: If you want to ignore ALL personal VS Code settings files 
-# but keep recommended tasks, you can just ignore the whole folder 
+# Tip: If you want to ignore ALL personal VS Code settings files
+# but keep recommended tasks, you can just ignore the whole folder
 # or specific files like settings.json:
-# Cam\ test/.vscode/settings.json
+# source/.vscode/settings.json
+
+# =========================================================================
+# 4. Local firmware secrets
+# =========================================================================
+source/include/config/secrets.h
