@@ -29,7 +29,30 @@ Hệ thống chia làm **2 node tách rời**:
 
 - **ESP32 mạch chính và ESP32-CAM không cần nối tín hiệu trực tiếp với nhau.**
 - Hai board hoạt động độc lập và giao tiếp với backend qua Wi‑Fi.
+- ESP32-CAM chỉ làm nhiệm vụ **chụp ảnh và upload ảnh/event**.
+- Việc **lưu ảnh, tạo embedding, lưu embedding trong database và so khớp** sẽ làm ở backend/dashboard.
+- ESP32 main và ESP32-CAM được ghép cùng một ngữ cảnh bằng `doorId`, `deviceId`, thời điểm và loại event.
 - Nếu bạn muốn bắt đầu lắp nhanh, hãy ưu tiên làm **ESP32 mạch chính trước**.
+
+### Luồng xử lý embedding
+
+```text
+Dashboard tải ảnh mẫu người dùng
+        ↓
+Backend lưu ảnh vào database
+        ↓
+Backend tạo embedding cho ảnh mẫu và lưu lại
+        ↓
+ESP32-CAM chụp ảnh tại cổng và upload snapshot
+        ↓
+Backend tạo embedding cho ảnh mới
+        ↓
+Backend so embedding mới với embedding đã lưu
+        ↓
+Trả kết quả nhận diện / đối chiếu ra dashboard
+```
+
+Trong kiến trúc này, ESP32 **không chạy so khớp embedding**. ESP32 main lo phần cứng cửa, còn ESP32-CAM lo thu ảnh; backend mới là nơi xử lý AI và đối chiếu.
 
 ---
 
