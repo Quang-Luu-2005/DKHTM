@@ -85,7 +85,7 @@
     \item Camera hỗ trợ phát hiện và nhận diện người đứng trước cửa.
     \item RFID/NFC giúp xác thực nhanh cho người dùng hợp lệ.
     \item Servo thực hiện đóng/mở cửa tự động sau khi xác thực.
-    \item Hệ thống web nhận log ra vào và cảnh báo sự cố.
+    \item Hệ thống web hiển thị Popup cảnh báo thông minh bằng mô hình LLM, tự động phân tích và sinh log mô tả đối tượng vi phạm từ ảnh camera gửi về.
   \end{itemize}
 \end{frame}
 
@@ -94,7 +94,7 @@
 
   \vspace{0.8em}
   \begin{itemize}
-    \item Quy mô sử dụng khoảng \textbf{20--30 người}.
+    \item Quy mô sử dụng tối đa \textbf{20 người dùng đã đăng ký}.
     \item Cần quản lý người ra vào rõ ràng hơn.
     \item Cần hỗ trợ theo dõi và cảnh báo khi có bất thường.
   \end{itemize}
@@ -138,21 +138,21 @@
   \textbf{Human Detection \& Recognition}
 
   \vspace{0.8em}
-  Hệ thống dùng camera để phát hiện và nhận diện người đứng trước cửa trong phạm vi \textbf{$0.5$ m}, với độ chính xác \textbf{trên $95\%$} và thời gian phản hồi \textbf{dưới $1.5$ giây}.
+  Hệ thống dùng camera để phát hiện và nhận diện tối đa \textbf{20 người dùng đã đăng ký} trong phạm vi \textbf{$0.5$ m}, với \textbf{độ chính xác định danh trên $95\%$}, \textbf{tỷ lệ nhận nhầm dưới $2\%$} và thời gian phản hồi \textbf{dưới $1.5$ giây}.
 \end{frame}
 
 \begin{frame}{Mục tiêu 2 -- Phát hiện trèo/nhảy qua cổng}
   \textbf{Gate Intrusion Detection}
 
   \vspace{0.8em}
-  Hệ thống theo dõi khu vực cổng để phát hiện người trèo hoặc nhảy qua trong vòng \textbf{$2$ giây}, sau đó báo động tại chỗ và gửi cảnh báo lên hệ thống web để người quản lý xử lý kịp thời.
+  Hệ thống giám sát dựa trên \textbf{cảm biến siêu âm} để phát hiện khoảng cách bất thường tại cổng và dùng \textbf{camera} để chụp \textbf{Snapshot} đẩy lên \textbf{Web AI} xử lý trong vòng \textbf{$2$ giây}. Khi phát hiện hành vi trèo hoặc nhảy qua cổng, hệ thống báo động tại chỗ và gửi cảnh báo lên web để người quản lý xử lý kịp thời.
 \end{frame}
 
 \begin{frame}{Mục tiêu 3 -- Xác thực RFID/NFC và mở cửa tự động}
   \textbf{RFID/NFC Authentication \& Auto Unlock}
 
   \vspace{0.8em}
-  Hệ thống dùng RFID/NFC để xác thực người dùng hợp lệ và mở cửa tự động trong vòng \textbf{$3$ giây}, giúp việc ra vào nhanh và thuận tiện hơn.
+  Hệ thống dùng RFID/NFC để xác thực người dùng hợp lệ và mở cửa tự động \textbf{dưới $2$ giây}, đồng thời đạt \textbf{độ chính xác xác thực tối thiểu $98\%$} trong điều kiện vận hành bình thường.
 \end{frame}
 
 %============================
@@ -220,7 +220,7 @@
   \vspace{0.8em}
   \begin{itemize}
     \item Quản lý danh sách người dùng và thẻ RFID/NFC.
-    \item Hiển thị log ra vào theo thời gian thực.
+    \item Hiển thị Popup cảnh báo thông minh bằng mô hình LLM, tự động phân tích và sinh log mô tả đối tượng vi phạm từ ảnh camera gửi về.
     \item Nhận cảnh báo khi phát hiện trèo/nhảy qua cổng.
     \item Hỗ trợ theo dõi trạng thái hoạt động của hệ thống.
   \end{itemize}
@@ -272,7 +272,7 @@
     \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + cảm biến cổng}};
     \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM}};
     \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED/Buzzer}};
-    \node[webbox, above=1.3cm of ctrl] (web) {Web dashboard\\{\scriptsize log + trạng thái + cảnh báo}};
+    \node[webbox, above=1.3cm of ctrl] (web) {Web dashboard\\{\scriptsize Popup LLM + log vi phạm + trạng thái}};
 
     \draw[arr] (input) -- (ctrl);
     \draw[arr] (ctrl) -- (act);
@@ -300,7 +300,7 @@
     \node[inputbox] (input) {Thiết bị đầu vào\\{\scriptsize Camera\\RFID/NFC\\cảm biến cổng}};
     \node[ctrlbox, right=0.8cm of input] (ctrl) {Bộ xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM\\xử lý + Wi-Fi}};
     \node[actbox, right=0.8cm of ctrl] (act) {Thiết bị chấp hành\\{\scriptsize Servo\\LED/Buzzer}};
-    \node[webbox, below=1.0cm of ctrl] (web) {Web dashboard\\{\scriptsize trạng thái\\log\\cảnh báo}};
+    \node[webbox, below=1.0cm of ctrl] (web) {Web dashboard\\{\scriptsize trạng thái\\Popup LLM\\log vi phạm}};
     \node[dbbox, right=0.8cm of web] (db) {Cơ sở dữ liệu\\{\scriptsize người dùng\\thẻ\\lịch sử}};
 
     \draw[arr] (input) -- node[above, font=\scriptsize]{tín hiệu} (ctrl);
@@ -396,21 +396,22 @@
 \end{frame}
 
 \begin{frame}{Danh mục linh kiện dự kiến}
-  \scriptsize
-  \renewcommand{\arraystretch}{1.3}
-  \begin{tabular}{p{0.4cm}p{2.5cm}p{6.2cm}p{1.0cm}p{1.5cm}}
+  \tiny
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{p{0.35cm}p{2.45cm}p{5.9cm}p{0.75cm}p{1.35cm}}
     \toprule
     \textbf{STT} & \textbf{Linh kiện} & \textbf{Chi tiết kỹ thuật} & \textbf{SL} & \textbf{Giá (VNĐ)} \\
     \midrule
-    1 & ESP32-38 pin & Bộ điều khiển trung tâm, Wi-Fi 2.4GHz, dùng để nhận tín hiệu và điều khiển thiết bị & 1 & $\sim$260.000 \\
-    2 & ESP32-S3-CAM & Camera OV2640, dùng để thu hình và hỗ trợ xử lý nhận diện & 1 & $\sim$280.000 \\
-    3 & Module RFID/NFC & RC522, dùng để đọc thẻ xác thực người dùng & 1 & $\sim$45.000 \\
-    4 & Cảm biến khoảng cách / hồng ngoại & Dùng để phát hiện người đến gần hoặc vượt cổng & 1 & $\sim$35.000 \\
-    5 & Động cơ Servo & SG90, dùng để mô phỏng cơ chế đóng/mở cửa & 2 & $\sim$60.000 \\
-    6 & Breadboard & 170 lỗ cắm, phục vụ lắp ráp và thử nghiệm mạch & 1 & $\sim$60.000 \\
-    7 & Phụ kiện và nguồn & Dây jump, LED, Buzzer, điện trở, adapter cấp nguồn & 1 bộ & $\sim$120.000 \\
+    1 & ESP32 CP2102 38P Type-C & Bộ điều khiển trung tâm, giao tiếp USB Type-C & 1 & 123.000 \\
+    2 & Cảm biến siêu âm (HC-SR04) & Phát hiện khoảng cách bất thường tại cổng & 1 & 25.000 \\
+    3 & Module đọc thẻ RFID RC522 & Đọc UID thẻ RFID/NFC để xác thực người dùng & 1 & 21.000 \\
+    4 & Micro Servo SG90 & Điều khiển đóng/mở cơ cấu cổng mô phỏng & 1 & 30.000 \\
+    5 & ESP32-CAM AI Thinker & Thu hình Snapshot hỗ trợ nhận diện và xử lý AI & 1 & 200.000 \\
+    6 & LED & Hiển thị trạng thái hợp lệ/cảnh báo & 2 & 800 \\
+    7 & Buzzer & Phát cảnh báo âm thanh tại chỗ & 1 & 3.000 \\
+    8 & Điện trở 220 $\Omega$ & Phụ kiện mạch cho LED và tín hiệu điều khiển & 5 & 200 \\
     \midrule
-    \multicolumn{4}{r}{\textbf{Tổng cộng (ước tính):}} & \textbf{$\sim$860.000} \\
+    \multicolumn{4}{r}{\textbf{Tổng cộng:}} & \textbf{404.600} \\
     \bottomrule
   \end{tabular}
 \end{frame}
