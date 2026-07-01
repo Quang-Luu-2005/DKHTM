@@ -258,6 +258,31 @@
 %============================
 \section{Kiến trúc hệ thống}
 %============================
+\begin{frame}{Kiến trúc tổng thể}
+  \begin{center}
+  \begin{tikzpicture}[
+    layerbox/.style={rectangle, rounded corners=4pt, text width=3.2cm,
+      align=center, minimum height=1.5cm, font=\small\bfseries, inner sep=5pt},
+    inputbox/.style={layerbox, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
+    actbox/.style={layerbox, draw=green!55!black, fill=green!9},
+    webbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
+  ]
+    \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + cảm biến cổng}};
+    \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM}};
+    \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED/Buzzer}};
+    \node[webbox, above=1.3cm of ctrl] (web) {Web dashboard\\{\scriptsize log + trạng thái + cảnh báo}};
+
+    \draw[arr] (input) -- (ctrl);
+    \draw[arr] (ctrl) -- (act);
+    \draw[arr] (ctrl) -- (web);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.4em}
+  \textbf{Cách hoạt động:} khối đầu vào nhận tín hiệu, khối xử lý trung tâm ra quyết định, khối chấp hành thực hiện mở cửa hoặc báo động, còn web dùng để theo dõi và quản lý.
+\end{frame}
 
 \begin{frame}{Sơ đồ kiến trúc hệ thống}
   \begin{center}
@@ -288,56 +313,6 @@
   \vspace{0.3em}
   \footnotesize
   \textbf{Vai trò:} thiết bị tại cửa xử lý tín hiệu để mở cửa hoặc báo động; web và cơ sở dữ liệu dùng để quản lý người dùng, lưu log và hiển thị cảnh báo cho người quản lý.
-\end{frame}
-
-\begin{frame}{Thông tin log và cảnh báo}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Log ra vào}
-      \begin{itemize}
-        \item Thời gian phát sinh sự kiện.
-        \item Người dùng, mã thẻ hoặc thiết bị liên quan.
-        \item Phương thức xác thực: camera hoặc RFID/NFC.
-        \item Kết quả xử lý: mở cửa, từ chối hoặc lỗi xác thực.
-        \item Trạng thái cửa sau khi xử lý.
-      \end{itemize}
-
-    \column{0.48\textwidth}
-      \textbf{Cảnh báo bất thường}
-      \begin{itemize}
-        \item Phát hiện trèo/nhảy qua cổng.
-        \item Thẻ không hợp lệ hoặc người lạ trước cửa.
-        \item Bật LED/Buzzer để báo động tại chỗ.
-        \item Gửi loại cảnh báo, thời gian và trạng thái lên web.
-        \item Người quản lý theo dõi và xác nhận xử lý.
-      \end{itemize}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Kiến trúc tổng thể}
-  \begin{center}
-  \begin{tikzpicture}[
-    layerbox/.style={rectangle, rounded corners=4pt, text width=3.2cm,
-      align=center, minimum height=1.5cm, font=\small\bfseries, inner sep=5pt},
-    inputbox/.style={layerbox, draw=blue!70, fill=blue!8},
-    ctrlbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
-    actbox/.style={layerbox, draw=green!55!black, fill=green!9},
-    webbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
-    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
-  ]
-    \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + cảm biến cổng}};
-    \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM}};
-    \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED/Buzzer}};
-    \node[webbox, above=1.3cm of ctrl] (web) {Web dashboard\\{\scriptsize log + trạng thái + cảnh báo}};
-
-    \draw[arr] (input) -- (ctrl);
-    \draw[arr] (ctrl) -- (act);
-    \draw[arr] (ctrl) -- (web);
-  \end{tikzpicture}
-  \end{center}
-
-  \vspace{0.4em}
-  \textbf{Cách hoạt động:} khối đầu vào nhận tín hiệu, khối xử lý trung tâm ra quyết định, khối chấp hành thực hiện mở cửa hoặc báo động, còn web dùng để theo dõi và quản lý.
 \end{frame}
 
 \begin{frame}{Kiến trúc -- Chi tiết thành phần}
@@ -371,6 +346,29 @@
   \end{columns}
 \end{frame}
 
+\begin{frame}{Thông tin log và cảnh báo}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Log ra vào}
+      \begin{itemize}
+        \item Thời gian phát sinh sự kiện.
+        \item Người dùng, mã thẻ hoặc thiết bị liên quan.
+        \item Phương thức xác thực: camera hoặc RFID/NFC.
+        \item Kết quả xử lý: mở cửa, từ chối hoặc lỗi xác thực.
+        \item Trạng thái cửa sau khi xử lý.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Cảnh báo bất thường}
+      \begin{itemize}
+        \item Phát hiện trèo/nhảy qua cổng.
+        \item Thẻ không hợp lệ hoặc người lạ trước cửa.
+        \item Bật LED/Buzzer để báo động tại chỗ.
+        \item Gửi loại cảnh báo, thời gian và trạng thái lên web.
+        \item Người quản lý theo dõi và xác nhận xử lý.
+      \end{itemize}
+  \end{columns}
+\end{frame}
 
 \begin{frame}{Vòng lặp điều khiển thông minh}
   \begin{center}
