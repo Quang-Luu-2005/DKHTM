@@ -1,1128 +1,451 @@
-# Kế hoạch coding hệ thống kiểm soát ra vào thông minh
+# Hướng dẫn lắp mạch hệ thống kiểm soát ra vào thông minh
 
-> Project triển khai theo kiến trúc: **ESP32-CAM + ESP32 mạch chính + servo mở khóa cổng + RFID/NFC + cảm biến + web dashboard**.
+> Tài liệu này được viết lại theo hướng **ưu tiên phần cứng**, để bạn có thể bắt đầu lắp mạch trước rồi mới nạp code sau.
+>
+> Mapping chân trong tài liệu đang bám theo firmware ở [../include/pins/main_controller_pins.h](../include/pins/main_controller_pins.h) và [../include/pins/camera_pins.h](../include/pins/camera_pins.h).
 
 ---
 
-## 1. Tổng quan hệ thống
+## 1. Mục tiêu lắp mạch
 
-Hệ thống gồm 3 phần chính:
+Hệ thống chia làm **2 node tách rời**:
 
-1. **ESP32-CAM**
-   - Chụp ảnh khu vực cổng.
-   - Gửi ảnh hoặc event camera lên backend.
-   - Có thể dùng để kiểm tra người đứng trước cửa.
-   - Phần AI nhận diện nên xử lý ở backend để dễ debug và ổn định hơn.
-
-2. **ESP32 mạch chính**
-   - Đọc thẻ RFID/NFC RC522.
-   - Điều khiển servo mở khóa cổng.
+1. **ESP32 mạch chính**
+   - Đọc thẻ RFID RC522.
+   - Điều khiển servo khóa/mở cổng.
    - Đọc cảm biến người đến gần.
    - Đọc cảm biến vượt cổng.
+   - Đọc nút mở từ bên trong.
+   - Đọc cảm biến cửa.
    - Điều khiển LED và buzzer.
-   - Gửi log ra vào và cảnh báo lên backend.
 
-3. **Backend + Web Dashboard**
-   - Xác thực RFID.
-   - Nhận log từ thiết bị.
-   - Nhận ảnh từ ESP32-CAM.
-   - Lưu lịch sử ra vào.
-   - Hiển thị cảnh báo.
-   - Quản lý người dùng, thẻ RFID/NFC, trạng thái cổng.
+2. **ESP32-CAM**
+   - Chụp ảnh khu vực cổng.
+   - Gửi ảnh lên backend qua Wi‑Fi.
+
+### Điểm quan trọng
+
+- **ESP32 mạch chính và ESP32-CAM không cần nối tín hiệu trực tiếp với nhau.**
+- Hai board hoạt động độc lập và giao tiếp với backend qua Wi‑Fi.
+- Nếu bạn muốn bắt đầu lắp nhanh, hãy ưu tiên làm **ESP32 mạch chính trước**.
 
 ---
 
-## 2. Kiến trúc triển khai
+## 2. Danh sách phần cứng cần chuẩn bị
+
+### 2.1. Mạch chính
+
+- 1 x ESP32 DevKit 38 pin / ESP32 Dev Module
+- 1 x RC522 RFID
+- 1 x Servo SG90 hoặc MG90S
+- 1 x Buzzer module
+- 1 x LED xanh
+- 1 x LED đỏ
+- 2 x điện trở 220–330Ω cho 2 LED
+- 1 x cảm biến phát hiện người đến gần
+- 1 x cảm biến phát hiện vượt cổng / che tia phía trên cổng
+- 1 x nút nhấn mở cửa từ bên trong
+- 1 x cảm biến cửa (reed switch hoặc limit switch)
+- Breadboard, dây jumper, nguồn 5V ổn định
+
+### 2.2. Node camera
+
+- 1 x AI Thinker ESP32-CAM
+- 1 x USB-TTL để nạp code
+- Nguồn 5V ổn định
+
+---
+
+## 3. Lắp theo thứ tự nào để đỡ rối
+
+Nên đi theo thứ tự này:
+
+1. Lắp **nguồn và mass chung**.
+2. Lắp **LED + buzzer** để test xuất tín hiệu.
+3. Lắp **servo**.
+4. Lắp **RC522**.
+5. Lắp **nút nhấn + cảm biến cửa**.
+6. Lắp **2 cảm biến IR**.
+7. Sau cùng mới làm **ESP32-CAM**.
+
+Cách làm này giúp bạn test từng khối, tránh cắm hết một lần rồi khó tìm lỗi.
+
+---
+
+## 4. Sơ đồ khối phần cứng
 
 ```text
+ESP32 main controller
+├── RC522 RFID (SPI)
+├── Servo mở khóa cổng
+├── LED xanh
+├── LED đỏ
+├── Buzzer
+├── Cảm biến người đến gần
+├── Cảm biến vượt cổng
+├── Nút mở từ bên trong
+└── Cảm biến cửa
+
 ESP32-CAM
-  └── Chụp ảnh / gửi sự kiện camera
-      └── POST lên backend
-
-ESP32 mạch chính
-  ├── Đọc RFID RC522
-  ├── Điều khiển servo mở khóa cổng
-  ├── Đọc cảm biến hồng ngoại / cảm biến cổng
-  ├── Điều khiển LED + buzzer
-  └── POST log / cảnh báo lên backend
-
-Backend
-  ├── Nhận log ra vào
-  ├── Xác thực thẻ RFID
-  ├── Nhận ảnh từ ESP32-CAM
-  └── Đẩy dữ liệu lên web dashboard
+└── Chụp ảnh và gửi backend qua Wi‑Fi
 ```
 
 ---
 
-## 3. API backend dự kiến
+## 5. Mapping chân cho ESP32 mạch chính
 
-Backend giả định có 3 API chính:
+Dùng cho **ESP32 DevKit / ESP32 38 pin / ESP32 Dev Module**.
 
-```text
-POST /api/device/events
-POST /api/device/rfid/verify
-POST /api/device/camera/snapshot
-```
+| Khối | Chân module | Nối vào ESP32 | Ghi chú |
+|---|---|---:|---|
+| RC522 | SDA / SS | GPIO 5 | Chân SS của SPI |
+| RC522 | SCK | GPIO 18 | SPI clock |
+| RC522 | MOSI | GPIO 23 | SPI MOSI |
+| RC522 | MISO | GPIO 19 | SPI MISO |
+| RC522 | RST | GPIO 22 | Reset RC522 |
+| Servo | Signal | GPIO 13 | PWM điều khiển servo |
+| Buzzer | Signal | GPIO 27 | Code đang bật/tắt mức HIGH/LOW |
+| LED xanh | Anode qua điện trở | GPIO 26 | Cathode về GND |
+| LED đỏ | Anode qua điện trở | GPIO 25 | Cathode về GND |
+| Cảm biến người đến gần | OUT / DO | GPIO 34 | GPIO 34 chỉ input |
+| Cảm biến vượt cổng | OUT / DO | GPIO 35 | GPIO 35 chỉ input |
+| Nút mở từ bên trong | 1 chân nút | GPIO 33 | Chân còn lại về GND |
+| Cảm biến cửa | 1 chân tín hiệu | GPIO 32 | Chân còn lại về GND |
 
-### 3.1. API nhận event từ thiết bị
+### Nguồn và mass
 
-```text
-POST /api/device/events
-```
-
-Ví dụ payload:
-
-```json
-{
-  "deviceId": "ESP32_MAIN_001",
-  "doorId": "GATE_01",
-  "source": "ESP32_MAIN",
-  "eventType": "ACCESS_GRANTED",
-  "message": "RFID card accepted",
-  "cardUid": "A1B2C3D4",
-  "personName": "Luu Huy Minh Quang",
-  "gateUnlocked": true,
-  "doorOpen": false,
-  "personNearGate": true
-}
-```
-
-Các loại `eventType` nên dùng:
-
-```text
-DEVICE_ONLINE
-DEVICE_HEARTBEAT
-ACCESS_GRANTED
-ACCESS_DENIED
-GATE_LOCKED
-INTRUSION_DETECTED
-CAMERA_ONLINE
-CAMERA_ERROR
-SNAPSHOT_UPLOADED
-SNAPSHOT_UPLOAD_FAILED
-PERSON_CHECK
-```
+| Thiết bị | Nguồn khuyến nghị | Ghi chú |
+|---|---|---|
+| ESP32 main | 5V qua USB hoặc chân VIN/5V | Không cấp sai cực |
+| RC522 | 3.3V | **Không cấp 5V** |
+| Servo | 5V riêng | Nên dùng nguồn đủ dòng |
+| Buzzer module | 3.3V hoặc 5V tùy module | Kiểm tra mức logic đầu vào |
+| Cảm biến IR | Ưu tiên 3.3V nếu module hỗ trợ | Đầu OUT không được vượt 3.3V vào ESP32 |
 
 ---
 
-### 3.2. API xác thực RFID
+## 6. Nối dây chi tiết từng khối
+
+### 6.1. RC522 RFID
+
+Nối như sau:
 
 ```text
-POST /api/device/rfid/verify
+RC522 3.3V  -> ESP32 3V3
+RC522 GND   -> ESP32 GND
+RC522 SDA   -> ESP32 GPIO 5
+RC522 SCK   -> ESP32 GPIO 18
+RC522 MOSI  -> ESP32 GPIO 23
+RC522 MISO  -> ESP32 GPIO 19
+RC522 RST   -> ESP32 GPIO 22
 ```
 
-ESP32 gửi:
+Lưu ý:
 
-```json
-{
-  "deviceId": "ESP32_MAIN_001",
-  "doorId": "GATE_01",
-  "cardUid": "A1B2C3D4"
-}
-```
-
-Backend trả về nếu hợp lệ:
-
-```json
-{
-  "allow": true,
-  "personName": "Luu Huy Minh Quang"
-}
-```
-
-Backend trả về nếu không hợp lệ:
-
-```json
-{
-  "allow": false,
-  "personName": ""
-}
-```
+- RC522 trong firmware đang dùng **SPI**.
+- Chân `IRQ` của RC522 **không dùng**, có thể bỏ trống.
+- **Tuyệt đối không cấp 5V cho RC522**.
 
 ---
 
-### 3.3. API nhận ảnh từ ESP32-CAM
+### 6.2. Servo mở khóa cổng
+
+Nối như sau:
 
 ```text
-POST /api/device/camera/snapshot?deviceId=ESP32CAM_001&doorId=GATE_01
+Servo signal -> ESP32 GPIO 13
+Servo VCC    -> nguồn 5V riêng
+Servo GND    -> GND nguồn 5V và GND ESP32 nối chung
 ```
 
-Header:
+Nếu dùng servo SG90 thường sẽ có màu dây:
 
-```text
-Content-Type: image/jpeg
-x-device-secret: demo-secret
-```
+- Đỏ: 5V
+- Nâu/đen: GND
+- Cam/vàng: Signal
 
-Body:
+Lưu ý:
 
-```text
-Dữ liệu ảnh JPEG từ ESP32-CAM
-```
+- Không nên lấy 5V servo từ chân 3.3V của ESP32.
+- Nếu servo rung, reset board hoặc hoạt động chập chờn, nguyên nhân thường là **nguồn yếu hoặc chưa nối mass chung**.
+- Firmware đang dùng góc:
+  - khóa: `0°`
+  - mở: `90°`
 
 ---
 
-## 4. Cổng GPIO cho ESP32 mạch chính
+### 6.3. LED xanh và LED đỏ
 
-Dùng cho **ESP32 38 pin / ESP32 DevKit / ESP32 WiFi ROHS**.
-
-| Thiết bị | GPIO | Ghi chú |
-|---|---:|---|
-| RC522 SDA / SS | GPIO 5 | SPI SS |
-| RC522 SCK | GPIO 18 | SPI Clock |
-| RC522 MOSI | GPIO 23 | SPI MOSI |
-| RC522 MISO | GPIO 19 | SPI MISO |
-| RC522 RST | GPIO 22 | Reset RC522 |
-| Servo mở khóa cổng | GPIO 13 | PWM servo |
-| Buzzer | GPIO 27 | Báo động |
-| LED xanh | GPIO 26 | Thành công |
-| LED đỏ | GPIO 25 | Từ chối / cảnh báo |
-| Cảm biến người đến gần | GPIO 34 | Input-only |
-| Cảm biến vượt cổng | GPIO 35 | Input-only |
-| Nút mở từ bên trong | GPIO 33 | INPUT_PULLUP |
-| Cảm biến cửa | GPIO 32 | INPUT_PULLUP |
-
-### Lưu ý nguồn điện
+Mỗi LED nên đi qua điện trở 220–330Ω.
 
 ```text
-RC522 dùng 3.3V, không cấp 5V.
-Servo nên dùng nguồn 5V riêng.
-GND nguồn servo phải nối chung GND với ESP32.
+GPIO 26 -> điện trở -> anode LED xanh
+cathode LED xanh -> GND
+
+GPIO 25 -> điện trở -> anode LED đỏ
+cathode LED đỏ -> GND
 ```
+
+Logic hiện tại của code:
+
+- GPIO lên mức `HIGH` -> LED sáng
+- GPIO xuống mức `LOW` -> LED tắt
 
 ---
 
-## 5. Thư viện cần cài trong Arduino IDE
+### 6.4. Buzzer
 
-Cài board:
-
-```text
-esp32 by Espressif Systems
-```
-
-Cài thư viện trong **Library Manager**:
+Nếu dùng **buzzer module active** thì nối đơn giản:
 
 ```text
-MFRC522
-ESP32Servo
-ArduinoJson
+Buzzer VCC    -> 3.3V hoặc 5V tùy module
+Buzzer GND    -> GND
+Buzzer Signal -> GPIO 27
 ```
 
-Thư viện có sẵn sau khi cài ESP32 core:
+Lưu ý:
 
-```text
-WiFi.h
-HTTPClient.h
-esp_camera.h
-SPI.h
-```
-
-Board cần chọn:
-
-```text
-ESP32-CAM: AI Thinker ESP32-CAM
-ESP32 mạch chính: ESP32 Dev Module
-```
+- Firmware hiện tại chỉ bật/tắt buzzer bằng `digitalWrite`, nên **buzzer active** sẽ dễ dùng nhất.
+- Nếu bạn dùng buzzer rời công suất lớn hoặc module cần dòng cao, nên qua transistor thay vì kéo trực tiếp từ GPIO.
 
 ---
 
-# 6. Source cho ESP32-CAM
+### 6.5. Cảm biến người đến gần
 
-File đề xuất:
+Firmware đang đọc cảm biến này ở `GPIO 34`.
 
 ```text
-esp32_cam_node.ino
+Sensor VCC -> 3.3V hoặc mức an toàn cho module
+Sensor GND -> GND
+Sensor OUT -> GPIO 34
 ```
 
-Nhiệm vụ:
+Lưu ý:
 
-- Kết nối Wi-Fi.
-- Khởi tạo camera AI Thinker ESP32-CAM.
-- Định kỳ chụp ảnh.
-- Upload ảnh JPEG lên backend.
-- Gửi event camera lên backend.
-
-```cpp
-#include "esp_camera.h"
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <WiFiClient.h>
-#include <ArduinoJson.h>
-
-// =======================
-// WIFI CONFIG
-// =======================
-const char* WIFI_SSID = "YOUR_WIFI_NAME";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
-
-// =======================
-// BACKEND CONFIG
-// =======================
-const char* SERVER_BASE_URL = "http://192.168.1.10:3000";
-const char* DEVICE_SECRET = "demo-secret";
-
-const char* DEVICE_ID = "ESP32CAM_001";
-const char* DOOR_ID = "GATE_01";
-
-// =======================
-// CAMERA PIN CONFIG
-// AI THINKER ESP32-CAM
-// =======================
-#define PWDN_GPIO_NUM     32
-#define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM      0
-#define SIOD_GPIO_NUM     26
-#define SIOC_GPIO_NUM     27
-
-#define Y9_GPIO_NUM       35
-#define Y8_GPIO_NUM       34
-#define Y7_GPIO_NUM       39
-#define Y6_GPIO_NUM       36
-#define Y5_GPIO_NUM       21
-#define Y4_GPIO_NUM       19
-#define Y3_GPIO_NUM       18
-#define Y2_GPIO_NUM        5
-
-#define VSYNC_GPIO_NUM    25
-#define HREF_GPIO_NUM     23
-#define PCLK_GPIO_NUM     22
-
-// =======================
-// TIMING
-// =======================
-unsigned long lastSnapshotTime = 0;
-const unsigned long SNAPSHOT_INTERVAL_MS = 10000;
-
-// =======================
-// WIFI
-// =======================
-void connectWiFi() {
-  Serial.print("Connecting WiFi");
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int retry = 0;
-  while (WiFi.status() != WL_CONNECTED && retry < 30) {
-    delay(500);
-    Serial.print(".");
-    retry++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println();
-    Serial.print("WiFi connected. IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println();
-    Serial.println("WiFi connection failed.");
-  }
-}
-
-// =======================
-// CAMERA INIT
-// =======================
-bool initCamera() {
-  camera_config_t config;
-
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
-
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
-
-  if (psramFound()) {
-    config.frame_size = FRAMESIZE_VGA;
-    config.jpeg_quality = 10;
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_QVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
-
-  esp_err_t err = esp_camera_init(&config);
-
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed: 0x%x\n", err);
-    return false;
-  }
-
-  Serial.println("Camera initialized.");
-  return true;
-}
-
-// =======================
-// SEND CAMERA EVENT
-// =======================
-void sendCameraEvent(const String& eventType, const String& message) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected. Skip event.");
-    return;
-  }
-
-  WiFiClient client;
-  HTTPClient http;
-
-  String url = String(SERVER_BASE_URL) + "/api/device/events";
-
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["doorId"] = DOOR_ID;
-  doc["source"] = "ESP32_CAM";
-  doc["eventType"] = eventType;
-  doc["message"] = message;
-  doc["confidence"] = 0.90;
-
-  String body;
-  serializeJson(doc, body);
-
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("x-device-secret", DEVICE_SECRET);
-
-  int statusCode = http.POST(body);
-
-  Serial.print("Send camera event status: ");
-  Serial.println(statusCode);
-
-  http.end();
-}
-
-// =======================
-// UPLOAD SNAPSHOT
-// =======================
-void uploadSnapshot() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected. Skip snapshot.");
-    return;
-  }
-
-  camera_fb_t* fb = esp_camera_fb_get();
-
-  if (!fb) {
-    Serial.println("Camera capture failed.");
-    sendCameraEvent("CAMERA_ERROR", "Camera capture failed");
-    return;
-  }
-
-  WiFiClient client;
-  HTTPClient http;
-
-  String url = String(SERVER_BASE_URL)
-             + "/api/device/camera/snapshot"
-             + "?deviceId=" + DEVICE_ID
-             + "&doorId=" + DOOR_ID;
-
-  http.begin(client, url);
-  http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("x-device-secret", DEVICE_SECRET);
-
-  int statusCode = http.POST(fb->buf, fb->len);
-
-  Serial.print("Upload snapshot status: ");
-  Serial.println(statusCode);
-
-  http.end();
-  esp_camera_fb_return(fb);
-
-  if (statusCode >= 200 && statusCode < 300) {
-    sendCameraEvent("SNAPSHOT_UPLOADED", "Camera snapshot uploaded");
-  } else {
-    sendCameraEvent("SNAPSHOT_UPLOAD_FAILED", "Camera snapshot upload failed");
-  }
-}
-
-// =======================
-// SETUP
-// =======================
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  connectWiFi();
-
-  bool cameraOk = initCamera();
-
-  if (cameraOk) {
-    sendCameraEvent("CAMERA_ONLINE", "ESP32-CAM is online");
-  } else {
-    sendCameraEvent("CAMERA_ERROR", "ESP32-CAM init failed");
-  }
-}
-
-// =======================
-// LOOP
-// =======================
-void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-  }
-
-  unsigned long now = millis();
-
-  if (now - lastSnapshotTime >= SNAPSHOT_INTERVAL_MS) {
-    lastSnapshotTime = now;
-
-    sendCameraEvent("PERSON_CHECK", "Camera checking gate area");
-    uploadSnapshot();
-  }
-
-  delay(200);
-}
-```
+- GPIO 34 là **input-only**.
+- GPIO 34 **không có pull-up nội**, nên cảm biến phải có đầu ra digital ổn định.
+- Nếu module xuất mức 5V ở chân OUT thì **không nối trực tiếp** vào ESP32.
 
 ---
 
-# 7. Source cho ESP32 mạch chính
+### 6.6. Cảm biến vượt cổng
 
-File đề xuất:
+Firmware đang đọc cảm biến này ở `GPIO 35`.
 
 ```text
-esp32_main_controller.ino
+Sensor VCC -> 3.3V hoặc mức an toàn cho module
+Sensor GND -> GND
+Sensor OUT -> GPIO 35
 ```
 
-Nhiệm vụ:
+Lưu ý tương tự GPIO 34:
 
-- Đọc thẻ RFID RC522.
-- Gửi UID thẻ lên backend để xác thực.
-- Nếu hợp lệ: servo mở khóa cổng.
-- Nếu sai: LED đỏ + buzzer.
-- Nếu cảm biến vượt cổng bị kích hoạt: báo động và gửi cảnh báo.
-- Gửi log lên backend.
-
-```cpp
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
-
-#include <SPI.h>
-#include <MFRC522.h>
-
-#include <ESP32Servo.h>
-
-// =======================
-// WIFI CONFIG
-// =======================
-const char* WIFI_SSID = "YOUR_WIFI_NAME";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
-
-// =======================
-// BACKEND CONFIG
-// =======================
-const char* SERVER_BASE_URL = "http://192.168.1.10:3000";
-const char* DEVICE_SECRET = "demo-secret";
-
-const char* DEVICE_ID = "ESP32_MAIN_001";
-const char* DOOR_ID = "GATE_01";
-
-// =======================
-// PIN CONFIG
-// =======================
-
-// RFID RC522
-#define RFID_SS_PIN   5
-#define RFID_RST_PIN  22
-#define RFID_SCK_PIN  18
-#define RFID_MISO_PIN 19
-#define RFID_MOSI_PIN 23
-
-// Servo
-#define SERVO_PIN 13
-
-// Output
-#define BUZZER_PIN    27
-#define LED_GREEN_PIN 26
-#define LED_RED_PIN   25
-
-// Sensors
-#define PERSON_IR_PIN    34
-#define GATE_TOP_IR_PIN  35
-#define EXIT_BUTTON_PIN  33
-#define DOOR_SENSOR_PIN  32
-
-// =======================
-// SERVO CONFIG
-// =======================
-const int LOCK_ANGLE = 0;
-const int UNLOCK_ANGLE = 90;
-const int UNLOCK_DURATION_MS = 3000;
-
-// =======================
-// SENSOR CONFIG
-// =======================
-// Nhiều module IR xuất LOW khi có vật cản.
-// Đổi thành false nếu module của bạn xuất HIGH khi có vật cản.
-const bool IR_ACTIVE_LOW = true;
-
-// =======================
-// OBJECTS
-// =======================
-MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
-Servo gateServo;
-
-// =======================
-// STATE
-// =======================
-bool gateUnlocked = false;
-
-unsigned long lastIntrusionAlertTime = 0;
-const unsigned long INTRUSION_COOLDOWN_MS = 10000;
-
-unsigned long lastHeartbeatTime = 0;
-const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
-
-// =======================
-// WIFI
-// =======================
-void connectWiFi() {
-  Serial.print("Connecting WiFi");
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int retry = 0;
-  while (WiFi.status() != WL_CONNECTED && retry < 30) {
-    delay(500);
-    Serial.print(".");
-    retry++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println();
-    Serial.print("WiFi connected. IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println();
-    Serial.println("WiFi connection failed.");
-  }
-}
-
-// =======================
-// BASIC OUTPUT
-// =======================
-void beep(int times, int durationMs) {
-  for (int i = 0; i < times; i++) {
-    digitalWrite(BUZZER_PIN, HIGH);
-    delay(durationMs);
-    digitalWrite(BUZZER_PIN, LOW);
-    delay(durationMs);
-  }
-}
-
-void setIdleLed() {
-  digitalWrite(LED_GREEN_PIN, LOW);
-  digitalWrite(LED_RED_PIN, LOW);
-}
-
-void signalGranted() {
-  digitalWrite(LED_GREEN_PIN, HIGH);
-  digitalWrite(LED_RED_PIN, LOW);
-  beep(1, 120);
-}
-
-void signalDenied() {
-  digitalWrite(LED_GREEN_PIN, LOW);
-  digitalWrite(LED_RED_PIN, HIGH);
-  beep(3, 120);
-  delay(500);
-  setIdleLed();
-}
-
-void signalAlert() {
-  digitalWrite(LED_GREEN_PIN, LOW);
-  digitalWrite(LED_RED_PIN, HIGH);
-  beep(5, 100);
-  setIdleLed();
-}
-
-// =======================
-// SENSOR READ
-// =======================
-bool isIrActive(int pin) {
-  int value = digitalRead(pin);
-
-  if (IR_ACTIVE_LOW) {
-    return value == LOW;
-  }
-
-  return value == HIGH;
-}
-
-bool isPersonNearGate() {
-  return isIrActive(PERSON_IR_PIN);
-}
-
-bool isGateTopBlocked() {
-  return isIrActive(GATE_TOP_IR_PIN);
-}
-
-bool isExitButtonPressed() {
-  return digitalRead(EXIT_BUTTON_PIN) == LOW;
-}
-
-bool isDoorOpen() {
-  return digitalRead(DOOR_SENSOR_PIN) == LOW;
-}
-
-// =======================
-// SEND EVENT TO BACKEND
-// =======================
-void sendDeviceEvent(
-  const String& eventType,
-  const String& message,
-  const String& cardUid = "",
-  const String& personName = ""
-) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected. Skip event.");
-    return;
-  }
-
-  WiFiClient client;
-  HTTPClient http;
-
-  String url = String(SERVER_BASE_URL) + "/api/device/events";
-
-  StaticJsonDocument<384> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["doorId"] = DOOR_ID;
-  doc["source"] = "ESP32_MAIN";
-  doc["eventType"] = eventType;
-  doc["message"] = message;
-  doc["cardUid"] = cardUid;
-  doc["personName"] = personName;
-  doc["gateUnlocked"] = gateUnlocked;
-  doc["doorOpen"] = isDoorOpen();
-  doc["personNearGate"] = isPersonNearGate();
-
-  String body;
-  serializeJson(doc, body);
-
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("x-device-secret", DEVICE_SECRET);
-
-  int statusCode = http.POST(body);
-
-  Serial.print("Send event ");
-  Serial.print(eventType);
-  Serial.print(" status: ");
-  Serial.println(statusCode);
-
-  http.end();
-}
-
-// =======================
-// RFID
-// =======================
-String readCardUid() {
-  String uid = "";
-
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    if (rfid.uid.uidByte[i] < 0x10) {
-      uid += "0";
-    }
-
-    uid += String(rfid.uid.uidByte[i], HEX);
-  }
-
-  uid.toUpperCase();
-  return uid;
-}
-
-bool verifyCardWithBackend(const String& cardUid, String& personName) {
-  personName = "";
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected. Deny access.");
-    return false;
-  }
-
-  WiFiClient client;
-  HTTPClient http;
-
-  String url = String(SERVER_BASE_URL) + "/api/device/rfid/verify";
-
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["doorId"] = DOOR_ID;
-  doc["cardUid"] = cardUid;
-
-  String body;
-  serializeJson(doc, body);
-
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("x-device-secret", DEVICE_SECRET);
-
-  int statusCode = http.POST(body);
-  String response = http.getString();
-
-  Serial.print("Verify card status: ");
-  Serial.println(statusCode);
-  Serial.print("Verify response: ");
-  Serial.println(response);
-
-  http.end();
-
-  if (statusCode < 200 || statusCode >= 300) {
-    return false;
-  }
-
-  StaticJsonDocument<256> resDoc;
-  DeserializationError error = deserializeJson(resDoc, response);
-
-  if (error) {
-    Serial.println("Parse verify response failed.");
-    return false;
-  }
-
-  bool allow = resDoc["allow"] | false;
-  const char* name = resDoc["personName"] | "";
-
-  personName = String(name);
-
-  return allow;
-}
-
-// =======================
-// GATE CONTROL
-// =======================
-void lockGate() {
-  gateServo.write(LOCK_ANGLE);
-  gateUnlocked = false;
-
-  Serial.println("Gate locked.");
-  sendDeviceEvent("GATE_LOCKED", "Gate locked");
-}
-
-void unlockGate(const String& reason, const String& cardUid = "", const String& personName = "") {
-  Serial.println("Unlocking gate...");
-
-  gateUnlocked = true;
-  gateServo.write(UNLOCK_ANGLE);
-
-  signalGranted();
-
-  sendDeviceEvent("ACCESS_GRANTED", reason, cardUid, personName);
-
-  delay(UNLOCK_DURATION_MS);
-
-  lockGate();
-}
-
-// =======================
-// HANDLE RFID
-// =======================
-void handleRfid() {
-  if (!rfid.PICC_IsNewCardPresent()) {
-    return;
-  }
-
-  if (!rfid.PICC_ReadCardSerial()) {
-    return;
-  }
-
-  String cardUid = readCardUid();
-
-  Serial.print("Card UID: ");
-  Serial.println(cardUid);
-
-  String personName = "";
-  bool allowed = verifyCardWithBackend(cardUid, personName);
-
-  if (allowed) {
-    unlockGate("RFID card accepted", cardUid, personName);
-  } else {
-    Serial.println("Access denied.");
-
-    signalDenied();
-
-    sendDeviceEvent(
-      "ACCESS_DENIED",
-      "RFID card rejected",
-      cardUid,
-      ""
-    );
-  }
-
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
-
-  delay(500);
-}
-
-// =======================
-// HANDLE INTRUSION
-// =======================
-void handleIntrusion() {
-  bool intrusionDetected = isGateTopBlocked();
-
-  if (!intrusionDetected) {
-    return;
-  }
-
-  if (gateUnlocked) {
-    return;
-  }
-
-  unsigned long now = millis();
-
-  if (now - lastIntrusionAlertTime < INTRUSION_COOLDOWN_MS) {
-    return;
-  }
-
-  lastIntrusionAlertTime = now;
-
-  Serial.println("Intrusion detected!");
-
-  signalAlert();
-
-  sendDeviceEvent(
-    "INTRUSION_DETECTED",
-    "Detected climbing or jumping over the gate"
-  );
-}
-
-// =======================
-// HANDLE EXIT BUTTON
-// =======================
-void handleExitButton() {
-  if (!isExitButtonPressed()) {
-    return;
-  }
-
-  Serial.println("Exit button pressed.");
-
-  unlockGate("Exit button pressed");
-
-  delay(500);
-}
-
-// =======================
-// HEARTBEAT
-// =======================
-void sendHeartbeat() {
-  unsigned long now = millis();
-
-  if (now - lastHeartbeatTime < HEARTBEAT_INTERVAL_MS) {
-    return;
-  }
-
-  lastHeartbeatTime = now;
-
-  sendDeviceEvent(
-    "DEVICE_HEARTBEAT",
-    "ESP32 main controller is online"
-  );
-}
-
-// =======================
-// SETUP
-// =======================
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  pinMode(BUZZER_PIN, OUTPUT);
-  pinMode(LED_GREEN_PIN, OUTPUT);
-  pinMode(LED_RED_PIN, OUTPUT);
-
-  pinMode(PERSON_IR_PIN, INPUT);
-  pinMode(GATE_TOP_IR_PIN, INPUT);
-
-  pinMode(EXIT_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(DOOR_SENSOR_PIN, INPUT_PULLUP);
-
-  digitalWrite(BUZZER_PIN, LOW);
-  setIdleLed();
-
-  gateServo.setPeriodHertz(50);
-  gateServo.attach(SERVO_PIN, 500, 2400);
-  gateServo.write(LOCK_ANGLE);
-  gateUnlocked = false;
-
-  SPI.begin(RFID_SCK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN, RFID_SS_PIN);
-  rfid.PCD_Init();
-
-  connectWiFi();
-
-  sendDeviceEvent(
-    "DEVICE_ONLINE",
-    "ESP32 main controller started"
-  );
-
-  Serial.println("System ready.");
-}
-
-// =======================
-// LOOP
-// =======================
-void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-  }
-
-  handleRfid();
-  handleIntrusion();
-  handleExitButton();
-  sendHeartbeat();
-
-  delay(100);
-}
-```
+- GPIO 35 là **input-only**.
+- Không đưa mức 5V trực tiếp vào chân ESP32.
 
 ---
 
-## 8. Luồng hoạt động khi quẹt thẻ
+### 6.7. Nút mở từ bên trong
+
+Firmware dùng `INPUT_PULLUP`, vì vậy cách nối đúng là:
 
 ```text
-Người dùng quẹt thẻ
-        ↓
-ESP32 đọc UID từ RC522
-        ↓
-ESP32 gửi UID lên backend
-        ↓
-Backend kiểm tra UID
-        ↓
-Nếu hợp lệ:
-    Servo quay 90 độ để mở khóa cổng
-    LED xanh sáng
-    Buzzer kêu 1 lần
-    Ghi log ACCESS_GRANTED
-        ↓
-Sau 3 giây:
-    Servo quay về 0 độ để khóa lại
-    Ghi log GATE_LOCKED
-
-Nếu không hợp lệ:
-    LED đỏ sáng
-    Buzzer kêu 3 lần
-    Ghi log ACCESS_DENIED
+1 chân nút -> GPIO 33
+1 chân nút -> GND
 ```
+
+Khi nhấn nút:
+
+- tín hiệu sẽ xuống `LOW`
+- firmware hiểu là **đã nhấn nút mở cửa**
+
+Không cần điện trở kéo ngoài nếu bạn giữ đúng cách nối này.
 
 ---
 
-## 9. Luồng phát hiện trèo / nhảy qua cổng
+### 6.8. Cảm biến cửa
+
+Firmware đang dùng `GPIO 32` với `INPUT_PULLUP`.
+
+Cách nối đơn giản nhất:
 
 ```text
-Cảm biến vượt cổng bị che
-        ↓
-ESP32 kiểm tra cổng có đang mở hợp lệ không
-        ↓
-Nếu cổng không được mở hợp lệ:
-    Buzzer báo động
-    LED đỏ sáng
-    Gửi event INTRUSION_DETECTED lên backend
-        ↓
-Web dashboard hiển thị cảnh báo
+1 chân cảm biến cửa -> GPIO 32
+1 chân còn lại      -> GND
 ```
+
+Bạn có thể dùng:
+
+- reed switch
+- công tắc hành trình
+- công tắc từ cửa
+
+Lưu ý:
+
+- Code hiện tại đang coi `LOW` là trạng thái cửa đang mở.
+- Nếu phần cứng của bạn cho logic ngược lại, cần đảo logic trong firmware.
 
 ---
 
-## 10. Việc cần sửa trước khi nạp code
+## 7. Logic tín hiệu mà firmware đang kỳ vọng
 
-Trong cả 2 file `.ino`, sửa 3 dòng này:
+Đây là phần rất quan trọng khi bạn lắp mạch:
 
-```cpp
-const char* WIFI_SSID = "YOUR_WIFI_NAME";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
-const char* SERVER_BASE_URL = "http://192.168.1.10:3000";
-```
+| Khối | Logic hiện tại |
+|---|---|
+| LED xanh | `HIGH` là sáng |
+| LED đỏ | `HIGH` là sáng |
+| Nút mở cửa | `LOW` là đang nhấn |
+| Cảm biến cửa | `LOW` là cửa mở |
+| Cảm biến IR | mặc định `LOW` là đang kích hoạt |
 
-Ví dụ máy chạy backend có IP:
-
-```text
-192.168.1.10
-```
-
-thì để:
-
-```cpp
-const char* SERVER_BASE_URL = "http://192.168.1.10:3000";
-```
-
-Không dùng:
-
-```text
-localhost
-```
-
-vì với ESP32, `localhost` là chính ESP32, không phải máy tính của bạn.
+Phần IR đang cấu hình theo kiểu **active LOW** trong firmware. Nếu module IR của bạn hoạt động theo kiểu ngược lại, cần đổi cờ `kIrActiveLow` trong [../include/pins/main_controller_pins.h](../include/pins/main_controller_pins.h).
 
 ---
 
-## 11. Checklist triển khai
+## 8. Lưu ý nguồn điện để tránh cháy hoặc reset board
 
-### Bước 1: Test ESP32 mạch chính
+### Bắt buộc
 
-- [ ] Cắm RC522 theo đúng GPIO.
-- [ ] Test đọc UID thẻ.
-- [ ] Test servo quay 0 độ và 90 độ.
-- [ ] Test LED xanh, LED đỏ, buzzer.
-- [ ] Test cảm biến vượt cổng.
-- [ ] Test gửi event lên backend.
+- Tất cả các khối phải **nối chung GND**.
+- RC522 chỉ dùng **3.3V**.
+- Không đưa **5V logic** vào các GPIO của ESP32.
+- Servo nên dùng **nguồn 5V riêng**, nhưng vẫn phải nối chung mass với ESP32.
 
-### Bước 2: Test ESP32-CAM
+### Khuyến nghị thực tế
 
-- [ ] Upload code camera.
-- [ ] Kiểm tra camera init thành công.
-- [ ] Kiểm tra ảnh được gửi lên backend.
-- [ ] Kiểm tra event `CAMERA_ONLINE`.
-- [ ] Kiểm tra event `SNAPSHOT_UPLOADED`.
-
-### Bước 3: Test backend
-
-- [ ] API `/api/device/rfid/verify` trả đúng `allow`.
-- [ ] API `/api/device/events` lưu log.
-- [ ] API `/api/device/camera/snapshot` lưu ảnh.
-- [ ] Dashboard hiển thị log.
-- [ ] Dashboard hiển thị cảnh báo.
-
-### Bước 4: Demo hoàn chỉnh
-
-- [ ] Thẻ hợp lệ mở cổng.
-- [ ] Thẻ sai bị từ chối.
-- [ ] Cảm biến vượt cổng kích hoạt báo động.
-- [ ] Web hiển thị log ra vào.
-- [ ] Web hiển thị cảnh báo xâm nhập.
-- [ ] ESP32-CAM gửi ảnh lên backend.
+- Nếu servo kéo chốt cơ khí nặng, hãy dùng nguồn 5V đủ dòng.
+- Đừng cấp mọi thứ qua dây USB yếu nếu thấy servo làm ESP32 reset.
+- Nên test từng khối trước khi ghép toàn hệ thống.
 
 ---
 
-## 12. Kết luận triển khai
+## 9. Cách lắp nhanh trên breadboard
 
-Với cấu trúc này, nhóm có thể demo được đầy đủ lõi hệ thống:
+Nếu bạn đang làm bản demo trước, có thể đi theo layout này:
+
+### Thanh nguồn
+
+- 1 thanh GND chung cho toàn bộ mạch.
+- 1 thanh 3.3V cho RC522.
+- 1 nhánh 5V riêng cho servo.
+
+### Cắm theo cụm
+
+- Cụm 1: ESP32 + LED + buzzer
+- Cụm 2: RC522 gần ESP32 để dây SPI ngắn
+- Cụm 3: nút nhấn + cảm biến cửa
+- Cụm 4: 2 cảm biến IR
+- Cụm 5: servo đặt gần cơ cấu khóa
+
+Mẹo:
+
+- Dây SPI của RC522 nên ngắn và chắc.
+- Dây servo nguồn nên đủ tốt, không quá lỏng.
+- Khi test cảm biến IR, chỉnh biến trở trên module để ra mức digital ổn định.
+
+---
+
+## 10. ESP32-CAM cần lắp như thế nào
+
+ESP32-CAM là node riêng, **không nối GPIO sang ESP32 main**.
+
+Bạn chỉ cần quan tâm 2 việc:
+
+1. **Cấp nguồn ổn định**
+2. **Nạp code qua USB-TTL**
+
+### Nối tối thiểu để nạp code
 
 ```text
-ESP32-CAM:
-    chụp ảnh + gửi event camera
-
-ESP32 mạch chính:
-    RFID + servo mở khóa + cảm biến + buzzer + LED
-
-Backend:
-    xác thực RFID + lưu log + hiển thị dashboard
+USB-TTL 5V  -> ESP32-CAM 5V
+USB-TTL GND -> ESP32-CAM GND
+USB-TTL TX  -> ESP32-CAM U0R
+USB-TTL RX  -> ESP32-CAM U0T
+IO0 -> GND khi vào chế độ flash
 ```
 
-Phần nhận diện AI thật nên để backend xử lý từ ảnh ESP32-CAM gửi lên. Không nên ép ESP32-CAM chạy nhận diện nặng, vì dễ thiếu RAM, chậm và khó debug.
+Sau khi nạp xong:
+
+- tháo `IO0` khỏi GND
+- reset board
+- cấp nguồn ổn định để camera chạy
+
+### Mapping camera trong firmware
+
+Pin map camera đang bám theo board **AI Thinker ESP32-CAM** tại [../include/pins/camera_pins.h](../include/pins/camera_pins.h).
+
+---
+
+## 11. Trình tự test sau khi lắp xong
+
+### Bước 1: Test nguồn
+
+- [ ] ESP32 lên nguồn ổn định
+- [ ] Không có linh kiện nào nóng bất thường
+- [ ] Servo chưa chạy nhưng không làm sụt áp mạch
+
+### Bước 2: Test LED và buzzer
+
+- [ ] LED xanh sáng đúng
+- [ ] LED đỏ sáng đúng
+- [ ] Buzzer kêu được
+
+### Bước 3: Test servo
+
+- [ ] Servo về vị trí khóa
+- [ ] Servo quay được sang góc mở
+- [ ] Khi servo quay, ESP32 không bị reset
+
+### Bước 4: Test RC522
+
+- [ ] RC522 nhận thẻ
+- [ ] Serial in ra UID thẻ
+
+### Bước 5: Test nút và cảm biến
+
+- [ ] Nhấn nút trong nhà thì mở cửa
+- [ ] Cảm biến cửa đổi trạng thái đúng
+- [ ] Cảm biến người đến gần đổi trạng thái đúng
+- [ ] Cảm biến vượt cổng đổi trạng thái đúng
+
+### Bước 6: Test ESP32-CAM
+
+- [ ] Camera khởi tạo thành công
+- [ ] Chụp ảnh được
+- [ ] Upload ảnh được qua Wi‑Fi
+
+---
+
+## 12. File firmware liên quan để đối chiếu khi debug
+
+Nếu lắp xong nhưng phần cứng chạy chưa đúng, đối chiếu các file sau:
+
+- Mapping chân: [../include/pins/main_controller_pins.h](../include/pins/main_controller_pins.h)
+- Khởi tạo cảm biến: [../src/main_controller/sensors.cpp](../src/main_controller/sensors.cpp)
+- Điều khiển servo: [../src/main_controller/gate_control.cpp](../src/main_controller/gate_control.cpp)
+- LED và buzzer: [../src/main_controller/indicators.cpp](../src/main_controller/indicators.cpp)
+- Nút mở cửa: [../src/main_controller/exit_button.cpp](../src/main_controller/exit_button.cpp)
+- Entry point mạch chính: [../src/main_controller/main.cpp](../src/main_controller/main.cpp)
+
+---
+
+## 13. Kết luận
+
+Nếu bạn muốn bắt đầu demo nhanh, hãy lắp theo đúng thứ tự này:
+
+1. ESP32 main + LED + buzzer
+2. Servo
+3. RC522
+4. Nút mở cửa + cảm biến cửa
+5. 2 cảm biến IR
+6. ESP32-CAM
+
+Phần dễ sai nhất khi lắp thực tế là:
+
+- cấp nhầm **5V cho RC522**
+- **quên nối GND chung** giữa servo và ESP32
+- dùng cảm biến xuất **5V logic** nối thẳng vào GPIO ESP32
+- đấu nút/cảm biến cửa sai kiểu so với `INPUT_PULLUP`
+
+Làm đúng 4 điểm trên thì bạn sẽ vào giai đoạn test firmware nhanh hơn rất nhiều.
