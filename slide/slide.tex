@@ -259,6 +259,61 @@
 \section{Kiến trúc hệ thống}
 %============================
 
+\begin{frame}{Sơ đồ kiến trúc hệ thống}
+  \begin{center}
+  \begin{tikzpicture}[
+    block/.style={rectangle, rounded corners=4pt, text width=2.55cm,
+      align=center, minimum height=1.1cm, font=\small, inner sep=4pt},
+    inputbox/.style={block, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={block, draw=violet!70!black, fill=violet!10},
+    actbox/.style={block, draw=green!55!black, fill=green!9},
+    webbox/.style={block, draw=orange!80!black, fill=orange!10},
+    dbbox/.style={block, draw=gray!70!black, fill=gray!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70},
+    dataarr/.style={<->, >=Stealth, thick, orange!80!black}
+  ]
+    \node[inputbox] (input) {Thiết bị đầu vào\\{\scriptsize Camera\\RFID/NFC\\cảm biến cổng}};
+    \node[ctrlbox, right=0.8cm of input] (ctrl) {Bộ xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM\\xử lý + Wi-Fi}};
+    \node[actbox, right=0.8cm of ctrl] (act) {Thiết bị chấp hành\\{\scriptsize Servo\\LED/Buzzer}};
+    \node[webbox, below=1.0cm of ctrl] (web) {Web dashboard\\{\scriptsize trạng thái\\log\\cảnh báo}};
+    \node[dbbox, right=0.8cm of web] (db) {Cơ sở dữ liệu\\{\scriptsize người dùng\\thẻ\\lịch sử}};
+
+    \draw[arr] (input) -- node[above, font=\scriptsize]{tín hiệu} (ctrl);
+    \draw[arr] (ctrl) -- node[above, font=\scriptsize]{lệnh điều khiển} (act);
+    \draw[arr] (ctrl) -- node[left, font=\scriptsize]{Wi-Fi} (web);
+    \draw[dataarr] (web) -- node[above, font=\scriptsize]{lưu / đọc} (db);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.3em}
+  \footnotesize
+  \textbf{Vai trò:} thiết bị tại cửa xử lý tín hiệu để mở cửa hoặc báo động; web và cơ sở dữ liệu dùng để quản lý người dùng, lưu log và hiển thị cảnh báo cho người quản lý.
+\end{frame}
+
+\begin{frame}{Thông tin log và cảnh báo}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Log ra vào}
+      \begin{itemize}
+        \item Thời gian phát sinh sự kiện.
+        \item Người dùng, mã thẻ hoặc thiết bị liên quan.
+        \item Phương thức xác thực: camera hoặc RFID/NFC.
+        \item Kết quả xử lý: mở cửa, từ chối hoặc lỗi xác thực.
+        \item Trạng thái cửa sau khi xử lý.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Cảnh báo bất thường}
+      \begin{itemize}
+        \item Phát hiện trèo/nhảy qua cổng.
+        \item Thẻ không hợp lệ hoặc người lạ trước cửa.
+        \item Bật LED/Buzzer để báo động tại chỗ.
+        \item Gửi loại cảnh báo, thời gian và trạng thái lên web.
+        \item Người quản lý theo dõi và xác nhận xử lý.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
 \begin{frame}{Kiến trúc tổng thể}
   \begin{center}
   \begin{tikzpicture}[
