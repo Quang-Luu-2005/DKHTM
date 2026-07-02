@@ -1,58 +1,32 @@
-# Hướng dẫn lắp mạch hệ thống kiểm soát ra vào thông minh
+# Hướng dẫn lắp mạch bản demo tối giản
 
-> Tài liệu này được viết lại theo hướng **ưu tiên phần cứng**, để bạn có thể bắt đầu lắp mạch trước rồi mới nạp code sau.
+> Bản hiện tại chỉ giữ firmware trực tiếp trong `src/`, không còn tách module cũ hay thư mục `arduino/` riêng. Có 2 file firmware chính:
 >
-> Phần lớn mapping chân đang bám theo firmware ở [../include/pins/main_controller_pins.h](../include/pins/main_controller_pins.h) và [../include/pins/camera_pins.h](../include/pins/camera_pins.h).
->
-> **Cập nhật phần mạch:** cửa được mở/khóa bằng **servo**. Phát hiện người cố vượt khi cửa đang đóng sẽ dùng **cảm biến siêu âm đặt ngang giữa 2 thành cửa/cổng**. Riêng phần siêu âm là mapping đề xuất mới: cần thêm chân TRIG và cần cập nhật firmware trước khi test hoàn chỉnh.
+> - [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino)
+> - [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino)
 
 ---
 
 ## 1. Mục tiêu lắp mạch
 
-Hệ thống chia làm **2 node tách rời**:
+Hệ thống hiện chia làm **2 node độc lập**:
 
 1. **ESP32 mạch chính**
-   - Đọc thẻ RFID RC522.
-   - Điều khiển servo khóa/mở cổng.
-   - Đọc cảm biến người đến gần.
-   - Đọc cảm biến siêu âm phát hiện người cố vượt khi cửa đang đóng.
-   - Đọc nút mở từ bên trong.
-   - Đọc cảm biến cửa.
-   - Điều khiển LED và buzzer.
+   - Điều khiển servo mở/khóa cổng.
+   - Bật LED đúng khi nhận lệnh cho phép.
+   - Bật LED sai khi nhận lệnh từ chối.
+   - Nhận lệnh test qua Serial Monitor.
 
 2. **ESP32-CAM**
    - Chụp ảnh khu vực cổng.
-   - Gửi ảnh lên backend qua Wi‑Fi.
+   - Gửi ảnh/event lên backend qua Wi‑Fi nếu đã cấu hình.
 
 ### Điểm quan trọng
 
-- **ESP32 mạch chính và ESP32-CAM không cần nối tín hiệu trực tiếp với nhau.**
-- Hai board hoạt động độc lập và giao tiếp với backend qua Wi‑Fi.
-- ESP32-CAM chỉ làm nhiệm vụ **chụp ảnh và upload ảnh/event**.
-- Việc **lưu ảnh, tạo embedding, lưu embedding trong database và so khớp** sẽ làm ở backend/dashboard.
-- ESP32 main và ESP32-CAM được ghép cùng một ngữ cảnh bằng `doorId`, `deviceId`, thời điểm và loại event.
-- Nếu bạn muốn bắt đầu lắp nhanh, hãy ưu tiên làm **ESP32 mạch chính trước**.
-
-### Luồng xử lý embedding
-
-```text
-Dashboard tải ảnh mẫu người dùng
-        ↓
-Backend lưu ảnh vào database
-        ↓
-Backend tạo embedding cho ảnh mẫu và lưu lại
-        ↓
-ESP32-CAM chụp ảnh tại cổng và upload snapshot
-        ↓
-Backend tạo embedding cho ảnh mới
-        ↓
-Backend so embedding mới với embedding đã lưu
-        ↓
-Trả kết quả nhận diện / đối chiếu ra dashboard
-```
-
-Trong kiến trúc này, ESP32 **không chạy so khớp embedding**. ESP32 main lo phần cứng cửa, còn ESP32-CAM lo thu ảnh; backend mới là nơi xử lý AI và đối chiếu.
+- ESP32 main và ESP32-CAM **không cần nối GPIO trực tiếp với nhau**.
+- Hai board chạy độc lập.
+- ESP32 main lo phần cứng cửa/đèn.
+- ESP32-CAM lo camera và upload ảnh.
 
 ---
 
@@ -61,17 +35,12 @@ Trong kiến trúc này, ESP32 **không chạy so khớp embedding**. ESP32 main
 ### 2.1. Mạch chính
 
 - 1 x ESP32 DevKit 38 pin / ESP32 Dev Module
-- 1 x RC522 RFID
 - 1 x Servo SG90 hoặc MG90S
-- 1 x Buzzer module
-- 1 x LED xanh
-- 1 x LED đỏ
+- 1 x LED báo đúng
+- 1 x LED báo sai
 - 2 x điện trở 220–330Ω cho 2 LED
-- 1 x cảm biến phát hiện người đến gần
-- 1 x cảm biến siêu âm phát hiện người vượt qua khi cửa đang đóng (khuyến nghị loại 3.3V-compatible như HC-SR04P)
-- 1 x nút nhấn mở cửa từ bên trong
-- 1 x cảm biến cửa (reed switch hoặc limit switch)
-- Breadboard, dây jumper, nguồn 5V ổn định
+- Breadboard, dây jumper
+- Nguồn 5V ổn định cho servo
 
 ### 2.2. Node camera
 
@@ -81,19 +50,26 @@ Trong kiến trúc này, ESP32 **không chạy so khớp embedding**. ESP32 main
 
 ---
 
-## 3. Lắp theo thứ tự nào để đỡ rối
+## 3. Mapping chân ESP32 mạch chính
 
-Nên đi theo thứ tự này:
+| Linh kiện | Nối vào ESP32 | Ghi chú |
+|---|---:|---|
+| LED đúng | GPIO 21 | Anode qua điện trở, cathode về GND |
+| LED sai | GPIO 19 | Anode qua điện trở, cathode về GND |
+| Servo signal | GPIO 22 | Dây tín hiệu PWM |
+| Servo VCC | Nguồn 5V riêng | Không cấp từ chân 3.3V |
+| Servo GND | GND chung | Nối chung GND nguồn servo và GND ESP32 |
 
-1. Lắp **nguồn và mass chung**.
-2. Lắp **LED + buzzer** để test xuất tín hiệu.
-3. Lắp **servo**.
-4. Lắp **RC522**.
-5. Lắp **nút nhấn + cảm biến cửa**.
-6. Lắp **cảm biến người đến gần + cảm biến siêu âm phát hiện vi phạm**.
-7. Sau cùng mới làm **ESP32-CAM**.
+Logic LED trong firmware:
 
-Cách làm này giúp bạn test từng khối, tránh cắm hết một lần rồi khó tìm lỗi.
+- GPIO `HIGH` -> LED sáng
+- GPIO `LOW` -> LED tắt
+
+Servo mặc định:
+
+- Khóa: `0°`
+- Mở: `90°`
+- Thời gian mở demo: `3 giây`
 
 ---
 
@@ -101,15 +77,9 @@ Cách làm này giúp bạn test từng khối, tránh cắm hết một lần r
 
 ```text
 ESP32 main controller
-├── RC522 RFID (SPI)
-├── Servo mở khóa cổng
-├── LED xanh
-├── LED đỏ
-├── Buzzer
-├── Cảm biến người đến gần
-├── Cảm biến siêu âm phát hiện vi phạm khi cửa đóng
-├── Nút mở từ bên trong
-└── Cảm biến cửa
+├── LED đúng  -> GPIO21
+├── LED sai   -> GPIO19
+└── Servo     -> GPIO22
 
 ESP32-CAM
 └── Chụp ảnh và gửi backend qua Wi‑Fi
@@ -117,310 +87,34 @@ ESP32-CAM
 
 ---
 
-## 5. Mapping chân cho ESP32 mạch chính
+## 5. Nối dây chi tiết
 
-Dùng cho **ESP32 DevKit / ESP32 38 pin / ESP32 Dev Module**.
-
-| Khối | Chân module | Nối vào ESP32 | Ghi chú |
-|---|---|---:|---|
-| RC522 | SDA / SS | GPIO 5 | Chân SS của SPI |
-| RC522 | SCK | GPIO 18 | SPI clock |
-| RC522 | MOSI | GPIO 23 | SPI MOSI |
-| RC522 | MISO | GPIO 19 | SPI MISO |
-| RC522 | RST | GPIO 22 | Reset RC522 |
-| Servo | Signal | GPIO 13 | PWM điều khiển servo |
-| Buzzer | Signal | GPIO 27 | Code đang bật/tắt mức HIGH/LOW |
-| LED xanh | Anode qua điện trở | GPIO 26 | Cathode về GND |
-| LED đỏ | Anode qua điện trở | GPIO 25 | Cathode về GND |
-| Cảm biến người đến gần | OUT / DO | GPIO 34 | GPIO 34 chỉ input |
-| Cảm biến siêu âm phát hiện vi phạm | TRIG | GPIO 14 | Chân output, **cần firmware update** |
-| Cảm biến siêu âm phát hiện vi phạm | ECHO | GPIO 35 | GPIO 35 chỉ input, **nếu ECHO là 5V thì phải chia áp** |
-| Nút mở từ bên trong | 1 chân nút | GPIO 33 | Chân còn lại về GND |
-| Cảm biến cửa | 1 chân tín hiệu | GPIO 32 | Chân còn lại về GND |
-
-### Nguồn và mass
-
-| Thiết bị | Nguồn khuyến nghị | Ghi chú |
-|---|---|---|
-| ESP32 main | 5V qua USB hoặc chân VIN/5V | Không cấp sai cực |
-| RC522 | 3.3V | **Không cấp 5V** |
-| Servo | 5V riêng | Nên dùng nguồn đủ dòng |
-| Buzzer module | 3.3V hoặc 5V tùy module | Kiểm tra mức logic đầu vào |
-| Cảm biến người đến gần (IR) | Ưu tiên 3.3V nếu module hỗ trợ | Đầu OUT không được vượt 3.3V vào ESP32 |
-| Cảm biến siêu âm | HC-SR04P: 3.3V hoặc module theo datasheet | Nếu module ECHO ra 5V thì bắt buộc chia áp / level shift trước khi vào ESP32 |
-
----
-
-## 6. Nối dây chi tiết từng khối
-
-### 6.1. RC522 RFID
-
-Nối như sau:
+### 5.1. LED đúng và LED sai
 
 ```text
-RC522 3.3V  -> ESP32 3V3
-RC522 GND   -> ESP32 GND
-RC522 SDA   -> ESP32 GPIO 5
-RC522 SCK   -> ESP32 GPIO 18
-RC522 MOSI  -> ESP32 GPIO 23
-RC522 MISO  -> ESP32 GPIO 19
-RC522 RST   -> ESP32 GPIO 22
+ESP32 GPIO21 -> điện trở -> anode LED đúng
+cathode LED đúng -> GND
+
+ESP32 GPIO19 -> điện trở -> anode LED sai
+cathode LED sai -> GND
 ```
 
-Lưu ý:
-
-- RC522 trong firmware đang dùng **SPI**.
-- Chân `IRQ` của RC522 **không dùng**, có thể bỏ trống.
-- **Tuyệt đối không cấp 5V cho RC522**.
-
----
-
-### 6.2. Servo mở khóa cổng
-
-Nối như sau:
+### 5.2. Servo mở khóa cổng
 
 ```text
-Servo signal -> ESP32 GPIO 13
+Servo signal -> ESP32 GPIO22
 Servo VCC    -> nguồn 5V riêng
 Servo GND    -> GND nguồn 5V và GND ESP32 nối chung
 ```
 
-Nếu dùng servo SG90 thường sẽ có màu dây:
-
-- Đỏ: 5V
-- Nâu/đen: GND
-- Cam/vàng: Signal
-
 Lưu ý:
 
-- Không nên lấy 5V servo từ chân 3.3V của ESP32.
-- Nếu servo rung, reset board hoặc hoạt động chập chờn, nguyên nhân thường là **nguồn yếu hoặc chưa nối mass chung**.
-- Firmware đang dùng góc:
-  - khóa: `0°`
-  - mở: `90°`
+- Không lấy 5V servo từ chân 3.3V của ESP32.
+- Nếu servo rung hoặc ESP32 reset, thường là do nguồn yếu hoặc chưa nối mass chung.
 
 ---
 
-### 6.3. LED xanh và LED đỏ
-
-Mỗi LED nên đi qua điện trở 220–330Ω.
-
-```text
-GPIO 26 -> điện trở -> anode LED xanh
-cathode LED xanh -> GND
-
-GPIO 25 -> điện trở -> anode LED đỏ
-cathode LED đỏ -> GND
-```
-
-Logic hiện tại của code:
-
-- GPIO lên mức `HIGH` -> LED sáng
-- GPIO xuống mức `LOW` -> LED tắt
-
----
-
-### 6.4. Buzzer
-
-Nếu dùng **buzzer module active** thì nối đơn giản:
-
-```text
-Buzzer VCC    -> 3.3V hoặc 5V tùy module
-Buzzer GND    -> GND
-Buzzer Signal -> GPIO 27
-```
-
-Lưu ý:
-
-- Firmware hiện tại chỉ bật/tắt buzzer bằng `digitalWrite`, nên **buzzer active** sẽ dễ dùng nhất.
-- Nếu bạn dùng buzzer rời công suất lớn hoặc module cần dòng cao, nên qua transistor thay vì kéo trực tiếp từ GPIO.
-
----
-
-### 6.5. Cảm biến người đến gần
-
-Firmware đang đọc cảm biến này ở `GPIO 34`.
-
-```text
-Sensor VCC -> 3.3V hoặc mức an toàn cho module
-Sensor GND -> GND
-Sensor OUT -> GPIO 34
-```
-
-Lưu ý:
-
-- GPIO 34 là **input-only**.
-- GPIO 34 **không có pull-up nội**, nên cảm biến phải có đầu ra digital ổn định.
-- Nếu module xuất mức 5V ở chân OUT thì **không nối trực tiếp** vào ESP32.
-
----
-
-### 6.6. Cảm biến siêu âm phát hiện người vi phạm
-
-Cảm biến này dùng để phát hiện người cố vượt/nhảy qua khi **cửa đang đóng** và chưa được xác nhận bằng RFID/nút mở cửa.
-
-Cách đặt cảm biến:
-
-```text
-Thành cửa trái                         Thành cửa phải
-┌─────────────┐                       ┌─────────────┐
-│             │  sóng siêu âm ngang   │             │
-│  Ultrasonic ├──────────────────────>│ mặt phản xạ │
-│             │                       │ hoặc thành  │
-└─────────────┘                       └─────────────┘
-```
-
-Ý tưởng hoạt động:
-
-- Khi cửa đóng và không có người cắt ngang, cảm biến đo được khoảng cách nền giữa 2 thành cửa.
-- Khi có người cố nhảy/vượt qua giữa 2 thành cửa, khoảng cách đo được sẽ ngắn hơn rõ rệt.
-- Nếu servo đang ở trạng thái khóa/cửa đang đóng mà cảm biến phát hiện vật cản trong vùng này, hệ thống gửi cảnh báo `INTRUSION_DETECTED`.
-
-Mapping đề xuất cho cảm biến siêu âm:
-
-```text
-Ultrasonic VCC  -> 3.3V nếu dùng HC-SR04P, hoặc theo nguồn yêu cầu của module
-Ultrasonic GND  -> GND chung
-Ultrasonic TRIG -> ESP32 GPIO 14
-Ultrasonic ECHO -> ESP32 GPIO 35
-```
-
-Nếu dùng module HC-SR04 loại thường cấp 5V, chân `ECHO` thường trả ra 5V. ESP32 **không chịu được 5V ở GPIO**, nên phải chia áp trước khi đưa vào GPIO 35:
-
-```text
-ECHO module -> điện trở 1kΩ -> GPIO 35
-GPIO 35     -> điện trở 2kΩ -> GND
-```
-
-Lưu ý quan trọng:
-
-- GPIO 35 là **input-only**, phù hợp để đọc `ECHO` nhưng không dùng làm `TRIG` được.
-- `TRIG` cần chân output, nên dùng GPIO 14.
-- Firmware hiện tại vẫn đang có `kGateTopIrPin = 35` cho cảm biến digital cũ. Muốn dùng cảm biến siêu âm đúng như thiết kế này thì cần sửa firmware sang kiểu `TRIG/ECHO` trước khi test hoàn chỉnh.
-- Nên lọc nhiều lần đo liên tiếp để tránh báo động giả do nhiễu hoặc servo rung.
-
----
-
-### 6.7. Nút mở từ bên trong
-
-Firmware dùng `INPUT_PULLUP`, vì vậy cách nối đúng là:
-
-```text
-1 chân nút -> GPIO 33
-1 chân nút -> GND
-```
-
-Khi nhấn nút:
-
-- tín hiệu sẽ xuống `LOW`
-- firmware hiểu là **đã nhấn nút mở cửa**
-
-Không cần điện trở kéo ngoài nếu bạn giữ đúng cách nối này.
-
----
-
-### 6.8. Cảm biến cửa
-
-Firmware đang dùng `GPIO 32` với `INPUT_PULLUP`.
-
-Cách nối đơn giản nhất:
-
-```text
-1 chân cảm biến cửa -> GPIO 32
-1 chân còn lại      -> GND
-```
-
-Bạn có thể dùng:
-
-- reed switch
-- công tắc hành trình
-- công tắc từ cửa
-
-Lưu ý:
-
-- Code hiện tại đang coi `LOW` là trạng thái cửa đang mở.
-- Nếu phần cứng của bạn cho logic ngược lại, cần đảo logic trong firmware.
-
----
-
-## 7. Logic tín hiệu mà firmware đang kỳ vọng
-
-Đây là phần rất quan trọng khi bạn lắp mạch:
-
-| Khối | Logic hiện tại |
-|---|---|
-| LED xanh | `HIGH` là sáng |
-| LED đỏ | `HIGH` là sáng |
-| Nút mở cửa | `LOW` là đang nhấn |
-| Cảm biến cửa | `LOW` là cửa mở |
-| Cảm biến người đến gần IR | mặc định `LOW` là đang kích hoạt |
-| Cảm biến siêu âm vi phạm | khoảng cách đo được nhỏ hơn ngưỡng khi cửa đóng thì xem là có người cắt ngang |
-
-Phần IR người đến gần đang cấu hình theo kiểu **active LOW** trong firmware. Nếu module IR của bạn hoạt động theo kiểu ngược lại, cần đổi cờ `kIrActiveLow` trong [../include/pins/main_controller_pins.h](../include/pins/main_controller_pins.h).
-
-Phần siêu âm cần logic firmware riêng:
-
-1. phát xung `TRIG`
-2. đo thời gian phản hồi ở `ECHO`
-3. tính khoảng cách
-4. so với khoảng cách nền khi cửa đóng
-5. chỉ báo vi phạm nếu cửa/servo đang đóng và chưa có lượt mở hợp lệ
-
----
-
-## 8. Lưu ý nguồn điện để tránh cháy hoặc reset board
-
-### Bắt buộc
-
-- Tất cả các khối phải **nối chung GND**.
-- RC522 chỉ dùng **3.3V**.
-- Không đưa **5V logic** vào các GPIO của ESP32.
-- Servo nên dùng **nguồn 5V riêng**, nhưng vẫn phải nối chung mass với ESP32.
-
-### Khuyến nghị thực tế
-
-- Nếu servo kéo chốt cơ khí nặng, hãy dùng nguồn 5V đủ dòng.
-- Đừng cấp mọi thứ qua dây USB yếu nếu thấy servo làm ESP32 reset.
-- Nên test từng khối trước khi ghép toàn hệ thống.
-
----
-
-## 9. Cách lắp nhanh trên breadboard
-
-Nếu bạn đang làm bản demo trước, có thể đi theo layout này:
-
-### Thanh nguồn
-
-- 1 thanh GND chung cho toàn bộ mạch.
-- 1 thanh 3.3V cho RC522.
-- 1 nhánh 5V riêng cho servo.
-
-### Cắm theo cụm
-
-- Cụm 1: ESP32 + LED + buzzer
-- Cụm 2: RC522 gần ESP32 để dây SPI ngắn
-- Cụm 3: nút nhấn + cảm biến cửa
-- Cụm 4: cảm biến người đến gần
-- Cụm 5: cảm biến siêu âm đặt ngang giữa 2 thành cửa
-- Cụm 6: servo đặt gần cơ cấu khóa
-
-Mẹo:
-
-- Dây SPI của RC522 nên ngắn và chắc.
-- Dây servo nguồn nên đủ tốt, không quá lỏng.
-- Khi test cảm biến người đến gần, chỉnh biến trở trên module để ra mức digital ổn định.
-- Khi test cảm biến siêu âm, đo khoảng cách nền lúc cửa đóng trước rồi mới chọn ngưỡng cảnh báo.
-
----
-
-## 10. ESP32-CAM cần lắp như thế nào
-
-ESP32-CAM là node riêng, **không nối GPIO sang ESP32 main**.
-
-Bạn chỉ cần quan tâm 2 việc:
-
-1. **Cấp nguồn ổn định**
-2. **Nạp code qua USB-TTL**
+## 6. ESP32-CAM
 
 ### Nối tối thiểu để nạp code
 
@@ -429,96 +123,101 @@ USB-TTL 5V  -> ESP32-CAM 5V
 USB-TTL GND -> ESP32-CAM GND
 USB-TTL TX  -> ESP32-CAM U0R
 USB-TTL RX  -> ESP32-CAM U0T
-IO0 -> GND khi vào chế độ flash
+IO0         -> GND khi vào chế độ flash
 ```
 
 Sau khi nạp xong:
 
 - tháo `IO0` khỏi GND
 - reset board
-- cấp nguồn ổn định để camera chạy
-
-### Mapping camera trong firmware
-
-Pin map camera đang bám theo board **AI Thinker ESP32-CAM** tại [../include/pins/camera_pins.h](../include/pins/camera_pins.h).
+- cấp nguồn 5V ổn định để camera chạy
 
 ---
 
-## 11. Trình tự test sau khi lắp xong
+## 7. File firmware hiện dùng
+
+| Board | File |
+|---|---|
+| ESP32 main | [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino) |
+| ESP32-CAM | [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino) |
+
+### 7.1. Nạp ESP32 main
+
+1. Mở [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino).
+2. Cài thư viện `ESP32Servo`.
+3. Chọn board `ESP32 Dev Module`.
+4. Nạp code.
+5. Mở Serial Monitor `115200`, chọn line ending `Newline`.
+6. Gửi lệnh test:
+
+| Lệnh | Tác dụng |
+|---|---|
+| `grant`, `1`, `d` | Bật LED đúng, mở servo 3 giây rồi khóa lại |
+| `deny`, `0`, `s` | Bật LED sai trong thời gian ngắn |
+| `lock` | Đưa servo về góc khóa |
+| `idle` | Tắt cả 2 LED |
+| `help` | In hướng dẫn |
+
+### 7.2. Nạp ESP32-CAM
+
+1. Mở [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino).
+2. Sửa các hằng số Wi‑Fi/backend ở đầu file nếu cần.
+3. Chọn board `AI Thinker ESP32-CAM`.
+4. Nối `IO0` xuống GND khi nạp.
+5. Nạp code, tháo `IO0` khỏi GND và reset.
+6. Mở Serial Monitor `115200` để kiểm tra camera.
+
+---
+
+## 8. Trình tự test sau khi lắp
 
 ### Bước 1: Test nguồn
 
-- [ ] ESP32 lên nguồn ổn định
-- [ ] Không có linh kiện nào nóng bất thường
-- [ ] Servo chưa chạy nhưng không làm sụt áp mạch
+- [ ] ESP32 main lên nguồn ổn định
+- [ ] ESP32-CAM lên nguồn ổn định
+- [ ] Servo có nguồn 5V riêng và GND chung với ESP32
 
-### Bước 2: Test LED và buzzer
+### Bước 2: Test LED
 
-- [ ] LED xanh sáng đúng
-- [ ] LED đỏ sáng đúng
-- [ ] Buzzer kêu được
+- [ ] Gửi `grant`, LED đúng sáng
+- [ ] Gửi `deny`, LED sai sáng
+- [ ] Gửi `idle`, cả 2 LED tắt
 
 ### Bước 3: Test servo
 
-- [ ] Servo về vị trí khóa
-- [ ] Servo quay được sang góc mở
+- [ ] Gửi `grant`, servo quay sang góc mở
+- [ ] Sau khoảng 3 giây, servo tự quay về góc khóa
 - [ ] Khi servo quay, ESP32 không bị reset
 
-### Bước 4: Test RC522
-
-- [ ] RC522 nhận thẻ
-- [ ] Serial in ra UID thẻ
-
-### Bước 5: Test nút và cảm biến
-
-- [ ] Nhấn nút trong nhà thì mở cửa
-- [ ] Cảm biến cửa đổi trạng thái đúng
-- [ ] Cảm biến người đến gần đổi trạng thái đúng
-- [ ] Đo được khoảng cách nền của cảm biến siêu âm khi cửa đang đóng
-- [ ] Khi có người cắt ngang giữa 2 thành cửa thì khoảng cách giảm rõ rệt
-- [ ] Không báo vi phạm trong lúc servo đang mở cửa hợp lệ
-- [ ] Chỉ báo vi phạm khi cửa đang đóng và có người cố vượt qua
-
-### Bước 6: Test ESP32-CAM
+### Bước 4: Test ESP32-CAM
 
 - [ ] Camera khởi tạo thành công
 - [ ] Chụp ảnh được
-- [ ] Upload ảnh được qua Wi‑Fi
+- [ ] Upload ảnh/event được nếu backend đang chạy và cấu hình đúng
 
 ---
 
-## 12. File firmware liên quan để đối chiếu khi debug
+## 9. File dùng để debug
 
-Nếu lắp xong nhưng phần cứng chạy chưa đúng, đối chiếu các file sau:
-
-- Mapping chân: [../include/pins/main_controller_pins.h](../include/pins/main_controller_pins.h)
-- Khởi tạo cảm biến: [../src/main_controller/sensors.cpp](../src/main_controller/sensors.cpp)
-- Điều khiển servo: [../src/main_controller/gate_control.cpp](../src/main_controller/gate_control.cpp)
-- LED và buzzer: [../src/main_controller/indicators.cpp](../src/main_controller/indicators.cpp)
-- Nút mở cửa: [../src/main_controller/exit_button.cpp](../src/main_controller/exit_button.cpp)
-- Entry point mạch chính: [../src/main_controller/main.cpp](../src/main_controller/main.cpp)
+- Firmware ESP32 main: [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino)
+- Firmware ESP32-CAM: [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino)
+- Build config: [../platformio.ini](../platformio.ini)
 
 ---
 
-## 13. Kết luận
+## 10. Kết luận
 
-Nếu bạn muốn bắt đầu demo nhanh, hãy lắp theo đúng thứ tự này:
+Bản hiện tại chỉ cần lắp đúng 3 chân trên ESP32 main:
 
-1. ESP32 main + LED + buzzer
-2. Servo
-3. RC522
-4. Nút mở cửa + cảm biến cửa
-5. Cảm biến người đến gần
-6. Cảm biến siêu âm đặt ngang giữa 2 thành cửa
-7. ESP32-CAM
+```text
+GPIO21 -> LED đúng
+GPIO19 -> LED sai
+GPIO22 -> Servo signal
+```
 
-Phần dễ sai nhất khi lắp thực tế là:
+Sau đó nạp:
 
-- cấp nhầm **5V cho RC522**
-- **quên nối GND chung** giữa servo và ESP32
-- dùng cảm biến xuất **5V logic** nối thẳng vào GPIO ESP32
-- đấu nút/cảm biến cửa sai kiểu so với `INPUT_PULLUP`
-- lấy chân `ECHO` 5V của cảm biến siêu âm nối thẳng vào ESP32
-- quên rằng firmware hiện tại vẫn đang là kiểu cảm biến digital cũ, chưa đọc `TRIG/ECHO`
+- [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino)
+- [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino)
 
-Làm đúng các điểm trên thì bạn sẽ vào giai đoạn test firmware nhanh hơn rất nhiều.
+Toàn bộ firmware active hiện đã được gom trực tiếp vào `src/`.
