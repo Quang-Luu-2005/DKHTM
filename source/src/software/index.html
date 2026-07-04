@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-CAM Preview</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Software preview</p>
+        <h1>ESP32-CAM Live View</h1>
+        <p class="subtext">
+          Nhập địa chỉ IP của ESP32-CAM để xem live stream, kiểm tra trạng thái và chụp snapshot.
+        </p>
+      </div>
+      <div class="status-card">
+        <span class="status-label">Trạng thái</span>
+        <strong id="statusText">Chưa kiểm tra</strong>
+        <small id="statusHint">Đảm bảo máy tính và ESP32-CAM cùng Wi‑Fi.</small>
+      </div>
+    </header>
+
+    <section class="panel controls">
+      <label for="baseUrl">Địa chỉ ESP32-CAM</label>
+      <div class="control-row">
+        <input id="baseUrl" type="text" placeholder="http://192.168.1.50" />
+        <button id="saveBtn" type="button">Lưu</button>
+        <button id="statusBtn" type="button">Check Status</button>
+      </div>
+      <p class="helper">Ví dụ: <code>http://192.168.1.50</code></p>
+    </section>
+
+    <section class="grid">
+      <article class="panel viewer-panel">
+        <div class="panel-header">
+          <h2>Live stream</h2>
+          <div class="button-group">
+            <button id="startStreamBtn" type="button">Start Stream</button>
+            <button id="stopStreamBtn" type="button" class="secondary">Stop Stream</button>
+          </div>
+        </div>
+        <div class="viewer">
+          <img id="streamView" alt="Live stream từ ESP32-CAM" />
+          <div id="streamPlaceholder" class="placeholder">
+            Chưa bật stream. Bấm <strong>Start Stream</strong> để xem camera.
+          </div>
+        </div>
+      </article>
+
+      <article class="panel viewer-panel">
+        <div class="panel-header">
+          <h2>Snapshot</h2>
+          <div class="button-group">
+            <button id="snapshotBtn" type="button">Take Snapshot</button>
+          </div>
+        </div>
+        <div class="viewer snapshot-viewer">
+          <img id="snapshotView" alt="Snapshot mới nhất từ ESP32-CAM" />
+          <div id="snapshotPlaceholder" class="placeholder">
+            Chưa có snapshot. Bấm <strong>Take Snapshot</strong> để chụp thử.
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel endpoints">
+      <h2>Endpoint nhanh</h2>
+      <ul>
+        <li><code>/status</code> — trạng thái camera và Wi‑Fi</li>
+        <li><code>/stream</code> — live stream MJPEG</li>
+        <li><code>/capture</code> — trả về 1 ảnh JPEG</li>
+      </ul>
+      <p class="helper">
+        Bạn có thể mở file này trực tiếp trong trình duyệt hoặc dùng VS Code Live Server nếu muốn.
+      </p>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

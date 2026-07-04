@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <WiFi.h>
 #include "esp_camera.h"
 
@@ -11,10 +12,14 @@ constexpr char kDeviceSecret[] = "demo-secret";
 constexpr char kEsp32CamDeviceId[] = "ESP32CAM_001";
 constexpr char kDoorId[] = "GATE_01";
 
+// Keep false when you only want local preview via src/software/index.html.
+constexpr bool kEnableBackendUpload = false;
+
 constexpr unsigned long kWifiRetryDelayMs = 500UL;
 constexpr int kWifiMaxRetries = 30;
 constexpr unsigned long kHttpTimeoutMs = 5000UL;
 constexpr unsigned long kSnapshotIntervalMs = 10000UL;
+constexpr unsigned long kStreamFrameDelayMs = 120UL;
 constexpr uint8_t kFlashLedPin = 4;
 constexpr unsigned long kFlashWarmupMs = 150UL;
 
@@ -36,6 +41,7 @@ constexpr unsigned long kFlashWarmupMs = 150UL;
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+WebServer webServer(80);
 unsigned long lastSnapshotTime = 0;
 bool cameraReady = false;
 
@@ -71,7 +77,23 @@ bool connectWiFi() {
   return false;
 }
 
+void sendCorsHeaders() {
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  webServer.sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  webServer.sendHeader("Access-Control-Allow-Headers", "*");
+}
+
+void handleOptions() {
+  sendCorsHeaders();
+  webServer.send(204, "text/plain", "");
+}
+
 int postJsonToBackend(const String& path, const String& body) {
+  if (!kEnableBackendUpload) {
+    Serial.println("Backend upload disabled. Skip JSON request.");
+    return 0;
+  }
+
   if (!connectWiFi()) {
     Serial.println("WiFi not connected. Skip JSON request.");
     return -1;
@@ -96,6 +118,11 @@ int postJsonToBackend(const String& path, const String& body) {
 }
 
 int postJpegToBackend(const String& pathAndQuery, uint8_t* payload, size_t payloadLength) {
+  if (!kEnableBackendUpload) {
+    Serial.println("Backend upload disabled. Skip JPEG request.");
+    return 0;
+  }
+
   if (!connectWiFi()) {
     Serial.println("WiFi not connected. Skip JPEG request.");
     return -1;
@@ -218,12 +245,128 @@ bool uploadSnapshot() {
   return false;
 }
 
+void handleRoot() {
+  sendCorsHeaders();
+  webServer.send(
+    200,
+    "text/plain",
+    "ESP32-CAM preview server\n"
+    "Endpoints:\n"
+    "  /status  - JSON status\n"
+    "  /capture - JPEG snapshot\n"
+    "  /stream  - MJPEG live stream\n"
+  );
+}
+
+void handleStatus() {
+  sendCorsHeaders();
+  webServer.sendHeader("Cache-Control", "no-store");
+
+  String body = "{";
+  body += "\"deviceId\":\"" + String(kEsp32CamDeviceId) + "\",";
+  body += "\"doorId\":\"" + String(kDoorId) + "\",";
+  body += "\"wifiConnected\":" + String(isWiFiConnected() ? "true" : "false") + ",";
+  body += "\"cameraReady\":" + String(cameraReady ? "true" : "false") + ",";
+  body += "\"backendUploadEnabled\":" + String(kEnableBackendUpload ? "true" : "false") + ",";
+  body += "\"ip\":\"" + WiFi.localIP().toString() + "\"";
+  body += "}";
+
+  webServer.send(200, "application/json", body);
+}
+
+void handleCapture() {
+  if (!cameraReady) {
+    sendCorsHeaders();
+    webServer.send(503, "text/plain", "Camera is not ready");
+    return;
+  }
+
+  camera_fb_t* frame = captureCameraFrame();
+  if (frame == nullptr) {
+    sendCorsHeaders();
+    webServer.send(500, "text/plain", "Camera capture failed");
+    return;
+  }
+
+  WiFiClient client = webServer.client();
+  sendCorsHeaders();
+  webServer.sendHeader("Cache-Control", "no-store");
+  webServer.setContentLength(frame->len);
+  webServer.send(200, "image/jpeg", "");
+  client.write(frame->buf, frame->len);
+  esp_camera_fb_return(frame);
+}
+
+void handleStream() {
+  if (!cameraReady) {
+    sendCorsHeaders();
+    webServer.send(503, "text/plain", "Camera is not ready");
+    return;
+  }
+
+  WiFiClient client = webServer.client();
+
+  client.println("HTTP/1.1 200 OK");
+  client.println("Access-Control-Allow-Origin: *");
+  client.println("Cache-Control: no-store");
+  client.println("Connection: close");
+  client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
+  client.println();
+
+  while (client.connected()) {
+    camera_fb_t* frame = captureCameraFrame();
+    if (frame == nullptr) {
+      break;
+    }
+
+    client.println("--frame");
+    client.println("Content-Type: image/jpeg");
+    client.print("Content-Length: ");
+    client.println(frame->len);
+    client.println();
+    client.write(frame->buf, frame->len);
+    client.println();
+
+    esp_camera_fb_return(frame);
+    delay(kStreamFrameDelayMs);
+  }
+}
+
+void handleNotFound() {
+  sendCorsHeaders();
+  webServer.send(404, "text/plain", "Not found");
+}
+
+void startPreviewServer() {
+  webServer.on("/", HTTP_GET, handleRoot);
+  webServer.on("/status", HTTP_GET, handleStatus);
+  webServer.on("/capture", HTTP_GET, handleCapture);
+  webServer.on("/stream", HTTP_GET, handleStream);
+
+  webServer.on("/", HTTP_OPTIONS, handleOptions);
+  webServer.on("/status", HTTP_OPTIONS, handleOptions);
+  webServer.on("/capture", HTTP_OPTIONS, handleOptions);
+  webServer.on("/stream", HTTP_OPTIONS, handleOptions);
+
+  webServer.onNotFound(handleNotFound);
+  webServer.begin();
+
+  Serial.println("Preview server started.");
+  Serial.print("Open web preview with: http://");
+  Serial.println(WiFi.localIP());
+  Serial.println("Or open src/software/index.html and enter that URL.");
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  connectWiFi();
+  bool wifiReady = connectWiFi();
   cameraReady = initCameraHardware();
+
+  if (wifiReady) {
+    startPreviewServer();
+  }
 
   if (cameraReady) {
     sendCameraEvent("CAMERA_ONLINE", "ESP32-CAM is online");
@@ -237,18 +380,22 @@ void loop() {
     connectWiFi();
   }
 
-  unsigned long now = millis();
-  if (now - lastSnapshotTime >= kSnapshotIntervalMs) {
-    lastSnapshotTime = now;
+  webServer.handleClient();
 
-    if (!cameraReady) {
-      Serial.println("Camera is not ready. Skip snapshot.");
-      sendCameraEvent("CAMERA_ERROR", "Camera is not ready");
-    } else {
-      sendCameraEvent("PERSON_CHECK", "Camera checking gate area");
-      uploadSnapshot();
+  if (kEnableBackendUpload) {
+    unsigned long now = millis();
+    if (now - lastSnapshotTime >= kSnapshotIntervalMs) {
+      lastSnapshotTime = now;
+
+      if (!cameraReady) {
+        Serial.println("Camera is not ready. Skip snapshot.");
+        sendCameraEvent("CAMERA_ERROR", "Camera is not ready");
+      } else {
+        sendCameraEvent("PERSON_CHECK", "Camera checking gate area");
+        uploadSnapshot();
+      }
     }
   }
 
-  delay(200);
+  delay(10);
 }

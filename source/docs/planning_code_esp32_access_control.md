@@ -1,9 +1,14 @@
 # Hướng dẫn lắp mạch bản demo tối giản
 
-> Bản hiện tại chỉ giữ firmware trực tiếp trong `src/`, không còn tách module cũ hay thư mục `arduino/` riêng. Có 2 file firmware chính:
+> Repo hiện tách `src` thành 2 phần:
 >
-> - [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino)
-> - [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino)
+> - [../src/hardware/](../src/hardware/) — code Arduino/ESP32.
+> - [../src/software/](../src/software/) — web tĩnh để xem ESP32-CAM.
+>
+> Firmware chính:
+>
+> - [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino)
+> - [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino)
 
 ---
 
@@ -19,14 +24,16 @@ Hệ thống hiện chia làm **2 node độc lập**:
 
 2. **ESP32-CAM**
    - Chụp ảnh khu vực cổng.
-   - Gửi ảnh/event lên backend qua Wi‑Fi nếu đã cấu hình.
+   - Mở web server để xem live stream và snapshot.
+   - Có thể upload ảnh/event lên backend nếu bật cấu hình upload.
 
 ### Điểm quan trọng
 
 - ESP32 main và ESP32-CAM **không cần nối GPIO trực tiếp với nhau**.
 - Hai board chạy độc lập.
 - ESP32 main lo phần cứng cửa/đèn.
-- ESP32-CAM lo camera và upload ảnh.
+- ESP32-CAM lo camera và web preview.
+- Máy mở web preview và ESP32-CAM phải cùng mạng Wi‑Fi.
 
 ---
 
@@ -82,7 +89,7 @@ ESP32 main controller
 └── Servo     -> GPIO22
 
 ESP32-CAM
-└── Chụp ảnh và gửi backend qua Wi‑Fi
+└── Camera + web preview qua Wi‑Fi
 ```
 
 ---
@@ -131,19 +138,21 @@ Sau khi nạp xong:
 - tháo `IO0` khỏi GND
 - reset board
 - cấp nguồn 5V ổn định để camera chạy
+- mở Serial Monitor `115200` để lấy IP
 
 ---
 
-## 7. File firmware hiện dùng
+## 7. File firmware và web hiện dùng
 
-| Board | File |
+| Phần | File |
 |---|---|
-| ESP32 main | [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino) |
-| ESP32-CAM | [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino) |
+| ESP32 main | [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino) |
+| ESP32-CAM | [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino) |
+| Web preview | [../src/software/index.html](../src/software/index.html) |
 
 ### 7.1. Nạp ESP32 main
 
-1. Mở [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino).
+1. Mở [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino).
 2. Cài thư viện `ESP32Servo`.
 3. Chọn board `ESP32 Dev Module`.
 4. Nạp code.
@@ -160,12 +169,31 @@ Sau khi nạp xong:
 
 ### 7.2. Nạp ESP32-CAM
 
-1. Mở [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino).
-2. Sửa các hằng số Wi‑Fi/backend ở đầu file nếu cần.
+1. Mở [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino).
+2. Sửa Wi‑Fi ở đầu file:
+   - `kWifiSsid`
+   - `kWifiPass`
 3. Chọn board `AI Thinker ESP32-CAM`.
 4. Nối `IO0` xuống GND khi nạp.
 5. Nạp code, tháo `IO0` khỏi GND và reset.
-6. Mở Serial Monitor `115200` để kiểm tra camera.
+6. Mở Serial Monitor `115200` để xem IP.
+
+### 7.3. Xem camera bằng web preview
+
+1. Mở [../src/software/index.html](../src/software/index.html) bằng trình duyệt.
+2. Nhập địa chỉ ESP32-CAM dạng `http://192.168.x.x`.
+3. Bấm **Check Status** để kiểm tra `/status`.
+4. Bấm **Start Stream** để xem live stream `/stream`.
+5. Bấm **Take Snapshot** để chụp ảnh `/capture`.
+6. Bấm **Stop Stream** để dừng stream.
+
+Các endpoint ESP32-CAM cung cấp:
+
+| Endpoint | Tác dụng |
+|---|---|
+| `/status` | Trả trạng thái Wi‑Fi/camera |
+| `/capture` | Chụp và trả về một ảnh JPEG |
+| `/stream` | Live stream MJPEG |
 
 ---
 
@@ -191,16 +219,19 @@ Sau khi nạp xong:
 
 ### Bước 4: Test ESP32-CAM
 
-- [ ] Camera khởi tạo thành công
-- [ ] Chụp ảnh được
-- [ ] Upload ảnh/event được nếu backend đang chạy và cấu hình đúng
+- [ ] Serial báo `Camera initialized.`
+- [ ] Serial báo IP ESP32-CAM
+- [ ] Web preview gọi được `/status`
+- [ ] Web preview xem được `/capture`
+- [ ] Web preview xem được `/stream`
 
 ---
 
 ## 9. File dùng để debug
 
-- Firmware ESP32 main: [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino)
-- Firmware ESP32-CAM: [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino)
+- Firmware ESP32 main: [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino)
+- Firmware ESP32-CAM: [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino)
+- Web preview: [../src/software/index.html](../src/software/index.html)
 - Build config: [../platformio.ini](../platformio.ini)
 
 ---
@@ -215,9 +246,4 @@ GPIO19 -> LED sai
 GPIO22 -> Servo signal
 ```
 
-Sau đó nạp:
-
-- [../src/main_controller/main_controller.ino](../src/main_controller/main_controller.ino)
-- [../src/esp32cam_node/esp32cam_node.ino](../src/esp32cam_node/esp32cam_node.ino)
-
-Toàn bộ firmware active hiện đã được gom trực tiếp vào `src/`.
+Firmware Arduino nằm trong [../src/hardware/](../src/hardware/), còn web xem camera nằm trong [../src/software/](../src/software/).
