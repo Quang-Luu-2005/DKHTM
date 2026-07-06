@@ -30,12 +30,13 @@ constexpr unsigned long kWifiRetryDelayMs = 500UL;
 constexpr int kWifiMaxRetries = 30;
 constexpr unsigned long kHttpTimeoutMs = 5000UL;
 constexpr unsigned long kSnapshotIntervalMs = 10000UL;
-constexpr unsigned long kStreamFrameDelayMs = 120UL;
+constexpr unsigned long kStreamFrameDelayMs = 10UL;
 constexpr bool kUseFlashLed = false;
 constexpr uint8_t kFlashLedPin = 4;
 constexpr unsigned long kFlashWarmupMs = 150UL;
 
 constexpr uint8_t kFaceJpegQuality = 90;
+constexpr uint8_t kStreamDetectJpegQuality = 72;
 constexpr size_t kMaxFaceBoxesInJson = 5;
 constexpr size_t kMaxEnrollNameLength = 24;
 constexpr float kFaceRecognitionThreshold = 0.55F;
@@ -67,6 +68,8 @@ constexpr int kFaceKeypointTopK = 5;
 
 WebServer webServer(80);
 FaceRecognition112V1S8 recognizer;
+HumanFaceDetectMSR01* faceDetectorStageOne = nullptr;
+HumanFaceDetectMNP01* faceDetectorStageTwo = nullptr;
 
 unsigned long lastSnapshotTime = 0;
 bool cameraReady = false;
@@ -169,6 +172,21 @@ bool queryFlag(const char* name, bool defaultValue = false) {
   return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+int queryInt(const char* name, int defaultValue, int minValue, int maxValue) {
+  if (!webServer.hasArg(name)) {
+    return defaultValue;
+  }
+
+  int value = webServer.arg(name).toInt();
+  if (value < minValue) {
+    return minValue;
+  }
+  if (value > maxValue) {
+    return maxValue;
+  }
+  return value;
+}
+
 String faceRecognitionMode() {
   return "snapshot/manual";
 }
@@ -229,6 +247,12 @@ String buildStatusJson() {
   body += ",\"faceBusy\":";
   body += faceBusy ? "true" : "false";
   body += ",\"enrolledCount\":" + String(faceRecognitionAvailable ? recognizer.get_enrolled_id_num() : 0);
+  body += ",\"streamFrameDelayMs\":" + String(kStreamFrameDelayMs);
+  body += ",\"streamDetectJpegQuality\":" + String(kStreamDetectJpegQuality);
+  body += ",\"streamFastMode\":true";
+  body += ",\"streamDetectEverySupported\":true";
+  body += ",\"streamQualitySupported\":true";
+  body += ",\"streamDelaySupported\":true";
   body += ",\"psramFound\":";
   body += psramFound() ? "true" : "false";
   body += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
@@ -427,6 +451,25 @@ void setupFaceEngine() {
     return;
   }
 
+  faceDetectorStageOne = new HumanFaceDetectMSR01(
+    kFaceDetectScoreThreshold,
+    kFaceDetectNmsThreshold,
+    kFaceDetectTopK,
+    kFaceDetectResizeScale
+  );
+  faceDetectorStageTwo = new HumanFaceDetectMNP01(
+    kFaceKeypointScoreThreshold,
+    kFaceKeypointNmsThreshold,
+    kFaceKeypointTopK
+  );
+
+  if (faceDetectorStageOne == nullptr || faceDetectorStageTwo == nullptr) {
+    faceDetectionAvailable = false;
+    faceEngineMessage = "Không đủ bộ nhớ để khởi tạo detector model.";
+    updateLastFaceResult(buildSimpleFaceResultJson(false, "init", faceEngineMessage));
+    return;
+  }
+
   recognizer.set_thresh(kFaceRecognitionThreshold);
   if (recognizer.set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr") != 1) {
     faceEngineMessage = "Face recognition partition 'fr' is unavailable.";
@@ -596,7 +639,7 @@ String buildFaceResultJson(const String& action, const FaceProcessingOutcome& ou
   return body;
 }
 
-bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& options, FaceProcessingOutcome& outcome) {
+bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& options, FaceProcessingOutcome& outcome, uint8_t jpegQuality = kFaceJpegQuality) {
   if (frame == nullptr) {
     outcome.error = "Camera frame is null.";
     return false;
@@ -645,21 +688,16 @@ bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& option
   rgbFrame.format = FB_BGR888;
   rgbFrame.data = rgbBuffer;
 
-  HumanFaceDetectMSR01 detectorStageOne(
-    kFaceDetectScoreThreshold,
-    kFaceDetectNmsThreshold,
-    kFaceDetectTopK,
-    kFaceDetectResizeScale
-  );
-  HumanFaceDetectMNP01 detectorStageTwo(
-    kFaceKeypointScoreThreshold,
-    kFaceKeypointNmsThreshold,
-    kFaceKeypointTopK
-  );
+  if (faceDetectorStageOne == nullptr || faceDetectorStageTwo == nullptr) {
+    free(rgbBuffer);
+    outcome.ok = false;
+    outcome.error = "Face detector model is not initialized.";
+    return false;
+  }
 
   std::vector<int> shape = {outcome.height, outcome.width, 3};
-  std::list<dl::detect::result_t>& candidates = detectorStageOne.infer(rgbBuffer, shape);
-  std::list<dl::detect::result_t>& results = detectorStageTwo.infer(rgbBuffer, shape, candidates);
+  std::list<dl::detect::result_t>& candidates = faceDetectorStageOne->infer(rgbBuffer, shape);
+  std::list<dl::detect::result_t>& results = faceDetectorStageTwo->infer(rgbBuffer, shape, candidates);
 
   outcome.faceCount = static_cast<int>(results.size());
   outcome.detected = outcome.faceCount > 0;
@@ -738,7 +776,7 @@ bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& option
 
   outcome.facesJson = buildFacesJson(results, outcome);
 
-  if (!fmt2jpg(rgbBuffer, rgbLength, outcome.width, outcome.height, PIXFORMAT_RGB888, kFaceJpegQuality, &outcome.jpegBuffer, &outcome.jpegLength)) {
+  if (!fmt2jpg(rgbBuffer, rgbLength, outcome.width, outcome.height, PIXFORMAT_RGB888, jpegQuality, &outcome.jpegBuffer, &outcome.jpegLength)) {
     free(rgbBuffer);
     outcome.ok = false;
     outcome.error = "Failed to encode processed JPEG frame.";
@@ -769,8 +807,9 @@ void handleRoot() {
     "  /capture               - JPEG snapshot\n"
     "  /capture?detect=1      - snapshot with face boxes\n"
     "  /capture?detect=1&recognize=1 - snapshot with face recognition\n"
-    "  /stream                - MJPEG live stream\n"
-    "  /stream?detect=1       - MJPEG stream with face boxes\n"
+    "  /stream                - fast MJPEG live stream\n"
+    "  /stream?detect=1       - MJPEG stream with face boxes every frame\n"
+    "  /stream?detect=1&detectEvery=5 - balanced stream, detect every 5 frames\n"
     "  /face/last-result      - latest face metadata JSON\n"
     "  /face/enroll?name=...  - enroll one face from current frame\n"
     "  /face/ids              - list enrolled identities\n"
@@ -965,6 +1004,9 @@ void handleStream() {
   }
 
   const bool detect = queryFlag("detect", false);
+  const int detectEvery = queryInt("detectEvery", 1, 1, 30);
+  const int streamDelayMs = queryInt("delay", kStreamFrameDelayMs, 0, 250);
+  const int streamJpegQuality = queryInt("quality", kStreamDetectJpegQuality, 45, 95);
   if (detect && !faceDetectionAvailable) {
     sendCorsHeaders();
     webServer.send(503, "text/plain", faceEngineMessage);
@@ -980,7 +1022,10 @@ void handleStream() {
   client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
   client.println();
 
+  unsigned long frameIndex = 0;
+
   while (client.connected()) {
+    frameIndex++;
     camera_fb_t* frame = captureCameraFrame();
     if (frame == nullptr) {
       break;
@@ -990,14 +1035,16 @@ void handleStream() {
     size_t jpegLength = 0;
     bool freeBuffer = false;
 
-    if (detect) {
+    const bool shouldDetectThisFrame = detect && (((frameIndex - 1) % static_cast<unsigned long>(detectEvery)) == 0UL);
+
+    if (shouldDetectThisFrame) {
       FaceProcessingOptions options;
       options.detect = true;
       options.drawBoxes = true;
       options.action = "stream-detect";
 
       FaceProcessingOutcome outcome;
-      if (!processFrameForFace(frame, options, outcome)) {
+      if (!processFrameForFace(frame, options, outcome, static_cast<uint8_t>(streamJpegQuality))) {
         updateLastFaceResult(buildSimpleFaceResultJson(false, options.action, outcome.error));
         break;
       }
@@ -1019,17 +1066,13 @@ void handleStream() {
     client.write(jpegBuffer, jpegLength);
     client.println();
 
-    if (detect) {
+    if (freeBuffer) {
       free(const_cast<uint8_t*>(jpegBuffer));
     } else {
       esp_camera_fb_return(frame);
     }
 
-    delay(kStreamFrameDelayMs);
-
-    if (!freeBuffer && !client.connected()) {
-      break;
-    }
+    delay(streamDelayMs);
   }
 }
 

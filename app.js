@@ -1,7 +1,9 @@
 const baseUrlInput = document.getElementById('baseUrl');
 const saveBtn = document.getElementById('saveBtn');
 const statusBtn = document.getElementById('statusBtn');
+const fastStreamBtn = document.getElementById('fastStreamBtn');
 const startStreamBtn = document.getElementById('startStreamBtn');
+const streamEveryFrameBtn = document.getElementById('streamEveryFrameBtn');
 const stopStreamBtn = document.getElementById('stopStreamBtn');
 const snapshotBtn = document.getElementById('snapshotBtn');
 const recognizeSnapshotBtn = document.getElementById('recognizeSnapshotBtn');
@@ -155,21 +157,33 @@ async function checkStatus() {
   }
 }
 
-function startStream() {
+function openStream(path, statusHintText) {
   const baseUrl = getBaseUrl();
   if (!baseUrl) {
     setStatus('Thiếu địa chỉ', 'Hãy nhập URL dạng http://192.168.x.x', 'status-error');
     return;
   }
 
-  streamView.src = `${baseUrl}/stream?detect=1&t=${Date.now()}`;
+  streamView.src = `${baseUrl}${path}${path.includes('?') ? '&' : '?'}t=${Date.now()}`;
   showImage(streamView, streamPlaceholder);
-  setStatus('Đang mở live stream', 'ESP32-CAM sẽ cố gắng vẽ box khuôn mặt trực tiếp lên stream.', 'status-warn');
+  setStatus('Đang mở live stream', statusHintText, 'status-warn');
+}
+
+function startFastStream() {
+  openStream('/stream', 'Fast Stream không chạy detection nên FPS sẽ mượt nhất.');
+}
+
+function startStream() {
+  openStream('/stream?detect=1&detectEvery=5&quality=60&delay=0', 'Balanced mode: ESP32-CAM detect mỗi 5 frame, giảm JPEG quality và bỏ delay để đỡ giật hơn.');
+}
+
+function startEveryFrameStream() {
+  openStream('/stream?detect=1&detectEvery=1&quality=68&delay=0', 'Box Every Frame chạy detection từng frame, đã giảm delay nhưng vẫn nặng hơn Balanced/Fast Stream.');
 }
 
 function stopStream() {
   hideImage(streamView, streamPlaceholder);
-  setStatus('Đã dừng stream', 'Bạn có thể bấm Start Stream + Box để mở lại.', 'status-warn');
+  setStatus('Đã dừng stream', 'Bạn có thể bấm Fast Stream hoặc Stream + Box Balanced để mở lại.', 'status-warn');
 }
 
 async function refreshLatestFaceResult(fallbackTitle) {
@@ -259,7 +273,9 @@ function init() {
 
   saveBtn.addEventListener('click', saveBaseUrl);
   statusBtn.addEventListener('click', checkStatus);
+  fastStreamBtn.addEventListener('click', startFastStream);
   startStreamBtn.addEventListener('click', startStream);
+  streamEveryFrameBtn.addEventListener('click', startEveryFrameStream);
   stopStreamBtn.addEventListener('click', stopStream);
   snapshotBtn.addEventListener('click', takeSnapshot);
   recognizeSnapshotBtn.addEventListener('click', recognizeSnapshot);
@@ -268,7 +284,7 @@ function init() {
 
   streamView.addEventListener('error', () => {
     hideImage(streamView, streamPlaceholder);
-    setStatus('Stream lỗi', 'Không mở được /stream?detect=1. Kiểm tra lại IP hoặc firmware ESP32-CAM.', 'status-error');
+    setStatus('Stream lỗi', 'Không mở được mode stream đã chọn. Kiểm tra lại IP hoặc firmware ESP32-CAM.', 'status-error');
   });
 
   snapshotView.addEventListener('error', () => {

@@ -38,17 +38,19 @@
         <div class="panel-header">
           <div>
             <h2>Live stream</h2>
-            <p class="helper">Stream mặc định bật detection để ESP32-CAM vẽ box trực tiếp lên frame.</p>
+            <p class="helper">Fast Stream mượt nhất; Stream + Box Balanced detect mỗi vài frame, giảm JPEG quality và bỏ delay để đỡ giật.</p>
           </div>
           <div class="button-group">
-            <button id="startStreamBtn" type="button">Start Stream + Box</button>
+            <button id="fastStreamBtn" type="button">Fast Stream</button>
+            <button id="startStreamBtn" type="button">Stream + Box Balanced</button>
+            <button id="streamEveryFrameBtn" type="button" class="secondary">Box Every Frame</button>
             <button id="stopStreamBtn" type="button" class="secondary">Stop Stream</button>
           </div>
         </div>
         <div class="viewer">
           <img id="streamView" alt="Live stream từ ESP32-CAM" />
           <div id="streamPlaceholder" class="placeholder">
-            Chưa bật stream. Bấm <strong>Start Stream + Box</strong> để xem camera.
+            Chưa bật stream. Bấm <strong>Fast Stream</strong> để xem mượt nhất hoặc <strong>Stream + Box Balanced</strong> để vừa xem vừa detect.
           </div>
         </div>
       </article>
@@ -109,7 +111,9 @@
       <h2>Endpoint nhanh</h2>
       <ul>
         <li><code>/status</code> — trạng thái camera, Wi‑Fi, PSRAM và face engine</li>
-        <li><code>/stream?detect=1</code> — live stream MJPEG có box khuôn mặt</li>
+        <li><code>/stream</code> — fast stream MJPEG, không detect để FPS mượt nhất</li>
+        <li><code>/stream?detect=1&amp;detectEvery=5</code> — stream có box cân bằng tốc độ</li>
+        <li><code>/stream?detect=1&amp;detectEvery=1</code> — stream detect từng frame, chính xác hơn nhưng chậm hơn</li>
         <li><code>/capture?detect=1</code> — snapshot có box khuôn mặt</li>
         <li><code>/capture?detect=1&amp;recognize=1</code> — snapshot nhận diện manual</li>
         <li><code>/face/enroll?name=...</code> — đăng ký khuôn mặt từ frame hiện tại</li>

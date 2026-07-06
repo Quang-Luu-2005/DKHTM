@@ -191,11 +191,13 @@ Sau khi nạp xong:
 1. Mở [../../index.html](../../index.html) bằng trình duyệt.
 2. Nhập địa chỉ ESP32-CAM dạng `http://192.168.x.x`.
 3. Bấm **Check Status** để kiểm tra `/status`.
-4. Bấm **Start Stream + Box** để xem `/stream?detect=1`.
-5. Bấm **Take Snapshot + Box** để chụp `/capture?detect=1`.
-6. Bấm **Recognize Snapshot** để nhận diện `/capture?detect=1&recognize=1`.
-7. Nhập tên và bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
-8. Bấm **Refresh IDs** để tải danh sách `/face/ids`.
+4. Bấm **Fast Stream** để xem `/stream` mượt nhất.
+5. Bấm **Stream + Box Balanced** để xem `/stream?detect=1&detectEvery=5&quality=60&delay=0`.
+6. Bấm **Box Every Frame** nếu muốn detect mỗi frame qua `/stream?detect=1&detectEvery=1&quality=68&delay=0`.
+7. Bấm **Take Snapshot + Box** để chụp `/capture?detect=1`.
+8. Bấm **Recognize Snapshot** để nhận diện `/capture?detect=1&recognize=1`.
+9. Nhập tên và bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
+10. Bấm **Refresh IDs** để tải danh sách `/face/ids`.
 
 Các endpoint ESP32-CAM cung cấp:
 
@@ -205,8 +207,9 @@ Các endpoint ESP32-CAM cung cấp:
 | `/capture` | Chụp và trả về một ảnh JPEG |
 | `/capture?detect=1` | Chụp ảnh có box khuôn mặt |
 | `/capture?detect=1&recognize=1` | Chụp ảnh có box và label recognition |
-| `/stream` | Live stream MJPEG |
-| `/stream?detect=1` | Live stream MJPEG có box khuôn mặt |
+| `/stream` | Live stream MJPEG nhanh nhất, không detect |
+| `/stream?detect=1&detectEvery=5&quality=60&delay=0` | Live stream có box, detect mỗi 5 frame, nén nhẹ hơn và bỏ delay để cân bằng tốc độ |
+| `/stream?detect=1&detectEvery=1&quality=68&delay=0` | Live stream detect từng frame, vẫn chậm hơn nhưng đã tối ưu hơn trước |
 | `/face/enroll?name=...` | Đăng ký 1 khuôn mặt từ frame hiện tại |
 | `/face/ids` | Danh sách danh tính đã lưu |
 | `/face/last-result` | Metadata nhận diện gần nhất |
