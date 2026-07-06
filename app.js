@@ -4,6 +4,12 @@ const statusBtn = document.getElementById('statusBtn');
 const startStreamBtn = document.getElementById('startStreamBtn');
 const stopStreamBtn = document.getElementById('stopStreamBtn');
 const snapshotBtn = document.getElementById('snapshotBtn');
+const recognizeSnapshotBtn = document.getElementById('recognizeSnapshotBtn');
+const enrollBtn = document.getElementById('enrollBtn');
+const refreshFacesBtn = document.getElementById('refreshFacesBtn');
+const personNameInput = document.getElementById('personName');
+const identityList = document.getElementById('identityList');
+const faceResult = document.getElementById('faceResult');
 const statusText = document.getElementById('statusText');
 const statusHint = document.getElementById('statusHint');
 const streamView = document.getElementById('streamView');
@@ -25,6 +31,14 @@ function setStatus(text, hint, className = '') {
   statusText.textContent = text;
   statusText.className = className;
   statusHint.textContent = hint;
+}
+
+function setFaceResult(title, detail = '', variant = 'neutral') {
+  faceResult.className = `face-result ${variant}`;
+  faceResult.innerHTML = `
+    <strong>${title}</strong>
+    <span>${detail || 'Không có thông tin bổ sung.'}</span>
+  `;
 }
 
 function showImage(img, placeholder) {
@@ -49,6 +63,73 @@ function saveBaseUrl() {
   setStatus('Đã lưu địa chỉ', `ESP32-CAM: ${baseUrl}`, 'status-ok');
 }
 
+async function fetchJson(path) {
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
+    throw new Error('Hãy nhập địa chỉ ESP32-CAM trước.');
+  }
+
+  const response = await fetch(`${baseUrl}${path}${path.includes('?') ? '&' : '?'}t=${Date.now()}`);
+  const rawText = await response.text();
+
+  let data = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch (error) {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || rawText || `HTTP ${response.status}`);
+  }
+
+  if (!data) {
+    throw new Error('ESP32-CAM trả về dữ liệu JSON không hợp lệ.');
+  }
+
+  return data;
+}
+
+function renderFaceMetadata(data, fallbackTitle = 'Đã nhận metadata khuôn mặt') {
+  const faces = Array.isArray(data.faces) ? data.faces : [];
+  const firstFace = faces[0];
+
+  if (!data.ok) {
+    setFaceResult(data.message || 'ESP32-CAM báo lỗi face pipeline.', `Action: ${data.action || 'unknown'}`, 'error');
+    return;
+  }
+
+  if (!faces.length) {
+    setFaceResult(data.message || fallbackTitle, 'Không phát hiện khuôn mặt trong ảnh gần nhất.', 'warn');
+    return;
+  }
+
+  const faceSummary = firstFace
+    ? `Box đầu tiên: x=${firstFace.x}, y=${firstFace.y}, w=${firstFace.w}, h=${firstFace.h}, score=${Number(firstFace.score).toFixed(2)}`
+    : 'Không có box chi tiết.';
+
+  if (data.enrolled) {
+    setFaceResult(
+      `Đã đăng ký: ${data.enrolledName || `ID ${data.enrolledId}`}`,
+      `${faceSummary}. Tổng số danh tính: ${data.enrolledCount}.`,
+      'success'
+    );
+    return;
+  }
+
+  if (data.recognized) {
+    const similarity = Number(data.similarity || 0).toFixed(2);
+    setFaceResult(
+      `Nhận diện: ${data.recognizedName || `ID ${data.recognizedId}`}`,
+      `${faceSummary}. Similarity: ${similarity}.`,
+      'success'
+    );
+    return;
+  }
+
+  setFaceResult(data.message || fallbackTitle, `${faceSummary}. Số khuôn mặt: ${data.faceCount || faces.length}.`, 'warn');
+}
+
 async function checkStatus() {
   const baseUrl = getBaseUrl();
   if (!baseUrl) {
@@ -58,17 +139,14 @@ async function checkStatus() {
 
   try {
     setStatus('Đang kiểm tra…', 'Đợi phản hồi từ ESP32-CAM', 'status-warn');
-    const response = await fetch(`${baseUrl}/status?t=${Date.now()}`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await fetchJson('/status');
     const hint = [
       `IP: ${data.ip || 'unknown'}`,
       `Wi‑Fi: ${data.wifiConnected ? 'OK' : 'Mất kết nối'}`,
       `Camera: ${data.cameraReady ? 'Sẵn sàng' : 'Chưa sẵn sàng'}`,
-      `Backend upload: ${data.backendUploadEnabled ? 'Bật' : 'Tắt'}`,
+      `PSRAM: ${data.psramFound ? 'Có' : 'Không'}`,
+      `Face IDs: ${data.enrolledCount ?? 0}`,
+      `Face mode: ${data.faceRecognitionMode || 'n/a'}`,
     ].join(' • ');
 
     setStatus('ESP32-CAM đang hoạt động', hint, 'status-ok');
@@ -84,14 +162,23 @@ function startStream() {
     return;
   }
 
-  streamView.src = `${baseUrl}/stream?t=${Date.now()}`;
+  streamView.src = `${baseUrl}/stream?detect=1&t=${Date.now()}`;
   showImage(streamView, streamPlaceholder);
-  setStatus('Đang mở live stream', 'Nếu ảnh không lên, kiểm tra lại IP và Wi‑Fi.', 'status-warn');
+  setStatus('Đang mở live stream', 'ESP32-CAM sẽ cố gắng vẽ box khuôn mặt trực tiếp lên stream.', 'status-warn');
 }
 
 function stopStream() {
   hideImage(streamView, streamPlaceholder);
-  setStatus('Đã dừng stream', 'Bạn có thể bấm Start Stream để mở lại.', 'status-warn');
+  setStatus('Đã dừng stream', 'Bạn có thể bấm Start Stream + Box để mở lại.', 'status-warn');
+}
+
+async function refreshLatestFaceResult(fallbackTitle) {
+  try {
+    const data = await fetchJson('/face/last-result');
+    renderFaceMetadata(data, fallbackTitle);
+  } catch (error) {
+    setFaceResult('Không đọc được metadata face.', error.message, 'error');
+  }
 }
 
 function takeSnapshot() {
@@ -101,9 +188,66 @@ function takeSnapshot() {
     return;
   }
 
-  snapshotView.src = `${baseUrl}/capture?t=${Date.now()}`;
+  snapshotView.dataset.mode = 'detect';
+  snapshotView.src = `${baseUrl}/capture?detect=1&t=${Date.now()}`;
   showImage(snapshotView, snapshotPlaceholder);
-  setStatus('Đã yêu cầu snapshot', 'Nếu ảnh chưa hiện, đợi 1-2 giây hoặc kiểm tra lại trạng thái camera.', 'status-warn');
+  setStatus('Đã yêu cầu snapshot', 'ESP32-CAM sẽ chụp ảnh và vẽ box khuôn mặt nếu phát hiện được.', 'status-warn');
+}
+
+function recognizeSnapshot() {
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
+    setStatus('Thiếu địa chỉ', 'Hãy nhập URL dạng http://192.168.x.x', 'status-error');
+    return;
+  }
+
+  snapshotView.dataset.mode = 'recognize';
+  snapshotView.src = `${baseUrl}/capture?detect=1&recognize=1&t=${Date.now()}`;
+  showImage(snapshotView, snapshotPlaceholder);
+  setStatus('Đang nhận diện snapshot', 'Recognition chạy theo chế độ manual để phù hợp ESP32-CAM.', 'status-warn');
+}
+
+async function loadFaceIds() {
+  identityList.innerHTML = '<li>Đang tải danh sách...</li>';
+
+  try {
+    const data = await fetchJson('/face/ids');
+    if (!Array.isArray(data.identities) || !data.identities.length) {
+      identityList.innerHTML = '<li>Chưa có danh tính nào được đăng ký.</li>';
+      return;
+    }
+
+    identityList.innerHTML = data.identities
+      .map((item) => `<li><strong>${item.name || `ID ${item.id}`}</strong> <span class="helper">(ID ${item.id})</span></li>`)
+      .join('');
+  } catch (error) {
+    identityList.innerHTML = `<li>Lỗi tải danh sách: ${error.message}</li>`;
+  }
+}
+
+async function enrollFace() {
+  const baseUrl = getBaseUrl();
+  const name = personNameInput.value.trim();
+
+  if (!baseUrl) {
+    setStatus('Thiếu địa chỉ', 'Hãy nhập URL dạng http://192.168.x.x', 'status-error');
+    return;
+  }
+
+  if (!name) {
+    setFaceResult('Thiếu tên người đăng ký.', 'Hãy nhập tên trước khi bấm đăng ký khuôn mặt.', 'error');
+    return;
+  }
+
+  try {
+    setFaceResult('Đang đăng ký khuôn mặt...', 'Giữ 1 khuôn mặt rõ trong khung hình cho đến khi ESP32-CAM phản hồi.', 'warn');
+    const data = await fetchJson(`/face/enroll?name=${encodeURIComponent(name)}`);
+    renderFaceMetadata(data, 'Kết quả đăng ký khuôn mặt');
+    await loadFaceIds();
+    await checkStatus();
+  } catch (error) {
+    setFaceResult('Đăng ký thất bại.', error.message, 'error');
+  }
 }
 
 function init() {
@@ -118,16 +262,31 @@ function init() {
   startStreamBtn.addEventListener('click', startStream);
   stopStreamBtn.addEventListener('click', stopStream);
   snapshotBtn.addEventListener('click', takeSnapshot);
+  recognizeSnapshotBtn.addEventListener('click', recognizeSnapshot);
+  enrollBtn.addEventListener('click', enrollFace);
+  refreshFacesBtn.addEventListener('click', loadFaceIds);
 
   streamView.addEventListener('error', () => {
     hideImage(streamView, streamPlaceholder);
-    setStatus('Stream lỗi', 'Không mở được /stream. Kiểm tra lại IP hoặc firmware ESP32-CAM.', 'status-error');
+    setStatus('Stream lỗi', 'Không mở được /stream?detect=1. Kiểm tra lại IP hoặc firmware ESP32-CAM.', 'status-error');
   });
 
   snapshotView.addEventListener('error', () => {
     hideImage(snapshotView, snapshotPlaceholder);
-    setStatus('Snapshot lỗi', 'Không tải được /capture. Kiểm tra lại IP hoặc camera.', 'status-error');
+    setStatus('Snapshot lỗi', 'Không tải được /capture face mode. Kiểm tra lại IP hoặc face pipeline.', 'status-error');
   });
+
+  snapshotView.addEventListener('load', async () => {
+    const fallbackTitle = snapshotView.dataset.mode === 'recognize'
+      ? 'Đã nhận snapshot recognition.'
+      : 'Đã nhận snapshot detection.';
+    await refreshLatestFaceResult(fallbackTitle);
+  });
+
+  if (saved) {
+    loadFaceIds();
+    checkStatus();
+  }
 }
 
 init();

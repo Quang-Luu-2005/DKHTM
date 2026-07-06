@@ -13,7 +13,7 @@
         <p class="eyebrow">Software preview</p>
         <h1>ESP32-CAM Live View</h1>
         <p class="subtext">
-          Nhập địa chỉ IP của ESP32-CAM để xem live stream, kiểm tra trạng thái và chụp snapshot.
+          Nhập địa chỉ IP của ESP32-CAM để xem live stream, kiểm tra trạng thái, chụp snapshot và đăng ký khuôn mặt.
         </p>
       </div>
       <div class="status-card">
@@ -36,42 +36,84 @@
     <section class="grid">
       <article class="panel viewer-panel">
         <div class="panel-header">
-          <h2>Live stream</h2>
+          <div>
+            <h2>Live stream</h2>
+            <p class="helper">Stream mặc định bật detection để ESP32-CAM vẽ box trực tiếp lên frame.</p>
+          </div>
           <div class="button-group">
-            <button id="startStreamBtn" type="button">Start Stream</button>
+            <button id="startStreamBtn" type="button">Start Stream + Box</button>
             <button id="stopStreamBtn" type="button" class="secondary">Stop Stream</button>
           </div>
         </div>
         <div class="viewer">
           <img id="streamView" alt="Live stream từ ESP32-CAM" />
           <div id="streamPlaceholder" class="placeholder">
-            Chưa bật stream. Bấm <strong>Start Stream</strong> để xem camera.
+            Chưa bật stream. Bấm <strong>Start Stream + Box</strong> để xem camera.
           </div>
         </div>
       </article>
 
       <article class="panel viewer-panel">
         <div class="panel-header">
-          <h2>Snapshot</h2>
+          <div>
+            <h2>Snapshot</h2>
+            <p class="helper">Snapshot có thể detect box hoặc nhận diện manual.</p>
+          </div>
           <div class="button-group">
-            <button id="snapshotBtn" type="button">Take Snapshot</button>
+            <button id="snapshotBtn" type="button">Take Snapshot + Box</button>
+            <button id="recognizeSnapshotBtn" type="button" class="secondary">Recognize Snapshot</button>
           </div>
         </div>
         <div class="viewer snapshot-viewer">
           <img id="snapshotView" alt="Snapshot mới nhất từ ESP32-CAM" />
           <div id="snapshotPlaceholder" class="placeholder">
-            Chưa có snapshot. Bấm <strong>Take Snapshot</strong> để chụp thử.
+            Chưa có snapshot. Bấm <strong>Take Snapshot + Box</strong> để chụp thử.
           </div>
         </div>
       </article>
     </section>
 
+    <section class="panel face-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Face Recognition</h2>
+          <p class="helper">
+            Nhận diện chạy dạng snapshot/manual để phù hợp ESP32-CAM thường. Khi đăng ký, chỉ để 1 khuôn mặt rõ trong khung hình.
+          </p>
+        </div>
+        <button id="refreshFacesBtn" type="button" class="secondary">Refresh IDs</button>
+      </div>
+
+      <div class="face-controls">
+        <label for="personName">Tên người cần đăng ký</label>
+        <div class="control-row">
+          <input id="personName" type="text" maxlength="24" placeholder="Ví dụ: Quang" />
+          <button id="enrollBtn" type="button">Đăng ký khuôn mặt</button>
+        </div>
+      </div>
+
+      <div class="face-result" id="faceResult">
+        <strong>Chưa có kết quả nhận diện.</strong>
+        <span>Hãy chụp snapshot, recognize hoặc enroll để xem metadata từ ESP32-CAM.</span>
+      </div>
+
+      <div class="identity-list">
+        <h3>Danh sách đã đăng ký</h3>
+        <ul id="identityList">
+          <li>Chưa tải danh sách.</li>
+        </ul>
+      </div>
+    </section>
+
     <section class="panel endpoints">
       <h2>Endpoint nhanh</h2>
       <ul>
-        <li><code>/status</code> — trạng thái camera và Wi‑Fi</li>
-        <li><code>/stream</code> — live stream MJPEG</li>
-        <li><code>/capture</code> — trả về 1 ảnh JPEG</li>
+        <li><code>/status</code> — trạng thái camera, Wi‑Fi, PSRAM và face engine</li>
+        <li><code>/stream?detect=1</code> — live stream MJPEG có box khuôn mặt</li>
+        <li><code>/capture?detect=1</code> — snapshot có box khuôn mặt</li>
+        <li><code>/capture?detect=1&amp;recognize=1</code> — snapshot nhận diện manual</li>
+        <li><code>/face/enroll?name=...</code> — đăng ký khuôn mặt từ frame hiện tại</li>
+        <li><code>/face/ids</code> — danh sách danh tính đã lưu trong flash</li>
       </ul>
       <p class="helper">
         Bạn có thể mở file này trực tiếp trong trình duyệt hoặc dùng VS Code Live Server nếu muốn.
