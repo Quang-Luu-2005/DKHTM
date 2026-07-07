@@ -153,9 +153,15 @@ Sau khi nạp xong:
 | Phần | File |
 |---|---|
 | ESP32 main | [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino) |
-| ESP32-CAM | [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino) |
+| ESP32-CAM entry point | [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino) |
+| ESP32-CAM config | [../src/hardware/esp32cam_node/core/config.h](../src/hardware/esp32cam_node/core/config.h) |
+| ESP32-CAM face engine | [../src/hardware/esp32cam_node/face/face_engine.cpp](../src/hardware/esp32cam_node/face/face_engine.cpp) |
 | Web preview | [../../index.html](../../index.html) |
 | Cấu hình partition face | [../partitions_esp32cam_face.csv](../partitions_esp32cam_face.csv) |
+| Build wrapper | [../src/hardware/platformio_esp32cam_node.cpp](../src/hardware/platformio_esp32cam_node.cpp) |
+| Build config | [../platformio.ini](../platformio.ini) |
+| Build notes | include thêm `esp32cam_node/**/*.cpp` trong `build_src_filter` |
+| Module layout | `esp32cam_node/` đã gom thành `core/`, `utils/`, `services/`, `face/`, `web/` |
 
 ### 7.1. Nạp ESP32 main
 
@@ -177,9 +183,11 @@ Sau khi nạp xong:
 ### 7.2. Nạp ESP32-CAM
 
 1. Mở [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino).
-2. Sửa Wi‑Fi ở đầu file:
+2. Sửa cấu hình Wi‑Fi/backend trong [../src/hardware/esp32cam_node/core/config.h](../src/hardware/esp32cam_node/core/config.h):
    - `kWifiSsid`
    - `kWifiPass`
+   - `kServerBaseUrl` nếu bật upload backend
+   - `kDeviceSecret` nếu bật upload backend
 3. Đảm bảo PlatformIO/board dùng partition [../partitions_esp32cam_face.csv](../partitions_esp32cam_face.csv).
 4. Chọn board `AI Thinker ESP32-CAM`.
 5. Nối `IO0` xuống GND khi nạp.

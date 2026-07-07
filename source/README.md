@@ -41,6 +41,27 @@ Servo nên dùng nguồn 5V riêng và nối chung GND với ESP32.
     └── src/
         └── hardware/
             ├── esp32cam_node/
+            │   ├── core/
+            │   │   ├── app_state.cpp
+            │   │   ├── app_state.h
+            │   │   ├── config.h
+            │   │   └── types.h
+            │   ├── face/
+            │   │   ├── face_engine.cpp
+            │   │   └── face_engine.h
+            │   ├── services/
+            │   │   ├── backend_client.cpp
+            │   │   ├── backend_client.h
+            │   │   ├── camera_service.cpp
+            │   │   └── camera_service.h
+            │   ├── utils/
+            │   │   ├── json_utils.cpp
+            │   │   └── json_utils.h
+            │   ├── web/
+            │   │   ├── web_handlers.cpp
+            │   │   ├── web_handlers.h
+            │   │   ├── web_server.cpp
+            │   │   └── web_server.h
             │   └── esp32cam_node.ino
             ├── main_controller/
             │   └── main_controller.ino
@@ -67,11 +88,11 @@ Lệnh test qua Serial:
 
 ### ESP32-CAM
 
-Mở file [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino).
+Entry point vẫn là [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino), nhưng logic đã tách thành nhiều module `.h/.cpp` trong các folder con `core/`, `utils/`, `services/`, `face/`, `web/`.
 
 - Board: `AI Thinker ESP32-CAM`
 - Cần PSRAM để chạy face detection ổn định.
-- Sửa trực tiếp các hằng số ở đầu file trước khi nạp:
+- Sửa cấu hình ở [src/hardware/esp32cam_node/core/config.h](src/hardware/esp32cam_node/core/config.h) trước khi nạp:
   - `kWifiSsid`
   - `kWifiPass`
   - `kServerBaseUrl` nếu bật upload backend
@@ -167,4 +188,5 @@ Nếu `pio` chưa có trong PATH trên Windows:
 - Web preview nằm ở root repo: [../index.html](../index.html).
 - Firmware ESP32 main hiện là bản demo phần cứng tối giản, điều khiển bằng Serial thay cho RFID/cảm biến.
 - Firmware ESP32-CAM tự mở web server trên port 80 để phục vụ preview và endpoint face.
+- ESP32-CAM firmware đã được tách module theo folder: `core/` chứa cấu hình/state/type, `services/` xử lý camera/backend, `face/` xử lý face detection/recognition, `utils/` chứa helper JSON/query, `web/` xử lý endpoint.
 - Nếu cần sơ đồ đấu dây chi tiết, xem [planning_code_esp32_access_control.md](docs/planning_code_esp32_access_control.md).
