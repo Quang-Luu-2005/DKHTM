@@ -1,9 +1,9 @@
 # Hướng dẫn lắp mạch bản demo tối giản
 
-> Repo hiện tách `src` thành 2 phần:
+> Repo hiện có 2 phần chính:
 >
 > - [../src/hardware/](../src/hardware/) — code Arduino/ESP32.
-> - [../src/software/](../src/software/) — web tĩnh để xem ESP32-CAM.
+> - Web tĩnh ở root repo: [../../index.html](../../index.html), [../../app.js](../../app.js), [../../styles.css](../../styles.css).
 >
 > Firmware chính:
 >
@@ -25,6 +25,9 @@ Hệ thống hiện chia làm **2 node độc lập**:
 2. **ESP32-CAM**
    - Chụp ảnh khu vực cổng.
    - Mở web server để xem live stream và snapshot.
+   - Phát hiện khuôn mặt trên stream/snapshot để vẽ box.
+   - Nhận diện khuôn mặt theo chế độ snapshot/manual.
+   - Cho phép đăng ký danh tính từ web và lưu vào flash partition `fr`.
    - Có thể upload ảnh/event lên backend nếu bật cấu hình upload.
 
 ### Điểm quan trọng
@@ -32,8 +35,9 @@ Hệ thống hiện chia làm **2 node độc lập**:
 - ESP32 main và ESP32-CAM **không cần nối GPIO trực tiếp với nhau**.
 - Hai board chạy độc lập.
 - ESP32 main lo phần cứng cửa/đèn.
-- ESP32-CAM lo camera và web preview.
+- ESP32-CAM lo camera, face detection/recognition và web preview.
 - Máy mở web preview và ESP32-CAM phải cùng mạng Wi‑Fi.
+- ESP32-CAM cần **PSRAM** để chạy face detection ổn định.
 
 ---
 
@@ -51,7 +55,7 @@ Hệ thống hiện chia làm **2 node độc lập**:
 
 ### 2.2. Node camera
 
-- 1 x AI Thinker ESP32-CAM
+- 1 x AI Thinker ESP32-CAM có PSRAM
 - 1 x USB-TTL để nạp code
 - Nguồn 5V ổn định
 
@@ -89,7 +93,7 @@ ESP32 main controller
 └── Servo     -> GPIO22
 
 ESP32-CAM
-└── Camera + web preview qua Wi‑Fi
+└── Camera + face detection/recognition + web preview qua Wi‑Fi
 ```
 
 ---
@@ -140,6 +144,8 @@ Sau khi nạp xong:
 - cấp nguồn 5V ổn định để camera chạy
 - mở Serial Monitor `115200` để lấy IP
 
+> Ghi chú: firmware face dùng partition `fr` để lưu danh tính; khi đổi partition layout, dữ liệu face đã lưu trước đó có thể bị mất sau khi nạp lại.
+
 ---
 
 ## 7. File firmware và web hiện dùng
@@ -147,8 +153,15 @@ Sau khi nạp xong:
 | Phần | File |
 |---|---|
 | ESP32 main | [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino) |
-| ESP32-CAM | [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino) |
-| Web preview | [../src/software/index.html](../src/software/index.html) |
+| ESP32-CAM entry point | [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino) |
+| ESP32-CAM config | [../src/hardware/esp32cam_node/core/config.h](../src/hardware/esp32cam_node/core/config.h) |
+| ESP32-CAM face engine | [../src/hardware/esp32cam_node/face/face_engine.cpp](../src/hardware/esp32cam_node/face/face_engine.cpp) |
+| Web preview | [../../index.html](../../index.html) |
+| Cấu hình partition face | [../partitions_esp32cam_face.csv](../partitions_esp32cam_face.csv) |
+| Build wrapper | [../src/hardware/platformio_esp32cam_node.cpp](../src/hardware/platformio_esp32cam_node.cpp) |
+| Build config | [../platformio.ini](../platformio.ini) |
+| Build notes | include thêm `esp32cam_node/**/*.cpp` trong `build_src_filter` |
+| Module layout | `esp32cam_node/` đã gom thành `core/`, `utils/`, `services/`, `face/`, `web/` |
 
 ### 7.1. Nạp ESP32 main
 
@@ -170,30 +183,45 @@ Sau khi nạp xong:
 ### 7.2. Nạp ESP32-CAM
 
 1. Mở [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino).
-2. Sửa Wi‑Fi ở đầu file:
+2. Sửa cấu hình Wi‑Fi/backend trong [../src/hardware/esp32cam_node/core/config.h](../src/hardware/esp32cam_node/core/config.h):
    - `kWifiSsid`
    - `kWifiPass`
-3. Chọn board `AI Thinker ESP32-CAM`.
-4. Nối `IO0` xuống GND khi nạp.
-5. Nạp code, tháo `IO0` khỏi GND và reset.
-6. Mở Serial Monitor `115200` để xem IP.
+   - `kServerBaseUrl` nếu bật upload backend
+   - `kDeviceSecret` nếu bật upload backend
+3. Đảm bảo PlatformIO/board dùng partition [../partitions_esp32cam_face.csv](../partitions_esp32cam_face.csv).
+4. Chọn board `AI Thinker ESP32-CAM`.
+5. Nối `IO0` xuống GND khi nạp.
+6. Nạp code, tháo `IO0` khỏi GND và reset.
+7. Mở Serial Monitor `115200` để xem IP.
 
 ### 7.3. Xem camera bằng web preview
 
-1. Mở [../src/software/index.html](../src/software/index.html) bằng trình duyệt.
+1. Mở [../../index.html](../../index.html) bằng trình duyệt.
 2. Nhập địa chỉ ESP32-CAM dạng `http://192.168.x.x`.
 3. Bấm **Check Status** để kiểm tra `/status`.
-4. Bấm **Start Stream** để xem live stream `/stream`.
-5. Bấm **Take Snapshot** để chụp ảnh `/capture`.
-6. Bấm **Stop Stream** để dừng stream.
+4. Bấm **Fast Stream** để xem `/stream` mượt nhất.
+5. Bấm **Stream + Box Balanced** để xem `/stream?detect=1&detectEvery=5&quality=60&delay=0`.
+6. Bấm **Box Every Frame** nếu muốn detect mỗi frame qua `/stream?detect=1&detectEvery=1&quality=68&delay=0`.
+7. Bấm **Take Snapshot + Box** để chụp `/capture?detect=1`.
+8. Bấm **Recognize Snapshot** để nhận diện `/capture?detect=1&recognize=1`.
+9. Nhập tên và bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
+10. Bấm **Refresh IDs** để tải danh sách `/face/ids`.
 
 Các endpoint ESP32-CAM cung cấp:
 
 | Endpoint | Tác dụng |
 |---|---|
-| `/status` | Trả trạng thái Wi‑Fi/camera |
+| `/status` | Trả trạng thái Wi‑Fi/camera/PSRAM/face engine |
 | `/capture` | Chụp và trả về một ảnh JPEG |
-| `/stream` | Live stream MJPEG |
+| `/capture?detect=1` | Chụp ảnh có box khuôn mặt |
+| `/capture?detect=1&recognize=1` | Chụp ảnh có box và label recognition |
+| `/stream` | Live stream MJPEG nhanh nhất, không detect |
+| `/stream?detect=1&detectEvery=5&quality=60&delay=0` | Live stream có box, detect mỗi 5 frame, nén nhẹ hơn và bỏ delay để cân bằng tốc độ |
+| `/stream?detect=1&detectEvery=1&quality=68&delay=0` | Live stream detect từng frame, vẫn chậm hơn nhưng đã tối ưu hơn trước |
+| `/face/enroll?name=...` | Đăng ký 1 khuôn mặt từ frame hiện tại |
+| `/face/ids` | Danh sách danh tính đã lưu |
+| `/face/last-result` | Metadata nhận diện gần nhất |
+| `/face/delete?id=...` | Xóa một danh tính |
 
 ---
 
@@ -217,7 +245,7 @@ Các endpoint ESP32-CAM cung cấp:
 - [ ] Sau khoảng 3 giây, servo tự quay về góc khóa
 - [ ] Khi servo quay, ESP32 không bị reset
 
-### Bước 4: Test ESP32-CAM
+### Bước 4: Test ESP32-CAM cơ bản
 
 - [ ] Serial báo `Camera initialized.`
 - [ ] Serial báo IP ESP32-CAM
@@ -225,20 +253,33 @@ Các endpoint ESP32-CAM cung cấp:
 - [ ] Web preview xem được `/capture`
 - [ ] Web preview xem được `/stream`
 
+### Bước 5: Test face detection / recognition
+
+- [ ] `/status` báo `psramFound=true`
+- [ ] Stream có box khi có mặt trong khung hình
+- [ ] Snapshot detect có box khuôn mặt
+- [ ] Enroll đúng 1 mặt với tên nhập từ web
+- [ ] `/face/ids` hiển thị danh tính vừa lưu
+- [ ] Recognize Snapshot trả về tên/similarity khi chụp lại cùng người
+- [ ] Reset board xong danh tính vẫn còn trong flash partition `fr`
+
 ---
 
 ## 9. File dùng để debug
 
 - Firmware ESP32 main: [../src/hardware/main_controller/main_controller.ino](../src/hardware/main_controller/main_controller.ino)
 - Firmware ESP32-CAM: [../src/hardware/esp32cam_node/esp32cam_node.ino](../src/hardware/esp32cam_node/esp32cam_node.ino)
-- Web preview: [../src/software/index.html](../src/software/index.html)
+- Web preview: [../../index.html](../../index.html)
+- JS web: [../../app.js](../../app.js)
+- CSS web: [../../styles.css](../../styles.css)
 - Build config: [../platformio.ini](../platformio.ini)
+- Partition face IDs: [../partitions_esp32cam_face.csv](../partitions_esp32cam_face.csv)
 
 ---
 
 ## 10. Kết luận
 
-Bản hiện tại chỉ cần lắp đúng 3 chân trên ESP32 main:
+Bản hiện tại vẫn giữ wiring phần cứng tối giản:
 
 ```text
 GPIO21 -> LED đúng
@@ -246,4 +287,4 @@ GPIO19 -> LED sai
 GPIO22 -> Servo signal
 ```
 
-Firmware Arduino nằm trong [../src/hardware/](../src/hardware/), còn web xem camera nằm trong [../src/software/](../src/software/).
+Phần mới chủ yếu nằm ở ESP32-CAM và web preview: ESP32-CAM xử lý face detection/recognition, còn web chỉ gọi endpoint và hiển thị stream/snapshot/metadata.

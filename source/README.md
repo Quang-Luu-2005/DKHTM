@@ -1,9 +1,9 @@
 # Firmware và web preview hệ thống kiểm soát ra vào
 
-Repo này tách `src` thành 2 phần rõ ràng:
+Repo này hiện có 2 phần chính:
 
 - [src/hardware/](src/hardware/) — code Arduino/ESP32 để nạp cho phần cứng.
-- [src/software/](src/software/) — web tĩnh để xem ESP32-CAM đang thấy gì.
+- Web preview tĩnh ở root repo: [../index.html](../index.html), [../app.js](../app.js), [../styles.css](../styles.css).
 
 ## Phần cứng đang dùng
 
@@ -13,7 +13,8 @@ Repo này tách `src` thành 2 phần rõ ràng:
 - 1 x LED sai
 
 ### ESP32-CAM
-- 1 x AI Thinker ESP32-CAM
+- 1 x AI Thinker ESP32-CAM có PSRAM
+- Dùng camera để stream/snapshot, phát hiện khuôn mặt realtime trên stream, và nhận diện khuôn mặt theo chế độ snapshot/manual.
 
 ## Mapping chân ESP32 mạch chính
 
@@ -29,28 +30,50 @@ Servo nên dùng nguồn 5V riêng và nối chung GND với ESP32.
 
 ```text
 .
-├── docs/
-│   └── planning_code_esp32_access_control.md
-├── platformio.ini
-└── src/
-    ├── hardware/
-    │   ├── esp32cam_node/
-    │   │   └── esp32cam_node.ino
-    │   ├── main_controller/
-    │   │   └── main_controller.ino
-    │   ├── platformio_esp32cam_node.cpp
-    │   └── platformio_main_controller.cpp
-    └── software/
-        ├── app.js
-        ├── index.html
-        └── styles.css
+├── app.js
+├── index.html
+├── styles.css
+└── source/
+    ├── docs/
+    │   └── planning_code_esp32_access_control.md
+    ├── partitions_esp32cam_face.csv
+    ├── platformio.ini
+    └── src/
+        └── hardware/
+            ├── esp32cam_node/
+            │   ├── core/
+            │   │   ├── app_state.cpp
+            │   │   ├── app_state.h
+            │   │   ├── config.h
+            │   │   └── types.h
+            │   ├── face/
+            │   │   ├── face_engine.cpp
+            │   │   └── face_engine.h
+            │   ├── services/
+            │   │   ├── backend_client.cpp
+            │   │   ├── backend_client.h
+            │   │   ├── camera_service.cpp
+            │   │   └── camera_service.h
+            │   ├── utils/
+            │   │   ├── json_utils.cpp
+            │   │   └── json_utils.h
+            │   ├── web/
+            │   │   ├── web_handlers.cpp
+            │   │   ├── web_handlers.h
+            │   │   ├── web_server.cpp
+            │   │   └── web_server.h
+            │   └── esp32cam_node.ino
+            ├── main_controller/
+            │   └── main_controller.ino
+            ├── platformio_esp32cam_node.cpp
+            └── platformio_main_controller.cpp
 ```
 
 ## Nạp bằng Arduino IDE
 
 ### ESP32 mạch chính
 
-Mở file [main_controller.ino](src/hardware/main_controller/main_controller.ino).
+Mở file [src/hardware/main_controller/main_controller.ino](src/hardware/main_controller/main_controller.ino).
 
 - Board: `ESP32 Dev Module`
 - Library cần cài: `ESP32Servo`
@@ -65,10 +88,11 @@ Lệnh test qua Serial:
 
 ### ESP32-CAM
 
-Mở file [esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino).
+Entry point vẫn là [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino), nhưng logic đã tách thành nhiều module `.h/.cpp` trong các folder con `core/`, `utils/`, `services/`, `face/`, `web/`.
 
 - Board: `AI Thinker ESP32-CAM`
-- Sửa trực tiếp các hằng số ở đầu file trước khi nạp:
+- Cần PSRAM để chạy face detection ổn định.
+- Sửa cấu hình ở [src/hardware/esp32cam_node/core/config.h](src/hardware/esp32cam_node/core/config.h) trước khi nạp:
   - `kWifiSsid`
   - `kWifiPass`
   - `kServerBaseUrl` nếu bật upload backend
@@ -91,48 +115,78 @@ Sau khi nạp xong:
 - mở Serial Monitor `115200`
 - xem dòng IP dạng `WiFi connected. IP: 192.168.x.x`
 
-## Xem camera bằng web tĩnh
+## Xem camera và đăng ký khuôn mặt bằng web tĩnh
 
 1. Nạp firmware ESP32-CAM ở [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino).
 2. Mở Serial Monitor `115200` để lấy IP ESP32-CAM.
-3. Mở [src/software/index.html](src/software/index.html) bằng trình duyệt.
+3. Mở [../index.html](../index.html) bằng trình duyệt hoặc VS Code Live Server.
 4. Nhập địa chỉ dạng `http://192.168.x.x`.
 5. Bấm:
-   - **Check Status** để kiểm tra `/status`.
-   - **Start Stream** để xem live stream `/stream`.
+   - **Check Status** để kiểm tra `/status`, PSRAM và số khuôn mặt đã đăng ký.
+   - **Fast Stream** để xem `/stream` mượt nhất, không detect.
+   - **Stream + Box Balanced** để xem `/stream?detect=1&detectEvery=5&quality=60&delay=0`.
+   - **Box Every Frame** để xem `/stream?detect=1&detectEvery=1&quality=68&delay=0` nếu muốn detect sát hơn.
    - **Stop Stream** để dừng stream.
-   - **Take Snapshot** để chụp ảnh từ `/capture`.
+   - **Take Snapshot + Box** để chụp ảnh `/capture?detect=1`.
+   - **Recognize Snapshot** để nhận diện manual qua `/capture?detect=1&recognize=1`.
+   - Nhập tên rồi bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
 
 ESP32-CAM cung cấp các endpoint:
 
 | Endpoint | Tác dụng |
 |---|---|
-| `/status` | Trả JSON trạng thái Wi‑Fi/camera |
-| `/capture` | Trả về 1 ảnh JPEG |
-| `/stream` | Trả live stream MJPEG |
+| `/status` | Trả JSON trạng thái Wi‑Fi/camera/PSRAM/face engine |
+| `/capture` | Trả về 1 ảnh JPEG gốc |
+| `/capture?detect=1` | Trả snapshot có box khuôn mặt |
+| `/capture?detect=1&recognize=1` | Trả snapshot có box và label nhận diện manual |
+| `/stream` | Trả live stream MJPEG nhanh nhất, không chạy face detection |
+| `/stream?detect=1&detectEvery=5&quality=60&delay=0` | Trả live stream MJPEG có box, detect mỗi 5 frame, nén nhẹ hơn và bỏ delay để cân bằng FPS |
+| `/stream?detect=1&detectEvery=1&quality=68&delay=0` | Trả live stream MJPEG có box từng frame, vẫn nặng hơn nhưng đã tối ưu hơn trước |
+| `/face/enroll?name=...` | Chụp frame hiện tại và đăng ký 1 khuôn mặt với tên nhập từ web |
+| `/face/ids` | Trả danh sách danh tính đã lưu trong flash partition `fr` |
+| `/face/last-result` | Trả metadata box/kết quả nhận diện gần nhất |
+| `/face/delete?id=...` | Xóa một danh tính đã đăng ký |
 
 Máy mở web và ESP32-CAM cần ở cùng mạng Wi‑Fi.
 
 ## Build bằng PlatformIO
 
-Từ thư mục repo hiện tại:
+Từ thư mục [source/](.) chạy:
 
 ```bash
 pio run -e esp32_main_controller
 pio run -e esp32cam_node
 ```
 
+Nếu chạy từ root repo thì dùng `-d source`:
+
+```bash
+pio run -d source -e esp32_main_controller
+pio run -d source -e esp32cam_node
+```
+
 Nếu `pio` chưa có trong PATH trên Windows:
 
 ```powershell
-& "C:\Users\ADMIN\.platformio\penv\Scripts\pio.exe" run -e esp32_main_controller
-& "C:\Users\ADMIN\.platformio\penv\Scripts\pio.exe" run -e esp32cam_node
+& "C:\Users\ADMIN\.platformio\penv\Scripts\pio.exe" run -d "d:\DKHTM\source" -e esp32_main_controller
+& "C:\Users\ADMIN\.platformio\penv\Scripts\pio.exe" run -d "d:\DKHTM\source" -e esp32cam_node
 ```
 
-## Ghi chú
+## Ghi chú face detection/recognition
+
+- Firmware ESP32-CAM dùng `esp-dl`/`esp32-camera` có sẵn trong Arduino-ESP32.
+- `source/partitions_esp32cam_face.csv` thêm partition `fr` để lưu face IDs; đổi partition layout có thể làm mất dữ liệu flash cũ khi nạp lại.
+- Face detection chạy cho stream/snapshot để vẽ box.
+- Stream đã có 3 mode: `/stream` nhanh nhất, `/stream?detect=1&detectEvery=5&quality=60&delay=0` cân bằng, `/stream?detect=1&detectEvery=1&quality=68&delay=0` detect từng frame.
+- Firmware hỗ trợ query `detectEvery`, `quality` và `delay`; giảm `quality` và `delay=0` giúp stream có box đỡ cứng hơn.
+- Face recognition chạy theo chế độ snapshot/manual để giảm trễ trên AI Thinker ESP32-CAM thường.
+- Khi đăng ký, nên để đúng 1 khuôn mặt rõ trong khung hình.
+
+## Ghi chú chung
 
 - `src/hardware` là code phần cứng Arduino/ESP32.
-- `src/software` là web tĩnh để xem camera.
+- Web preview nằm ở root repo: [../index.html](../index.html).
 - Firmware ESP32 main hiện là bản demo phần cứng tối giản, điều khiển bằng Serial thay cho RFID/cảm biến.
-- Firmware ESP32-CAM tự mở web server trên port 80 để phục vụ preview.
+- Firmware ESP32-CAM tự mở web server trên port 80 để phục vụ preview và endpoint face.
+- ESP32-CAM firmware đã được tách module theo folder: `core/` chứa cấu hình/state/type, `services/` xử lý camera/backend, `face/` xử lý face detection/recognition, `utils/` chứa helper JSON/query, `web/` xử lý endpoint.
 - Nếu cần sơ đồ đấu dây chi tiết, xem [planning_code_esp32_access_control.md](docs/planning_code_esp32_access_control.md).
