@@ -1,0 +1,399 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\useinnertheme{circles}
+\usecolortheme{default}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+
+\hypersetup{
+  pdftitle={He thong kiem soat ra vao thong minh - AIoT},
+  pdfauthor={Nhom: Quang, Nhan, Van, Phu},
+  pdfsubject={Smart Access Control with Camera, RFID and Web Alerts},
+}
+
+\title[Chi tiết các thiết bị]{Hệ thống kiểm soát ra vào thông minh}
+\subtitle{Camera $\cdot$ RFID/NFC $\cdot$ Cảnh báo web}
+\subtitle{Danh sách thiết bị và chi tiết luồng hoạt động của thiết bị}
+\author[Nhóm thực hiện]{Lưu Huy Minh Quang -- 23127016 \and Hoàng Nhân -- 23127094 \and Trần Cao Vân -- 23127141 \and Nguyễn Trần Thiên Phú -- 23127246}
+\institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
+\date{Tháng 6, 2026}
+
+\AtBeginSection[]{
+  \begin{frame}[plain]
+    \vfill
+    \centering
+      {\Large Phần \insertsectionnumber}\par\vspace{0.6em}
+      {\LARGE\bfseries \insertsectionhead}\par
+    \vfill
+  \end{frame}
+}
+
+\begin{document}
+
+%------- TITLE -------
+\begin{frame}
+  \begin{center}
+    \vspace{0.4em}
+    {\usebeamerfont{title}\Large\bfseries\inserttitle\par}
+    \vspace{0.3em}
+    {\usebeamerfont{subtitle}\insertsubtitle\par}
+
+    \vspace{1.2em}
+    {\large\bfseries Nhóm thực hiện}\\[0.6em]
+    \begin{tabular}{ll}
+      Lưu Huy Minh Quang & 23127016 \\
+      Hoàng Nhân & 23127094 \\
+      Trần Cao Vân & 23127141 \\
+      Nguyễn Trần Thiên Phú & 23127246 \\
+    \end{tabular}\\[0.8em]
+    \textit{Khoa CNTT -- ĐH Khoa học Tự nhiên, ĐHQG TP.HCM}\\
+    \textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}
+
+    \vspace{0.8em}
+    {\large \insertdate}
+  \end{center}
+\end{frame}
+
+%------- MỤC LỤC -------
+\begin{frame}{Nội dung trình bày}
+  \vspace{0.4em}
+  \begin{enumerate}
+    \item Tóm tắt project
+    \item Danh sách thiết bị
+    \item Luồng hoạt động của các thiết bị
+  \end{enumerate}
+\end{frame}
+
+%============================
+\section{Giới thiệu project}
+%============================
+
+\begin{frame}{Tóm tắt project}
+  \textbf{Sản phẩm:} \textbf{hệ thống cổng kiểm soát ra vào thông minh}. Hệ thống kết hợp \textbf{camera}, \textbf{RFID/NFC}, \textbf{servo} và \textbf{web dashboard} để nhận diện người, xác thực mở cửa và gửi cảnh báo khi có xâm nhập.
+
+  \vspace{0.8em}
+  3 Mục tiêu thực hiện:
+  \begin{enumerate}
+    \item Hệ thống dùng camera để phát hiện và nhận diện tối đa \textbf{20 người dùng đã đăng ký} trong phạm vi \textbf{$0.5$ m}, với \textbf{độ chính xác định danh trên $95\%$}, \textbf{tỷ lệ nhận nhầm dưới $2\%$} và thời gian phản hồi \textbf{dưới $1.5$ giây}.
+    \item Hệ thống giám sát dựa trên \textbf{cảm biến siêu âm} để phát hiện khoảng cách bất thường tại cổng và dùng \textbf{camera} để chụp \textbf{Snapshot} đẩy lên \textbf{Web AI} xử lý trong vòng \textbf{$2$ giây}. Khi phát hiện hành vi trèo hoặc nhảy qua cổng, hệ thống báo động tại chỗ và gửi cảnh báo lên web để người quản lý xử lý kịp thời.
+    \item Hệ thống dùng RFID/NFC để xác thực người dùng hợp lệ và mở cửa tự động \textbf{dưới $2$ giây}, đồng thời đạt \textbf{độ chính xác xác thực tối thiểu $98\%$} trong điều kiện vận hành bình thường.
+  \end{enumerate}
+\end{frame}
+
+%============================
+\section{Danh sách thiết bị}
+%============================
+
+\begin{frame}{Danh mục linh kiện dự kiến}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{p{0.35cm}p{2.45cm}p{5.9cm}p{0.75cm}p{1.35cm}}
+    \toprule
+    \textbf{STT} & \textbf{Linh kiện} & \textbf{Chi tiết kỹ thuật} & \textbf{SL} & \textbf{Giá (VNĐ)} \\
+    \midrule
+    1 & ESP32 CP2102 38P Type-C & Bộ điều khiển trung tâm, giao tiếp USB Type-C & 1 & 123.000 \\
+    2 & Cảm biến siêu âm (HC-SR04) & Phát hiện khoảng cách bất thường tại cổng & 1 & 25.000 \\
+    3 & Module đọc thẻ RFID RC522 & Đọc UID thẻ RFID/NFC để xác thực người dùng & 1 & 21.000 \\
+    4 & Micro Servo SG90 & Điều khiển đóng/mở cơ cấu cổng mô phỏng & 2 & 60.000 \\
+    5 & ESP32-CAM AI Thinker & Thu hình Snapshot hỗ trợ nhận diện và xử lý AI & 1 & 200.000 \\
+    6 & LED & Hiển thị trạng thái hợp lệ/cảnh báo & 2 & 800 \\
+    7 & Buzzer & Phát cảnh báo âm thanh tại chỗ & 1 & 3.000 \\
+    8 & Điện trở 220 $\Omega$ & Phụ kiện mạch cho LED và tín hiệu điều khiển & 5 & 200 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Tổng cộng:}} & \textbf{404.600} \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+
+%============================
+\section{Chi tiết thiết bị}
+%============================
+\begin{frame}{1. Mạch điều khiển}
+  Hệ thống gồm 2 mạch điều khiển: 
+  \begin{enumerate}
+    \item ESP32 38 I/O Pin Type C dùng để điều khiển các thiết bị ngoại vi (Cảm biến hồng ngoại, RFID, servo,...), phục vụ mục đích mở cổng và các Mục đích 2 và 3.
+    \item ESP32-CAM AI Thinker phục vụ việc áp dụng Thị giác máy tính nhằm nhận diện người dùng đã đăng ký để mở cổng. Bên cạnh đó cũng chụp lại khoảng khắc có người trèo qua cổng vi phạm.
+  \end{enumerate}
+
+  2 mạch này sẽ hoạt động cùng nhau và tương tác với nhau thông qua wifi. Mô hình được nạp thẳng vào ESP32-CAM và chạy ngay trên mạch, từ đó gửi dữ liệu cho ESP32 38P để thực hiện các chức năng của cổng
+
+
+\end{frame}
+
+\begin{frame}{1. Mạch điều khiển}
+
+\begin{columns}
+    \column{0.5\textwidth}
+    \centering
+    \includegraphics[width=0.6\linewidth]{figures/ESP32 38P.png}
+    
+    \small Hình 1: ESP32 38P
+
+    \column{0.5\textwidth}
+    \centering
+    \includegraphics[width=0.6\linewidth]{figures/ESP32 Cam.png}
+    
+    \small Hình 2: ESP32 CAM
+\end{columns}
+
+\end{frame}
+%============================
+\section{Phương pháp đề xuất}
+%============================
+
+\begin{frame}{Phương pháp thực hiện}
+  Hệ thống được triển khai theo quy trình đơn giản: nhận tín hiệu từ camera, RFID/NFC và cảm biến; xử lý tại bộ điều khiển; sau đó mở cửa hoặc kích hoạt cảnh báo và cập nhật trạng thái lên web.
+
+  \vspace{0.8em}
+  \begin{center}
+  \begin{tikzpicture}[
+    pipestep/.style={rectangle, rounded corners=4pt, draw=blue!70, fill=blue!8,
+      text width=2.8cm, align=center, font=\small, minimum height=1.0cm},
+    arr/.style={-{Stealth[length=2.5mm]}, thick, blue!70}
+  ]
+    \node[pipestep, fill=teal!8, draw=teal!70!black] (input) {Nhận tín hiệu\\{\scriptsize Camera / RFID / cảm biến}};
+    \node[pipestep, right=0.7cm of input] (process) {Xử lý tại thiết bị\\{\scriptsize kiểm tra dữ liệu}};
+    \node[pipestep, right=0.7cm of process] (decision) {Ra quyết định\\{\scriptsize hợp lệ hay vi phạm}};
+    \node[pipestep, right=0.7cm of decision, fill=orange!10, draw=orange!80!black] (output) {Hành động\\{\scriptsize mở cửa / báo động / gửi web}};
+
+    \draw[arr] (input) -- (process);
+    \draw[arr] (process) -- (decision);
+    \draw[arr] (decision) -- (output);
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Luồng 1 -- Nhận diện bằng camera}
+  Camera được đặt trước cửa để ghi nhận hình ảnh người đến gần. Dữ liệu ảnh được xử lý tại thiết bị nhằm phát hiện có người đứng trước cửa và hỗ trợ nhận diện người dùng đã đăng ký trong hệ thống.
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Phát hiện người trong phạm vi hoạt động yêu cầu.
+    \item Đối chiếu dữ liệu nhận diện với thông tin đã lưu.
+    \item Gửi kết quả sang bộ điều khiển để quyết định mở cửa hoặc từ chối.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Luồng 2 -- Xác thực RFID/NFC}
+  Người dùng hợp lệ có thể sử dụng thẻ RFID/NFC để xác thực nhanh khi ra vào. Sau khi quét thẻ, bộ điều khiển kiểm tra thông tin và thực hiện mở cửa tự động nếu dữ liệu hợp lệ.
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Đọc mã thẻ từ đầu đọc RFID/NFC.
+    \item Kiểm tra mã thẻ với danh sách người dùng đã đăng ký.
+    \item Mở cửa và ghi nhận log khi xác thực thành công.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Luồng 3 -- Phát hiện trèo/nhảy qua cổng}
+  Hệ thống theo dõi khu vực cổng bằng camera hoặc cảm biến để nhận biết các hành vi xâm nhập bất thường như trèo hoặc nhảy qua cổng mà không thực hiện xác thực hợp lệ.
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Theo dõi khu vực cổng liên tục trong thời gian hoạt động.
+    \item Phát hiện nhanh các trường hợp vượt cổng trái phép.
+    \item Kích hoạt báo động và gửi cảnh báo lên web cho người quản lý.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Web quản lý và cảnh báo}
+  Hệ thống web đóng vai trò theo dõi và quản lý tập trung. Người quản lý có thể xem thông tin người dùng, lịch sử ra vào, trạng thái cửa và các cảnh báo phát sinh từ thiết bị.
+
+  \vspace{0.8em}
+  \begin{itemize}
+    \item Quản lý danh sách người dùng và thẻ RFID/NFC.
+    \item Hiển thị Popup cảnh báo thông minh bằng mô hình LLM, tự động phân tích và sinh log mô tả đối tượng vi phạm từ ảnh camera gửi về.
+    \item Nhận cảnh báo khi phát hiện trèo/nhảy qua cổng.
+    \item Hỗ trợ theo dõi trạng thái hoạt động của hệ thống.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Luồng hoạt động tổng quát}
+  \begin{enumerate}
+    \item Khi có người đến cửa, hệ thống nhận tín hiệu từ camera hoặc RFID/NFC.
+    \item Bộ điều khiển xử lý dữ liệu để xác định người dùng hợp lệ hay trường hợp bất thường.
+    \item Nếu hợp lệ, servo mở cửa và hệ thống lưu lại log ra vào.
+    \item Nếu phát hiện trèo/nhảy qua cổng, hệ thống bật báo động và gửi cảnh báo lên web.
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Ưu điểm}
+  \begin{itemize}
+    \item \textbf{Ra vào thuận tiện:} hỗ trợ nhận diện người và xác thực bằng RFID/NFC, giúp mở cửa nhanh hơn.
+    \vspace{0.4em}
+    \item \textbf{Quản lý dễ dàng:} toàn bộ lịch sử ra vào và trạng thái hệ thống được theo dõi trên web.
+    \vspace{0.4em}
+    \item \textbf{An toàn hơn:} hệ thống có thể phát hiện vượt cổng và cảnh báo ngay tại chỗ lẫn trên web.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Các khó khăn có thể gặp phải}
+  \begin{itemize}
+    \item \textbf{Môi trường thực tế:} ánh sáng, góc đứng và khoảng cách có thể ảnh hưởng đến chất lượng nhận diện bằng camera.
+    \vspace{0.3em}
+    \item \textbf{Độ ổn định phần cứng:} đầu đọc RFID/NFC, cảm biến và servo cần hoạt động đồng bộ để tránh lỗi khi vận hành.
+    \vspace{0.3em}
+    \item \textbf{Tích hợp hệ thống:} cần đồng bộ tốt giữa thiết bị, web và cảnh báo để bảo đảm phản hồi đúng lúc.
+  \end{itemize}
+\end{frame}
+
+%============================
+\section{Kiến trúc hệ thống}
+%============================
+\begin{frame}{Kiến trúc tổng thể}
+  \begin{center}
+  \begin{tikzpicture}[
+    layerbox/.style={rectangle, rounded corners=4pt, text width=3.2cm,
+      align=center, minimum height=1.5cm, font=\small\bfseries, inner sep=5pt},
+    inputbox/.style={layerbox, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
+    actbox/.style={layerbox, draw=green!55!black, fill=green!9},
+    webbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
+  ]
+    \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + cảm biến cổng}};
+    \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM}};
+    \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED/Buzzer}};
+    \node[webbox, above=1.3cm of ctrl] (web) {Web dashboard\\{\scriptsize Popup LLM + log vi phạm + trạng thái}};
+
+    \draw[arr] (input) -- (ctrl);
+    \draw[arr] (ctrl) -- (act);
+    \draw[arr] (ctrl) -- (web);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.4em}
+  \textbf{Cách hoạt động:} khối đầu vào nhận tín hiệu, khối xử lý trung tâm ra quyết định, khối chấp hành thực hiện mở cửa hoặc báo động, còn web dùng để theo dõi và quản lý.
+\end{frame}
+
+\begin{frame}{Sơ đồ kiến trúc hệ thống}
+  \begin{center}
+  \begin{tikzpicture}[
+    block/.style={rectangle, rounded corners=4pt, text width=2.55cm,
+      align=center, minimum height=1.1cm, font=\small, inner sep=4pt},
+    inputbox/.style={block, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={block, draw=violet!70!black, fill=violet!10},
+    actbox/.style={block, draw=green!55!black, fill=green!9},
+    webbox/.style={block, draw=orange!80!black, fill=orange!10},
+    dbbox/.style={block, draw=gray!70!black, fill=gray!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70},
+    dataarr/.style={<->, >=Stealth, thick, orange!80!black}
+  ]
+    \node[inputbox] (input) {Thiết bị đầu vào\\{\scriptsize Camera\\RFID/NFC\\cảm biến cổng}};
+    \node[ctrlbox, right=0.8cm of input] (ctrl) {Bộ xử lý trung tâm\\{\scriptsize ESP32 / ESP32-CAM\\xử lý + Wi-Fi}};
+    \node[actbox, right=0.8cm of ctrl] (act) {Thiết bị chấp hành\\{\scriptsize Servo\\LED/Buzzer}};
+    \node[webbox, below=1.0cm of ctrl] (web) {Web dashboard\\{\scriptsize trạng thái\\Popup LLM\\log vi phạm}};
+    \node[dbbox, right=0.8cm of web] (db) {Cơ sở dữ liệu\\{\scriptsize người dùng\\thẻ\\lịch sử}};
+
+    \draw[arr] (input) -- node[above, font=\scriptsize]{tín hiệu} (ctrl);
+    \draw[arr] (ctrl) -- node[above, font=\scriptsize]{lệnh điều khiển} (act);
+    \draw[arr] (ctrl) -- node[left, font=\scriptsize]{Wi-Fi} (web);
+    \draw[dataarr] (web) -- node[above, font=\scriptsize]{lưu / đọc} (db);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.3em}
+  \footnotesize
+  \textbf{Vai trò:} thiết bị tại cửa xử lý tín hiệu để mở cửa hoặc báo động; web và cơ sở dữ liệu dùng để quản lý người dùng, lưu log và hiển thị cảnh báo cho người quản lý.
+\end{frame}
+
+\begin{frame}{Kiến trúc -- Chi tiết thành phần}
+  \begin{columns}[T]
+    \column{0.33\textwidth}
+      \textbf{Khối đầu vào}
+      \begin{itemize}
+        \item Camera trước cửa
+        \item Đầu đọc RFID/NFC
+        \item Cảm biến phát hiện vượt cổng
+        \item Tín hiệu người dùng và môi trường
+      \end{itemize}
+
+    \column{0.33\textwidth}
+      \textbf{Khối xử lý}
+      \begin{itemize}
+        \item ESP32 / ESP32-CAM
+        \item Xử lý nhận diện và xác thực
+        \item So khớp dữ liệu người dùng
+        \item Ra quyết định mở cửa hoặc cảnh báo
+      \end{itemize}
+
+    \column{0.33\textwidth}
+      \textbf{Khối đầu ra \& giám sát}
+      \begin{itemize}
+        \item Servo đóng/mở cửa
+        \item LED / Buzzer báo trạng thái
+        \item Web dashboard
+        \item Log ra vào và cảnh báo
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Thông tin log và cảnh báo}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Log ra vào}
+      \begin{itemize}
+        \item Thời gian phát sinh sự kiện.
+        \item Người dùng, mã thẻ hoặc thiết bị liên quan.
+        \item Phương thức xác thực: camera hoặc RFID/NFC.
+        \item Kết quả xử lý: mở cửa, từ chối hoặc lỗi xác thực.
+        \item Trạng thái cửa sau khi xử lý.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Cảnh báo bất thường}
+      \begin{itemize}
+        \item Phát hiện trèo/nhảy qua cổng.
+        \item Thẻ không hợp lệ hoặc người lạ trước cửa.
+        \item Bật LED/Buzzer để báo động tại chỗ.
+        \item Gửi loại cảnh báo, thời gian và trạng thái lên web.
+        \item Người quản lý theo dõi và xác nhận xử lý.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Vòng lặp điều khiển thông minh}
+  \begin{center}
+  \begin{tikzpicture}[
+    box/.style={rectangle, rounded corners=3pt, draw=blue!70, fill=blue!7,
+      text width=2.5cm, align=center, font=\small, minimum height=0.9cm},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
+  ]
+    \node[box, fill=teal!8, draw=teal!70!black] (sense) {Cảm nhận\\{\scriptsize Camera / RFID / cảm biến}};
+    \node[box, right=0.6cm of sense] (detect) {Xử lý\\{\scriptsize kiểm tra dữ liệu}};
+    \node[box, right=0.6cm of detect] (process) {Quyết định\\{\scriptsize hợp lệ hay vi phạm}};
+    \node[box, right=0.6cm of process, fill=orange!10, draw=orange!80!black] (decide) {Hành động\\{\scriptsize mở cửa / báo động}};
+    \node[box, below=0.8cm of decide, fill=green!9, draw=green!55!black] (act) {Giám sát\\{\scriptsize ghi log lên web}};
+
+    \draw[arr] (sense) -- (detect);
+    \draw[arr] (detect) -- (process);
+    \draw[arr] (process) -- (decide);
+    \draw[arr] (decide) -- (act);
+    \draw[-{Stealth[length=2mm]}, thick, red!60] (act.west) -| node[below, font=\scriptsize, red!60, near start]{Phản hồi trạng thái} (sense.south);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.6em}
+  \textbf{Ý tưởng chính:} hệ thống liên tục nhận tín hiệu, xử lý, ra quyết định, thực hiện hành động và cập nhật trạng thái để người quản lý theo dõi.
+\end{frame}
+
+
+%------- CLOSING -------
+\begin{frame}[plain]
+  \begin{center}
+    \vspace{2.5cm}
+    {\Huge \textbf{Cảm ơn!}}\\[0.8em]
+    {\Large Câu hỏi \& Thảo luận}
+  \end{center}
+\end{frame}
+
+\end{document}
