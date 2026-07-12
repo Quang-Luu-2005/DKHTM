@@ -3,17 +3,20 @@
 #include <Arduino.h>
 #include "esp_camera.h"
 
-#include <list>
-#include <string>
-#include <vector>
-
-#include "esp_partition.h"
-#include "fb_gfx.h"
-#include "img_converters.h"
 #include "app_state.h"
 #include "config.h"
 #include "types.h"
 #include "json_utils.h"
+
+#if ESP32CAM_HAS_FACE_MODELS
+  #include <list>
+  #include <string>
+  #include <vector>
+
+  #include "esp_partition.h"
+  #include "fb_gfx.h"
+  #include "img_converters.h"
+#endif
 
 static bool acquireFaceLock() {
   if (faceBusy) {
@@ -38,7 +41,7 @@ static String buildSimpleFaceResultJson(bool ok, const String& action, const Str
   body += faceDetectionAvailable ? "true" : "false";
   body += ",\"faceRecognitionAvailable\":";
   body += faceRecognitionAvailable ? "true" : "false";
-  body += ",\"enrolledCount\":" + String(faceRecognitionAvailable ? recognizer.get_enrolled_id_num() : 0);
+  body += ",\"enrolledCount\":" + String(enrolledFaceCount());
   body += ",\"faces\":[]";
   body += "}";
   return body;
@@ -47,6 +50,38 @@ static String buildSimpleFaceResultJson(bool ok, const String& action, const Str
 static void updateLastFaceResult(const String& body) {
   lastFaceResultJson = body;
 }
+
+static String buildFaceResultJson(const String& action, const FaceProcessingOutcome& outcome) {
+  String body = "{";
+  body += "\"ok\":";
+  body += outcome.ok ? "true" : "false";
+  body += ",\"action\":\"" + escapeJson(action) + "\"";
+  body += ",\"message\":\"" + escapeJson(outcome.message) + "\"";
+  body += ",\"width\":" + String(outcome.width);
+  body += ",\"height\":" + String(outcome.height);
+  body += ",\"faceCount\":" + String(outcome.faceCount);
+  body += ",\"detected\":";
+  body += outcome.detected ? "true" : "false";
+  body += ",\"recognized\":";
+  body += outcome.recognized ? "true" : "false";
+  body += ",\"recognizedId\":" + String(outcome.recognizedId);
+  body += ",\"recognizedName\":\"" + escapeJson(outcome.matchedName) + "\"";
+  body += ",\"similarity\":" + String(outcome.similarity, 4);
+  body += ",\"enrolled\":";
+  body += outcome.enrolled ? "true" : "false";
+  body += ",\"enrolledId\":" + String(outcome.enrolledId);
+  body += ",\"enrolledName\":\"" + escapeJson(outcome.enrolledName) + "\"";
+  body += ",\"faceDetectionAvailable\":";
+  body += faceDetectionAvailable ? "true" : "false";
+  body += ",\"faceRecognitionAvailable\":";
+  body += faceRecognitionAvailable ? "true" : "false";
+  body += ",\"enrolledCount\":" + String(enrolledFaceCount());
+  body += ",\"faces\":" + outcome.facesJson;
+  body += "}";
+  return body;
+}
+
+#if ESP32CAM_HAS_FACE_MODELS
 
 static void setupFaceEngine() {
   faceDetectionAvailable = psramFound();
@@ -170,36 +205,6 @@ static void drawFaceBoxes(fb_data_t* frame, const std::list<dl::detect::result_t
       fb_gfx_print(frame, x, labelY, lineColor, primaryLabel.c_str());
     }
   }
-}
-
-static String buildFaceResultJson(const String& action, const FaceProcessingOutcome& outcome) {
-  String body = "{";
-  body += "\"ok\":";
-  body += outcome.ok ? "true" : "false";
-  body += ",\"action\":\"" + escapeJson(action) + "\"";
-  body += ",\"message\":\"" + escapeJson(outcome.message) + "\"";
-  body += ",\"width\":" + String(outcome.width);
-  body += ",\"height\":" + String(outcome.height);
-  body += ",\"faceCount\":" + String(outcome.faceCount);
-  body += ",\"detected\":";
-  body += outcome.detected ? "true" : "false";
-  body += ",\"recognized\":";
-  body += outcome.recognized ? "true" : "false";
-  body += ",\"recognizedId\":" + String(outcome.recognizedId);
-  body += ",\"recognizedName\":\"" + escapeJson(outcome.matchedName) + "\"";
-  body += ",\"similarity\":" + String(outcome.similarity, 4);
-  body += ",\"enrolled\":";
-  body += outcome.enrolled ? "true" : "false";
-  body += ",\"enrolledId\":" + String(outcome.enrolledId);
-  body += ",\"enrolledName\":\"" + escapeJson(outcome.enrolledName) + "\"";
-  body += ",\"faceDetectionAvailable\":";
-  body += faceDetectionAvailable ? "true" : "false";
-  body += ",\"faceRecognitionAvailable\":";
-  body += faceRecognitionAvailable ? "true" : "false";
-  body += ",\"enrolledCount\":" + String(faceRecognitionAvailable ? recognizer.get_enrolled_id_num() : 0);
-  body += ",\"faces\":" + outcome.facesJson;
-  body += "}";
-  return body;
 }
 
 static bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& options, FaceProcessingOutcome& outcome, uint8_t jpegQuality = kFaceJpegQuality) {
@@ -349,3 +354,24 @@ static bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions&
   free(rgbBuffer);
   return true;
 }
+
+#else
+
+static void setupFaceEngine() {
+  faceDetectionAvailable = false;
+  faceRecognitionAvailable = false;
+  faceEngineMessage = "Face detection/recognition is unavailable: this Arduino-ESP32 installation does not include esp-dl model headers.";
+  updateLastFaceResult(buildSimpleFaceResultJson(false, "init", faceEngineMessage));
+}
+
+static bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions&, FaceProcessingOutcome& outcome, uint8_t = kFaceJpegQuality) {
+  if (frame != nullptr) {
+    esp_camera_fb_return(frame);
+  }
+
+  outcome.ok = false;
+  outcome.error = faceEngineMessage;
+  return false;
+}
+
+#endif

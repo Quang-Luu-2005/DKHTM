@@ -31,7 +31,26 @@
       "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD --word-diff=porcelain -- \"src/hardware/esp32cam_node/face/face_engine.h\" \"src/hardware/esp32cam_node/web/web_handlers.h\" \"src/hardware/esp32cam_node/services/backend_client.h\" \"src/hardware/esp32cam_node/services/camera_service.h\" \"src/hardware/esp32cam_node/utils/json_utils.h\")",
       "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD --word-diff=porcelain -- \"src/hardware/esp32cam_node/esp32cam_node.ino\" \"src/hardware/esp32cam_node/core/app_state.h\" \"src/hardware/esp32cam_node/web/web_server.h\")",
       "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD --raw)",
-      "PowerShell($cmds = @\\('arduino-cli','arduino','pio'\\); foreach \\($c in $cmds\\) { $x = Get-Command $c -ErrorAction SilentlyContinue; if \\($null -ne $x\\) { \"$c=$\\($x.Source\\)\" } else { \"$c=<missing>\" } })"
+      "PowerShell($cmds = @\\('arduino-cli','arduino','pio'\\); foreach \\($c in $cmds\\) { $x = Get-Command $c -ErrorAction SilentlyContinue; if \\($null -ne $x\\) { \"$c=$\\($x.Source\\)\" } else { \"$c=<missing>\" } })",
+      "Skill(deep-research)",
+      "Skill(deep-research:*)",
+      "Read(//c/Users/ADMIN/.platformio/packages/**)",
+      "Read(//c/Users/ADMIN/.platformio/platforms/espressif32/**)",
+      "PowerShell(& \"C:\\\\Users\\\\ADMIN\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" pkg show --platform espressif32)",
+      "Read(//c/Users/ADMIN/.platformio/packages/framework-arduinoespressif32/**)",
+      "Read(//c/Users/ADMIN/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp-dl/include/model_zoo/**)",
+      "PowerShell(& \"C:\\\\Users\\\\ADMIN\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" platform show espressif32)",
+      "PowerShell($roots = @\\(\"C:\\\\Users\\\\ADMIN\\\\AppData\\\\Local\\\\Arduino15\\\\packages\\\\esp32\\\\hardware\\\\esp32\", \"C:\\\\Users\\\\ADMIN\\\\Documents\\\\Arduino\\\\hardware\\\\espressif\\\\esp32\"\\); foreach \\($root in $roots\\) { if \\(Test-Path $root\\) { Get-ChildItem $root -Directory | Select-Object FullName, Name } })",
+      "WebFetch(domain:docs.espressif.com)",
+      "PowerShell(gh api repos/espressif/arduino-esp32/contents/tools/sdk/esp32/include/esp-dl?ref=2.0.17 --jq '.[].name')",
+      "PowerShell(gh api repos/espressif/arduino-esp32/contents/tools/esp32-arduino-libs?ref=3.3.0 --jq '.[].name')",
+      "PowerShell(gh api repos/espressif/arduino-esp32/releases/tags/2.0.17 --jq '{tag_name,name,body,assets:[.assets[].name]}')",
+      "PowerShell(gh api repos/platformio/platform-espressif32/releases/tags/v6.12.0 --jq '{tag_name,name,body}')",
+      "PowerShell(gh api repos/espressif/arduino-esp32/contents/tools/esp32-arduino-libs?ref=3.3.10 --jq '.[].name')",
+      "Bash(PLATFORMIO_BUILD_FLAGS=\"-DESP32CAM_FORCE_NO_FACE_MODELS\" \"/c/Users/ADMIN/.platformio/penv/Scripts/pio.exe\" run -e esp32cam_node)",
+      "Bash([ -x \"$ARDUINO_CLI\" ])",
+      "Bash('/c/Program Files/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe' compile --fqbn esp32:esp32:esp32cam src/hardware/esp32cam_node)",
+      "Bash(command -v arduino-cli)"
     ]
   }
 }

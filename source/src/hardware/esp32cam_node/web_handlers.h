@@ -60,7 +60,7 @@ static String buildStatusJson() {
   body += ",\"faceRecognitionMode\":\"" + faceRecognitionMode() + "\"";
   body += ",\"faceBusy\":";
   body += faceBusy ? "true" : "false";
-  body += ",\"enrolledCount\":" + String(faceRecognitionAvailable ? recognizer.get_enrolled_id_num() : 0);
+  body += ",\"enrolledCount\":" + String(enrolledFaceCount());
   body += ",\"streamFrameDelayMs\":" + String(kStreamFrameDelayMs);
   body += ",\"streamDetectJpegQuality\":" + String(kStreamDetectJpegQuality);
   body += ",\"streamFastMode\":true";
@@ -120,6 +120,10 @@ static void handleFaceLastResult() {
 }
 
 static void handleFaceIds() {
+#if !ESP32CAM_HAS_FACE_MODELS
+  sendJsonResponse(503, buildSimpleFaceResultJson(false, "list-ids", faceEngineMessage));
+  return;
+#else
   if (!faceRecognitionAvailable) {
     sendJsonResponse(503, buildSimpleFaceResultJson(false, "list-ids", faceEngineMessage));
     return;
@@ -144,9 +148,14 @@ static void handleFaceIds() {
 
   body += "]}";
   sendJsonResponse(200, body);
+#endif
 }
 
 static void handleFaceDelete() {
+#if !ESP32CAM_HAS_FACE_MODELS
+  sendJsonResponse(503, buildSimpleFaceResultJson(false, "delete", faceEngineMessage));
+  return;
+#else
   if (!faceRecognitionAvailable) {
     sendJsonResponse(503, buildSimpleFaceResultJson(false, "delete", faceEngineMessage));
     return;
@@ -170,6 +179,7 @@ static void handleFaceDelete() {
   body += ",\"remaining\":" + String(remaining);
   body += "}";
   sendJsonResponse(200, body);
+#endif
 }
 
 static void handleFaceEnroll() {

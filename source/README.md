@@ -88,6 +88,7 @@ Mở trực tiếp [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/e
   - `kServerBaseUrl` nếu bật upload backend
   - `kDeviceSecret` nếu bật upload backend
 - `kEnableBackendUpload` mặc định là `false` để chỉ dùng web preview cục bộ.
+- Face recognition cần Arduino-ESP32/ESP32 core có kèm `esp-dl` model headers. Nếu Arduino IDE của bạn thiếu `model_zoo/face_recognition_112_v1_s8.hpp`, firmware vẫn compile được nhưng các endpoint face sẽ báo unavailable; cập nhật ESP32 board package hoặc dùng PlatformIO env `esp32cam_node` để bật đủ face detection/recognition.
 - Face recognition cần partition `fr` trong [partitions_esp32cam_face.csv](partitions_esp32cam_face.csv). PlatformIO đã dùng file này; khi nạp bằng Arduino IDE phải dùng partition scheme tùy chỉnh tương ứng, nếu không recognition sẽ báo partition `fr` unavailable.
 
 Kết nối nạp tối thiểu:
@@ -165,7 +166,7 @@ Nếu `pio` chưa có trong PATH trên Windows:
 
 ## Ghi chú face detection/recognition
 
-- Firmware ESP32-CAM dùng `esp-dl`/`esp32-camera` có sẵn trong Arduino-ESP32.
+- Firmware ESP32-CAM luôn dùng `esp32-camera`; phần face detection/recognition cần `esp-dl` legacy model headers. PlatformIO env `esp32cam_node` đang dùng Arduino-ESP32 2.0.17 có đủ headers này. Nếu Arduino IDE dùng ESP32 core 3.x không có `esp-dl/model_zoo`, firmware sẽ tự tắt face detection/recognition và vẫn chạy camera/stream/status.
 - `source/partitions_esp32cam_face.csv` thêm partition `fr` để lưu face IDs; đổi partition layout có thể làm mất dữ liệu flash cũ khi nạp lại.
 - Face detection chạy cho stream/snapshot để vẽ box.
 - Stream đã có 3 mode: `/stream` nhanh nhất, `/stream?detect=1&detectEvery=5&quality=60&delay=0` cân bằng, `/stream?detect=1&detectEvery=1&quality=68&delay=0` detect từng frame.
