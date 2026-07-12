@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:src/hardware/esp32cam_node/face/face_engine.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:src/hardware/esp32cam_node/web/web_handlers.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/core/app_state.h)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/core/app_state.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/face/face_engine.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/web/web_handlers.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/web/web_server.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/services/camera_service.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/services/backend_client.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/utils/json_utils.cpp)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD -- \"platformio.ini\")",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/esp32cam_node.ino)",
+      "PowerShell(Get-Command arduino-cli -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command pio -ErrorAction SilentlyContinue)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD -- \"README.md\" \"docs/planning_code_esp32_access_control.md\")",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff --check HEAD)",
+      "Read(//d/DKHTM/**)",
+      "Read(//c/Users/ADMIN/.platformio/**)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/services/camera_service.h)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/services/backend_client.h)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/web/web_server.h)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/web/web_handlers.h)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/face/face_engine.h)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" show HEAD:source/src/hardware/esp32cam_node/utils/json_utils.h)",
+      "Read(//c/Users/ADMIN/.platformio/packages/framework-arduinoespressif32/libraries/ESP32/examples/Camera/CameraWebServer/**)",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD -- \"DKHTM.code-workspace\")",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD -- \"src/hardware/platformio_esp32cam_node.cpp\")",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD --word-diff=porcelain -- \"src/hardware/esp32cam_node/face/face_engine.h\" \"src/hardware/esp32cam_node/web/web_handlers.h\" \"src/hardware/esp32cam_node/services/backend_client.h\" \"src/hardware/esp32cam_node/services/camera_service.h\" \"src/hardware/esp32cam_node/utils/json_utils.h\")",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD --word-diff=porcelain -- \"src/hardware/esp32cam_node/esp32cam_node.ino\" \"src/hardware/esp32cam_node/core/app_state.h\" \"src/hardware/esp32cam_node/web/web_server.h\")",
+      "PowerShell(git -C \"D:\\\\DKHTM\\\\source\" diff HEAD --raw)",
+      "PowerShell($cmds = @\\('arduino-cli','arduino','pio'\\); foreach \\($c in $cmds\\) { $x = Get-Command $c -ErrorAction SilentlyContinue; if \\($null -ne $x\\) { \"$c=$\\($x.Source\\)\" } else { \"$c=<missing>\" } })"
+    ]
+  }
+}

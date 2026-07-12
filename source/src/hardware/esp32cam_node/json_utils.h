@@ -1,9 +1,11 @@
-#include "json_utils.h"
+#pragma once
 
-#include "../core/app_state.h"
-#include "../core/config.h"
+#include <Arduino.h>
 
-String escapeJson(const String& value) {
+#include "app_state.h"
+#include "config.h"
+
+static String escapeJson(const String& value) {
   String escaped;
   escaped.reserve(value.length() + 8);
 
@@ -34,7 +36,7 @@ String escapeJson(const String& value) {
   return escaped;
 }
 
-String normalizeIdentityName(String value) {
+static String normalizeIdentityName(String value) {
   value.trim();
   value.replace("\n", " ");
   value.replace("\r", " ");
@@ -52,7 +54,7 @@ String normalizeIdentityName(String value) {
   return value;
 }
 
-bool queryFlag(const char* name, bool defaultValue) {
+static bool queryFlag(const char* name, bool defaultValue = false) {
   if (!webServer.hasArg(name)) {
     return defaultValue;
   }
@@ -63,7 +65,7 @@ bool queryFlag(const char* name, bool defaultValue) {
   return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-int queryInt(const char* name, int defaultValue, int minValue, int maxValue) {
+static int queryInt(const char* name, int defaultValue, int minValue, int maxValue) {
   if (!webServer.hasArg(name)) {
     return defaultValue;
   }
@@ -78,6 +80,6 @@ int queryInt(const char* name, int defaultValue, int minValue, int maxValue) {
   return value;
 }
 
-String faceRecognitionMode() {
+static String faceRecognitionMode() {
   return "snapshot/manual";
 }

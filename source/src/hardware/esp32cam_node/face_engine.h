@@ -1,16 +1,21 @@
-#include "face_engine.h"
+#pragma once
+
+#include <Arduino.h>
+#include "esp_camera.h"
 
 #include <list>
 #include <string>
 #include <vector>
 
-#include "../core/app_state.h"
 #include "esp_partition.h"
 #include "fb_gfx.h"
 #include "img_converters.h"
-#include "../utils/json_utils.h"
+#include "app_state.h"
+#include "config.h"
+#include "types.h"
+#include "json_utils.h"
 
-bool acquireFaceLock() {
+static bool acquireFaceLock() {
   if (faceBusy) {
     return false;
   }
@@ -19,11 +24,11 @@ bool acquireFaceLock() {
   return true;
 }
 
-void releaseFaceLock() {
+static void releaseFaceLock() {
   faceBusy = false;
 }
 
-String buildSimpleFaceResultJson(bool ok, const String& action, const String& message) {
+static String buildSimpleFaceResultJson(bool ok, const String& action, const String& message) {
   String body = "{";
   body += "\"ok\":";
   body += ok ? "true" : "false";
@@ -39,11 +44,11 @@ String buildSimpleFaceResultJson(bool ok, const String& action, const String& me
   return body;
 }
 
-void updateLastFaceResult(const String& body) {
+static void updateLastFaceResult(const String& body) {
   lastFaceResultJson = body;
 }
 
-void setupFaceEngine() {
+static void setupFaceEngine() {
   faceDetectionAvailable = psramFound();
   faceRecognitionAvailable = false;
 
@@ -167,7 +172,7 @@ static void drawFaceBoxes(fb_data_t* frame, const std::list<dl::detect::result_t
   }
 }
 
-String buildFaceResultJson(const String& action, const FaceProcessingOutcome& outcome) {
+static String buildFaceResultJson(const String& action, const FaceProcessingOutcome& outcome) {
   String body = "{";
   body += "\"ok\":";
   body += outcome.ok ? "true" : "false";
@@ -197,7 +202,7 @@ String buildFaceResultJson(const String& action, const FaceProcessingOutcome& ou
   return body;
 }
 
-bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& options, FaceProcessingOutcome& outcome, uint8_t jpegQuality) {
+static bool processFrameForFace(camera_fb_t* frame, const FaceProcessingOptions& options, FaceProcessingOutcome& outcome, uint8_t jpegQuality = kFaceJpegQuality) {
   if (frame == nullptr) {
     outcome.error = "Camera frame is null.";
     return false;

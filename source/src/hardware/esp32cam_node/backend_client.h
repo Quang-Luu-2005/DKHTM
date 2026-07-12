@@ -1,17 +1,18 @@
-#include "backend_client.h"
+#pragma once
 
+#include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 
-#include "../core/app_state.h"
+#include "app_state.h"
+#include "config.h"
 #include "camera_service.h"
-#include "../core/config.h"
 
-bool isWiFiConnected() {
+static bool isWiFiConnected() {
   return WiFi.status() == WL_CONNECTED;
 }
 
-bool connectWiFi() {
+static bool connectWiFi() {
   if (isWiFiConnected()) {
     return true;
   }
@@ -39,7 +40,7 @@ bool connectWiFi() {
   return false;
 }
 
-int postJsonToBackend(const String& path, const String& body) {
+static int postJsonToBackend(const String& path, const String& body) {
   if (!kEnableBackendUpload) {
     Serial.println("Backend upload disabled. Skip JSON request.");
     return 0;
@@ -68,7 +69,7 @@ int postJsonToBackend(const String& path, const String& body) {
   return statusCode;
 }
 
-int postJpegToBackend(const String& pathAndQuery, uint8_t* payload, size_t payloadLength) {
+static int postJpegToBackend(const String& pathAndQuery, uint8_t* payload, size_t payloadLength) {
   if (!kEnableBackendUpload) {
     Serial.println("Backend upload disabled. Skip JPEG request.");
     return 0;
@@ -93,7 +94,7 @@ int postJpegToBackend(const String& pathAndQuery, uint8_t* payload, size_t paylo
   return statusCode;
 }
 
-void sendCameraEvent(const String& eventType, const String& message) {
+static void sendCameraEvent(const String& eventType, const String& message) {
   String body = "{";
   body += "\"deviceId\":\"" + String(kEsp32CamDeviceId) + "\",";
   body += "\"doorId\":\"" + String(kDoorId) + "\",";
@@ -110,7 +111,7 @@ void sendCameraEvent(const String& eventType, const String& message) {
   Serial.println(statusCode);
 }
 
-bool uploadSnapshot() {
+static bool uploadSnapshot() {
   camera_fb_t* frame = captureCameraFrame();
   if (frame == nullptr) {
     return false;
@@ -135,7 +136,7 @@ bool uploadSnapshot() {
   return false;
 }
 
-void processBackendSnapshotTask() {
+static void processBackendSnapshotTask() {
   if (!kEnableBackendUpload) {
     return;
   }

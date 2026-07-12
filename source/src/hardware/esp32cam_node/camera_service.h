@@ -1,11 +1,15 @@
-#include "camera_service.h"
+#pragma once
 
-#include "../core/app_state.h"
-#include "backend_client.h"
-#include "../core/config.h"
-#include "../web/web_server.h"
+#include <Arduino.h>
+#include "esp_camera.h"
 
-bool initCameraHardware() {
+#include "app_state.h"
+#include "config.h"
+#include "web_server.h"
+
+static void sendCameraEvent(const String& eventType, const String& message);
+
+static bool initCameraHardware() {
   pinMode(kFlashLedPin, OUTPUT);
   digitalWrite(kFlashLedPin, LOW);
 
@@ -62,7 +66,7 @@ bool initCameraHardware() {
   return true;
 }
 
-camera_fb_t* captureCameraFrame() {
+static camera_fb_t* captureCameraFrame() {
   if (kUseFlashLed) {
     digitalWrite(kFlashLedPin, HIGH);
     delay(kFlashWarmupMs);
@@ -81,7 +85,7 @@ camera_fb_t* captureCameraFrame() {
   return frame;
 }
 
-void sendJpegResponse(const uint8_t* data, size_t length) {
+static void sendJpegResponse(const uint8_t* data, size_t length) {
   WiFiClient client = webServer.client();
   sendCorsHeaders();
   webServer.sendHeader("Cache-Control", "no-store");

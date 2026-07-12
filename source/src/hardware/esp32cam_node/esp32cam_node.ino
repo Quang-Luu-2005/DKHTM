@@ -1,10 +1,14 @@
 #include <Arduino.h>
 
-#include "core/app_state.h"
-#include "services/backend_client.h"
-#include "services/camera_service.h"
-#include "face/face_engine.h"
-#include "web/web_server.h"
+#include "config.h"
+#include "types.h"
+#include "app_state.h"
+#include "json_utils.h"
+#include "web_server.h"
+#include "camera_service.h"
+#include "backend_client.h"
+#include "face_engine.h"
+#include "web_handlers.h"
 
 void setup() {
   Serial.begin(115200);

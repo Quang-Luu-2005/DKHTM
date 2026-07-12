@@ -41,28 +41,16 @@ Servo nên dùng nguồn 5V riêng và nối chung GND với ESP32.
     └── src/
         └── hardware/
             ├── esp32cam_node/
-            │   ├── core/
-            │   │   ├── app_state.cpp
-            │   │   ├── app_state.h
-            │   │   ├── config.h
-            │   │   └── types.h
-            │   ├── face/
-            │   │   ├── face_engine.cpp
-            │   │   └── face_engine.h
-            │   ├── services/
-            │   │   ├── backend_client.cpp
-            │   │   ├── backend_client.h
-            │   │   ├── camera_service.cpp
-            │   │   └── camera_service.h
-            │   ├── utils/
-            │   │   ├── json_utils.cpp
-            │   │   └── json_utils.h
-            │   ├── web/
-            │   │   ├── web_handlers.cpp
-            │   │   ├── web_handlers.h
-            │   │   ├── web_server.cpp
-            │   │   └── web_server.h
-            │   └── esp32cam_node.ino
+            │   ├── app_state.h
+            │   ├── backend_client.h
+            │   ├── camera_service.h
+            │   ├── config.h
+            │   ├── esp32cam_node.ino
+            │   ├── face_engine.h
+            │   ├── json_utils.h
+            │   ├── types.h
+            │   ├── web_handlers.h
+            │   └── web_server.h
             ├── main_controller/
             │   └── main_controller.ino
             ├── platformio_esp32cam_node.cpp
@@ -88,16 +76,19 @@ Lệnh test qua Serial:
 
 ### ESP32-CAM
 
-Entry point vẫn là [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino), nhưng logic đã tách thành nhiều module `.h/.cpp` trong các folder con `core/`, `utils/`, `services/`, `face/`, `web/`.
+Mở trực tiếp [src/hardware/esp32cam_node/esp32cam_node.ino](src/hardware/esp32cam_node/esp32cam_node.ino). Tất cả module `.h` nằm chung thư mục với file `.ino`, mỗi file `.h` tự chứa cả khai báo và phần code để Arduino IDE đọc sketch dễ hơn.
 
 - Board: `AI Thinker ESP32-CAM`
+- Chọn `Tools > Port` đúng cổng COM của USB-TTL trước khi Verify/Upload.
+- Nếu Arduino IDE không hiện port, kiểm tra driver USB-TTL (CH340/CP210x/FTDI), cáp/dây, nguồn 5V và Device Manager; việc hiện COM port không phụ thuộc cách chia file code.
 - Cần PSRAM để chạy face detection ổn định.
-- Sửa cấu hình ở [src/hardware/esp32cam_node/core/config.h](src/hardware/esp32cam_node/core/config.h) trước khi nạp:
+- Sửa cấu hình ở [src/hardware/esp32cam_node/config.h](src/hardware/esp32cam_node/config.h) trước khi nạp:
   - `kWifiSsid`
   - `kWifiPass`
   - `kServerBaseUrl` nếu bật upload backend
   - `kDeviceSecret` nếu bật upload backend
 - `kEnableBackendUpload` mặc định là `false` để chỉ dùng web preview cục bộ.
+- Face recognition cần partition `fr` trong [partitions_esp32cam_face.csv](partitions_esp32cam_face.csv). PlatformIO đã dùng file này; khi nạp bằng Arduino IDE phải dùng partition scheme tùy chỉnh tương ứng, nếu không recognition sẽ báo partition `fr` unavailable.
 
 Kết nối nạp tối thiểu:
 
@@ -188,5 +179,5 @@ Nếu `pio` chưa có trong PATH trên Windows:
 - Web preview nằm ở root repo: [../index.html](../index.html).
 - Firmware ESP32 main hiện là bản demo phần cứng tối giản, điều khiển bằng Serial thay cho RFID/cảm biến.
 - Firmware ESP32-CAM tự mở web server trên port 80 để phục vụ preview và endpoint face.
-- ESP32-CAM firmware đã được tách module theo folder: `core/` chứa cấu hình/state/type, `services/` xử lý camera/backend, `face/` xử lý face detection/recognition, `utils/` chứa helper JSON/query, `web/` xử lý endpoint.
+- ESP32-CAM firmware dùng layout phẳng cho Arduino IDE: file `.ino` và toàn bộ module `.h` nằm chung trong `src/hardware/esp32cam_node/`.
 - Nếu cần sơ đồ đấu dây chi tiết, xem [planning_code_esp32_access_control.md](docs/planning_code_esp32_access_control.md).

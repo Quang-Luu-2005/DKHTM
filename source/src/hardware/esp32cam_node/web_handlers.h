@@ -1,13 +1,46 @@
-#include "web_handlers.h"
+#pragma once
 
+#include <Arduino.h>
 #include <WiFi.h>
 
-#include "../core/app_state.h"
-#include "../services/camera_service.h"
-#include "../core/config.h"
-#include "../face/face_engine.h"
-#include "../utils/json_utils.h"
+#include "app_state.h"
+#include "config.h"
+#include "camera_service.h"
+#include "face_engine.h"
+#include "json_utils.h"
 #include "web_server.h"
+
+static void handleRoot();
+static void handleStatus();
+static void handleFaceLastResult();
+static void handleFaceIds();
+static void handleFaceDelete();
+static void handleFaceEnroll();
+static void handleCapture();
+static void handleStream();
+static void handleNotFound();
+
+static void registerPreviewRoutes() {
+  webServer.on("/", HTTP_GET, handleRoot);
+  webServer.on("/status", HTTP_GET, handleStatus);
+  webServer.on("/capture", HTTP_GET, handleCapture);
+  webServer.on("/stream", HTTP_GET, handleStream);
+  webServer.on("/face/last-result", HTTP_GET, handleFaceLastResult);
+  webServer.on("/face/enroll", HTTP_GET, handleFaceEnroll);
+  webServer.on("/face/ids", HTTP_GET, handleFaceIds);
+  webServer.on("/face/delete", HTTP_GET, handleFaceDelete);
+
+  webServer.on("/", HTTP_OPTIONS, handleOptions);
+  webServer.on("/status", HTTP_OPTIONS, handleOptions);
+  webServer.on("/capture", HTTP_OPTIONS, handleOptions);
+  webServer.on("/stream", HTTP_OPTIONS, handleOptions);
+  webServer.on("/face/last-result", HTTP_OPTIONS, handleOptions);
+  webServer.on("/face/enroll", HTTP_OPTIONS, handleOptions);
+  webServer.on("/face/ids", HTTP_OPTIONS, handleOptions);
+  webServer.on("/face/delete", HTTP_OPTIONS, handleOptions);
+
+  webServer.onNotFound(handleNotFound);
+}
 
 static String buildStatusJson() {
   sensor_t* sensor = esp_camera_sensor_get();
@@ -53,7 +86,7 @@ static String buildStatusJson() {
   return body;
 }
 
-void handleRoot() {
+static void handleRoot() {
   sendCorsHeaders();
   webServer.send(
     200,
@@ -74,11 +107,11 @@ void handleRoot() {
   );
 }
 
-void handleStatus() {
+static void handleStatus() {
   sendJsonResponse(200, buildStatusJson());
 }
 
-void handleFaceLastResult() {
+static void handleFaceLastResult() {
   if (lastFaceResultJson.length() == 0) {
     updateLastFaceResult(buildSimpleFaceResultJson(false, "idle", "Chưa có kết quả xử lý khuôn mặt nào."));
   }
@@ -86,7 +119,7 @@ void handleFaceLastResult() {
   sendJsonResponse(200, lastFaceResultJson);
 }
 
-void handleFaceIds() {
+static void handleFaceIds() {
   if (!faceRecognitionAvailable) {
     sendJsonResponse(503, buildSimpleFaceResultJson(false, "list-ids", faceEngineMessage));
     return;
@@ -113,7 +146,7 @@ void handleFaceIds() {
   sendJsonResponse(200, body);
 }
 
-void handleFaceDelete() {
+static void handleFaceDelete() {
   if (!faceRecognitionAvailable) {
     sendJsonResponse(503, buildSimpleFaceResultJson(false, "delete", faceEngineMessage));
     return;
@@ -139,7 +172,7 @@ void handleFaceDelete() {
   sendJsonResponse(200, body);
 }
 
-void handleFaceEnroll() {
+static void handleFaceEnroll() {
   if (!faceRecognitionAvailable) {
     sendJsonResponse(503, buildSimpleFaceResultJson(false, "enroll", faceEngineMessage));
     return;
@@ -182,7 +215,7 @@ void handleFaceEnroll() {
   releaseFaceLock();
 }
 
-void handleCapture() {
+static void handleCapture() {
   if (!cameraReady) {
     sendCorsHeaders();
     webServer.send(503, "text/plain", "Camera is not ready");
@@ -253,7 +286,7 @@ void handleCapture() {
   }
 }
 
-void handleStream() {
+static void handleStream() {
   if (!cameraReady) {
     sendCorsHeaders();
     webServer.send(503, "text/plain", "Camera is not ready");
@@ -333,7 +366,7 @@ void handleStream() {
   }
 }
 
-void handleNotFound() {
+static void handleNotFound() {
   sendCorsHeaders();
   webServer.send(404, "text/plain", "Not found");
 }
