@@ -5,13 +5,13 @@
 // Update these values before uploading.
 constexpr char kWifiSsid[] = "Phíchhh";
 constexpr char kWifiPass[] = "canhacungvui";
-constexpr char kServerBaseUrl[] = "http://192.168.1.10:3000";
+// Use the LAN IP of the computer running software/backend (not localhost).
+constexpr char kServerBaseUrl[] = "http://192.168.1.10:3001";
 constexpr char kDeviceSecret[] = "demo-secret";
 constexpr char kEsp32CamDeviceId[] = "ESP32CAM_001";
 constexpr char kDoorId[] = "GATE_01";
 
-// Keep false when you only want local preview via the web files in repo root.
-constexpr bool kEnableBackendUpload = false;
+constexpr bool kEnableBackendUpload = true;
 
 constexpr unsigned long kWifiRetryDelayMs = 500UL;
 constexpr int kWifiMaxRetries = 30;

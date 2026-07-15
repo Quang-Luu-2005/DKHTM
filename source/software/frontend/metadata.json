@@ -1,0 +1,6 @@
+{
+  "name": "Sentinel AIoT",
+  "description": "Enterprise AIoT Smart Access Control, Monitoring Dashboard, User Registration and Historical Audit Logs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

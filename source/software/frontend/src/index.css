@@ -1,0 +1,166 @@
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,300;0,400;0,500;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Lora", "Georgia", serif;
+  --font-serif: "Lora", "Georgia", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  /* Elegant Custom Colors mapped to CSS variables */
+  --color-brand-bg: var(--brand-bg);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-card: var(--brand-card);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-hover: var(--brand-accent-hover);
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-dark-text: var(--brand-dark-text);
+  
+  --color-border-elegant: var(--border-elegant);
+  --color-border-elegant-light: var(--border-elegant-light);
+  --color-text-high: var(--text-high);
+  --color-text-mid: var(--text-mid);
+  --color-text-low: var(--text-low);
+}
+
+:root {
+  --brand-bg: #0A0A0B;
+  --brand-surface: #111113;
+  --brand-card: #1A1A1C;
+  --brand-accent: #94A3B8;
+  --brand-accent-hover: #F8FAFC;
+  --brand-muted: #64748B;
+  --brand-dark-text: #E2E8F0;
+  
+  --border-elegant: #1E293B;
+  --border-elegant-light: #334155;
+  --text-high: #F8FAFC;
+  --text-mid: #94A3B8;
+  --text-low: #475569;
+}
+
+/* Global Transition Settings */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* Light Theme Variables and Direct Overrides for Arbitrary Hex Classes */
+.light {
+  --brand-bg: #F8FAFC;
+  --brand-surface: #FFFFFF;
+  --brand-card: #F1F5F9;
+  --brand-accent: #475569;
+  --brand-accent-hover: #0F172A;
+  --brand-muted: #64748B;
+  --brand-dark-text: #0F172A;
+  
+  --border-elegant: #E2E8F0;
+  --border-elegant-light: #CBD5E1;
+  --text-high: #0F172A;
+  --text-mid: #475569;
+  --text-low: #94A3B8;
+
+  /* Force background changes for hardcoded background classes */
+  &.bg-brand-bg, & .bg-brand-bg, & .bg-\[\#0A0A0B\] { background-color: #F8FAFC !important; }
+  &.bg-brand-surface, & .bg-brand-surface, & .bg-\[\#111113\] { background-color: #FFFFFF !important; }
+  &.bg-brand-card, & .bg-brand-card, & .bg-\[\#1A1A1C\] { background-color: #F1F5F9 !important; }
+  & .bg-\[\#161618\] { background-color: #F8FAFC !important; }
+  & .bg-\[\#161618\]\/40 { background-color: rgba(241, 245, 249, 0.4) !important; }
+  & .bg-\[\#161618\]\/30 { background-color: rgba(241, 245, 249, 0.3) !important; }
+  & .bg-black\/85, & .bg-black\/75, & .bg-black\/80, & .bg-black\/90, & .bg-[#111113]\/80 { background-color: rgba(255, 255, 255, 0.9) !important; }
+
+  /* Force border color changes for hardcoded border classes */
+  & .border-\[\#1E293B\], & .border-border-elegant { border-color: #E2E8F0 !important; }
+  & .border-\[\#1E293B\]\/50 { border-color: rgba(226, 232, 240, 0.5) !important; }
+  & .border-\[\#1E293B\]\/60 { border-color: rgba(226, 232, 240, 0.6) !important; }
+  & .border-\[\#1E293B\]\/30 { border-color: rgba(226, 232, 240, 0.3) !important; }
+  & .border-\[\#334155\], & .border-border-elegant-light { border-color: #CBD5E1 !important; }
+  & .border-outline-variant { border-color: #E2E8F0 !important; }
+
+  /* Force text color changes for hardcoded text classes */
+  &.text-brand-dark-text, & .text-brand-dark-text, & .text-\[\#E2E8F0\] { color: #0F172A !important; }
+  &.text-brand-muted, & .text-brand-muted, & .text-\[\#64748B\] { color: #475569 !important; }
+  & .text-\[\#F8FAFC\] { color: #0F172A !important; }
+  & .text-\[\#94A3B8\] { color: #334155 !important; }
+
+  /* Inputs, selects and textareas styling */
+  & select, & input[type="text"], & input[type="date"], & textarea {
+    background-color: #FFFFFF !important;
+    border-color: #E2E8F0 !important;
+    color: #0F172A !important;
+  }
+  & select:focus, & input[type="text"]:focus, & input[type="date"]:focus, & textarea:focus {
+    border-color: #CBD5E1 !important;
+  }
+  & select option {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+  }
+
+  /* SVG / Graph lines and reference grids */
+  & svg line {
+    stroke: #E2E8F0 !important;
+  }
+  & svg path[stroke="#94A3B8"] {
+    stroke: #475569 !important;
+  }
+  & svg path[stroke="#1E293B"] {
+    stroke: #E2E8F0 !important;
+  }
+  & circle[stroke="#1E293B"] {
+    stroke: #CBD5E1 !important;
+  }
+  & circle[fill="#111113"] {
+    fill: #FFFFFF !important;
+  }
+  & circle[fill="#F8FAFC"] {
+    fill: #0F172A !important;
+  }
+}
+
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.6; }
+}
+
+.scan-pulse {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #1A1A1C 25%, #262629 50%, #1A1A1C 75%);
+  background-size: 200% 100%;
+  animation: shimmer-animation 1.5s infinite;
+}
+
+.light .shimmer {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+}
+
+@keyframes shimmer-animation {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.chart-grid {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.light .chart-grid {
+  background-image: radial-gradient(rgba(71, 85, 105, 0.06) 1px, transparent 1px);
+}
+
+/* Color scheme dark/light support for native date pickers */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+.light input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.2);
+}
+
+

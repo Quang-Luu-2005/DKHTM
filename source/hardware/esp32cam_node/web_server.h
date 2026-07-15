@@ -31,5 +31,5 @@ static void startPreviewServer() {
   Serial.println("Preview server started.");
   Serial.print("Open web preview with: http://");
   Serial.println(WiFi.localIP());
-  Serial.println("Open the repo root index.html and enter that URL.");
+  Serial.println("Camera preview endpoints are ready on this address.");
 }
