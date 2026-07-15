@@ -115,12 +115,9 @@ Sau khi nạp xong:
 4. Nhập địa chỉ dạng `http://192.168.x.x`.
 5. Bấm:
    - **Check Status** để kiểm tra `/status`, PSRAM và số khuôn mặt đã đăng ký.
-   - **Fast Stream** để xem `/stream` mượt nhất, không detect.
-   - **Stream + Box Balanced** để xem `/stream?detect=1&detectEvery=5&quality=60&delay=0`.
-   - **Box Every Frame** để xem `/stream?detect=1&detectEvery=1&quality=68&delay=0` nếu muốn detect sát hơn.
-   - **Stop Stream** để dừng stream.
-   - **Take Snapshot + Box** để chụp ảnh `/capture?detect=1`.
-   - **Recognize Snapshot** để nhận diện manual qua `/capture?detect=1&recognize=1`.
+   - **Stream + Detect** để xem `/stream?detect=1&detectEvery=5&quality=60&delay=0`; bấm lại nút để tắt stream. Nếu face engine không khả dụng, giao diện tự fallback sang `/stream` thường.
+   - **Take Snapshot + Box** để chụp ảnh `/capture?detect=1`; bấm lại để ẩn snapshot.
+   - **Recognize Snapshot** để nhận diện manual qua `/capture?detect=1&recognize=1`; bấm lại để ẩn snapshot recognition.
    - Nhập tên rồi bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
 
 ESP32-CAM cung cấp các endpoint:
@@ -131,9 +128,8 @@ ESP32-CAM cung cấp các endpoint:
 | `/capture` | Trả về 1 ảnh JPEG gốc |
 | `/capture?detect=1` | Trả snapshot có box khuôn mặt |
 | `/capture?detect=1&recognize=1` | Trả snapshot có box và label nhận diện manual |
-| `/stream` | Trả live stream MJPEG nhanh nhất, không chạy face detection |
-| `/stream?detect=1&detectEvery=5&quality=60&delay=0` | Trả live stream MJPEG có box, detect mỗi 5 frame, nén nhẹ hơn và bỏ delay để cân bằng FPS |
-| `/stream?detect=1&detectEvery=1&quality=68&delay=0` | Trả live stream MJPEG có box từng frame, vẫn nặng hơn nhưng đã tối ưu hơn trước |
+| `/stream` | Trả live stream MJPEG thường; giao diện dùng làm fallback nếu face engine không khả dụng |
+| `/stream?detect=1&detectEvery=5&quality=60&delay=0` | Trả live stream MJPEG có box, detect mỗi 5 frame để cân bằng FPS |
 | `/face/enroll?name=...` | Chụp frame hiện tại và đăng ký 1 khuôn mặt với tên nhập từ web |
 | `/face/ids` | Trả danh sách danh tính đã lưu trong flash partition `fr` |
 | `/face/last-result` | Trả metadata box/kết quả nhận diện gần nhất |
@@ -169,8 +165,8 @@ Nếu `pio` chưa có trong PATH trên Windows:
 - Firmware ESP32-CAM luôn dùng `esp32-camera`; phần face detection/recognition cần `esp-dl` legacy model headers. PlatformIO env `esp32cam_node` đang dùng Arduino-ESP32 2.0.17 có đủ headers này. Nếu Arduino IDE dùng ESP32 core 3.x không có `esp-dl/model_zoo`, firmware sẽ tự tắt face detection/recognition và vẫn chạy camera/stream/status.
 - `source/partitions_esp32cam_face.csv` thêm partition `fr` để lưu face IDs; đổi partition layout có thể làm mất dữ liệu flash cũ khi nạp lại.
 - Face detection chạy cho stream/snapshot để vẽ box.
-- Stream đã có 3 mode: `/stream` nhanh nhất, `/stream?detect=1&detectEvery=5&quality=60&delay=0` cân bằng, `/stream?detect=1&detectEvery=1&quality=68&delay=0` detect từng frame.
-- Firmware hỗ trợ query `detectEvery`, `quality` và `delay`; giảm `quality` và `delay=0` giúp stream có box đỡ cứng hơn.
+- Web preview dùng một nút **Stream + Detect** với `/stream?detect=1&detectEvery=5&quality=60&delay=0`; nếu face engine không khả dụng thì tự fallback sang `/stream` thường.
+- Firmware vẫn hỗ trợ query `detectEvery`, `quality` và `delay`; giảm `quality` và `delay=0` giúp stream có box đỡ cứng hơn.
 - Face recognition chạy theo chế độ snapshot/manual để giảm trễ trên AI Thinker ESP32-CAM thường.
 - Khi đăng ký, nên để đúng 1 khuôn mặt rõ trong khung hình.
 

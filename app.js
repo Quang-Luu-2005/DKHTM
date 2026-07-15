@@ -1,10 +1,7 @@
 const baseUrlInput = document.getElementById('baseUrl');
 const saveBtn = document.getElementById('saveBtn');
 const statusBtn = document.getElementById('statusBtn');
-const fastStreamBtn = document.getElementById('fastStreamBtn');
-const startStreamBtn = document.getElementById('startStreamBtn');
-const streamEveryFrameBtn = document.getElementById('streamEveryFrameBtn');
-const stopStreamBtn = document.getElementById('stopStreamBtn');
+const streamBtn = document.getElementById('streamBtn');
 const snapshotBtn = document.getElementById('snapshotBtn');
 const recognizeSnapshotBtn = document.getElementById('recognizeSnapshotBtn');
 const enrollBtn = document.getElementById('enrollBtn');
@@ -20,6 +17,16 @@ const streamPlaceholder = document.getElementById('streamPlaceholder');
 const snapshotPlaceholder = document.getElementById('snapshotPlaceholder');
 
 const STORAGE_KEY = 'esp32cam-base-url';
+const STREAM_DETECT_PATH = '/stream?detect=1&detectEvery=5&quality=60&delay=0';
+
+let streamActive = false;
+let streamFallbackAttempted = false;
+let snapshotMode = '';
+const STREAM_DETECT_PATH = '/stream?detect=1&detectEvery=5&quality=60&delay=0';
+
+let streamActive = false;
+let streamFallbackAttempted = false;
+let snapshotMode = '';
 
 function normalizeBaseUrl(value) {
   return value.trim().replace(/\/$/, '');
@@ -157,33 +164,51 @@ async function checkStatus() {
   }
 }
 
-function openStream(path, statusHintText) {
+function resetStreamButton() {
+  streamBtn.textContent = 'Stream + Detect';
+}
+
+function stopStream(text = 'Đã tắt stream', hint = 'Bấm Stream + Detect để mở lại camera.', className = 'status-warn') {
+  streamActive = false;
+  streamFallbackAttempted = false;
+  hideImage(streamView, streamPlaceholder);
+  streamView.dataset.mode = '';
+  resetStreamButton();
+  setStatus(text, hint, className);
+}
+
+async function toggleStream() {
   const baseUrl = getBaseUrl();
   if (!baseUrl) {
     setStatus('Thiếu địa chỉ', 'Hãy nhập URL dạng http://192.168.x.x', 'status-error');
     return;
   }
 
+  if (streamActive) {
+    stopStream();
+    return;
+  }
+
+  let path = STREAM_DETECT_PATH;
+  let hint = 'Đang stream kèm box; ESP32-CAM detect mỗi 5 frame để cân bằng tốc độ.';
+
+  try {
+    const data = await fetchJson('/status');
+    if (!data.faceDetectionAvailable) {
+      path = '/stream';
+      hint = 'Face engine chưa sẵn sàng nên đang mở stream thường, không có box.';
+    }
+  } catch (error) {
+    hint = 'Đang mở stream detect; nếu face engine lỗi, web sẽ tự fallback sang stream thường.';
+  }
+
+  streamFallbackAttempted = false;
+  streamView.dataset.mode = path === '/stream' ? 'plain' : 'detect';
   streamView.src = `${baseUrl}${path}${path.includes('?') ? '&' : '?'}t=${Date.now()}`;
   showImage(streamView, streamPlaceholder);
-  setStatus('Đang mở live stream', statusHintText, 'status-warn');
-}
-
-function startFastStream() {
-  openStream('/stream', 'Fast Stream không chạy detection nên FPS sẽ mượt nhất.');
-}
-
-function startStream() {
-  openStream('/stream?detect=1&detectEvery=5&quality=60&delay=0', 'Balanced mode: ESP32-CAM detect mỗi 5 frame, giảm JPEG quality và bỏ delay để đỡ giật hơn.');
-}
-
-function startEveryFrameStream() {
-  openStream('/stream?detect=1&detectEvery=1&quality=68&delay=0', 'Box Every Frame chạy detection từng frame, đã giảm delay nhưng vẫn nặng hơn Balanced/Fast Stream.');
-}
-
-function stopStream() {
-  hideImage(streamView, streamPlaceholder);
-  setStatus('Đã dừng stream', 'Bạn có thể bấm Fast Stream hoặc Stream + Box Balanced để mở lại.', 'status-warn');
+  streamActive = true;
+  streamBtn.textContent = 'Tắt Stream';
+  setStatus('Đang mở live stream', hint, 'status-warn');
 }
 
 async function refreshLatestFaceResult(fallbackTitle) {
@@ -195,30 +220,61 @@ async function refreshLatestFaceResult(fallbackTitle) {
   }
 }
 
-function takeSnapshot() {
+function setSnapshotButtons() {
+  snapshotBtn.textContent = snapshotMode === 'detect' ? 'Tắt Snapshot' : 'Take Snapshot + Box';
+  recognizeSnapshotBtn.textContent = snapshotMode === 'recognize' ? 'Tắt Recognition' : 'Recognize Snapshot';
+}
+
+function hideSnapshot(text = 'Đã ẩn snapshot', hint = 'Bấm Take Snapshot + Box để chụp lại.', className = 'status-warn') {
+  snapshotMode = '';
+  hideImage(snapshotView, snapshotPlaceholder);
+  snapshotView.dataset.mode = '';
+  setSnapshotButtons();
+  setStatus(text, hint, className);
+}
+
+function startSnapshot(mode) {
   const baseUrl = getBaseUrl();
   if (!baseUrl) {
     setStatus('Thiếu địa chỉ', 'Hãy nhập URL dạng http://192.168.x.x', 'status-error');
     return;
   }
 
-  snapshotView.dataset.mode = 'detect';
-  snapshotView.src = `${baseUrl}/capture?detect=1&t=${Date.now()}`;
+  snapshotMode = mode;
+  snapshotView.dataset.mode = mode;
+  setSnapshotButtons();
+
+  const path = mode === 'recognize'
+    ? '/capture?detect=1&recognize=1'
+    : '/capture?detect=1';
+
+  snapshotView.src = `${baseUrl}${path}${path.includes('?') ? '&' : '?'}t=${Date.now()}`;
   showImage(snapshotView, snapshotPlaceholder);
-  setStatus('Đã yêu cầu snapshot', 'ESP32-CAM sẽ chụp ảnh và vẽ box khuôn mặt nếu phát hiện được.', 'status-warn');
+  setStatus(
+    mode === 'recognize' ? 'Đang nhận diện snapshot' : 'Đã yêu cầu snapshot',
+    mode === 'recognize'
+      ? 'Recognition chạy theo chế độ manual để phù hợp ESP32-CAM.'
+      : 'ESP32-CAM sẽ chụp ảnh và vẽ box khuôn mặt nếu phát hiện được.',
+    'status-warn'
+  );
+}
+
+function takeSnapshot() {
+  if (snapshotMode === 'detect') {
+    hideSnapshot();
+    return;
+  }
+
+  startSnapshot('detect');
 }
 
 function recognizeSnapshot() {
-  const baseUrl = getBaseUrl();
-  if (!baseUrl) {
-    setStatus('Thiếu địa chỉ', 'Hãy nhập URL dạng http://192.168.x.x', 'status-error');
+  if (snapshotMode === 'recognize') {
+    hideSnapshot('Đã ẩn snapshot recognition', 'Bấm Recognize Snapshot để nhận diện lại.', 'status-warn');
     return;
   }
 
-  snapshotView.dataset.mode = 'recognize';
-  snapshotView.src = `${baseUrl}/capture?detect=1&recognize=1&t=${Date.now()}`;
-  showImage(snapshotView, snapshotPlaceholder);
-  setStatus('Đang nhận diện snapshot', 'Recognition chạy theo chế độ manual để phù hợp ESP32-CAM.', 'status-warn');
+  startSnapshot('recognize');
 }
 
 async function loadFaceIds() {
@@ -273,27 +329,32 @@ function init() {
 
   saveBtn.addEventListener('click', saveBaseUrl);
   statusBtn.addEventListener('click', checkStatus);
-  fastStreamBtn.addEventListener('click', startFastStream);
-  startStreamBtn.addEventListener('click', startStream);
-  streamEveryFrameBtn.addEventListener('click', startEveryFrameStream);
-  stopStreamBtn.addEventListener('click', stopStream);
+  streamBtn.addEventListener('click', toggleStream);
   snapshotBtn.addEventListener('click', takeSnapshot);
   recognizeSnapshotBtn.addEventListener('click', recognizeSnapshot);
   enrollBtn.addEventListener('click', enrollFace);
   refreshFacesBtn.addEventListener('click', loadFaceIds);
 
   streamView.addEventListener('error', () => {
-    hideImage(streamView, streamPlaceholder);
-    setStatus('Stream lỗi', 'Không mở được mode stream đã chọn. Kiểm tra lại IP hoặc firmware ESP32-CAM.', 'status-error');
+    const baseUrl = getBaseUrl();
+    if (streamActive && !streamFallbackAttempted && baseUrl && streamView.dataset.mode === 'detect') {
+      streamFallbackAttempted = true;
+      streamView.dataset.mode = 'plain';
+      streamView.src = `${baseUrl}/stream?t=${Date.now()}`;
+      showImage(streamView, streamPlaceholder);
+      setStatus('Đang mở stream thường', 'Face detect stream lỗi nên tự fallback sang stream thường, không có box.', 'status-warn');
+      return;
+    }
+
+    stopStream('Stream lỗi', 'Không mở được stream. Kiểm tra lại IP, cùng mạng Wi‑Fi hoặc firmware ESP32-CAM.', 'status-error');
   });
 
   snapshotView.addEventListener('error', () => {
-    hideImage(snapshotView, snapshotPlaceholder);
-    setStatus('Snapshot lỗi', 'Không tải được /capture face mode. Kiểm tra lại IP hoặc face pipeline.', 'status-error');
+    hideSnapshot('Snapshot lỗi', 'Không tải được /capture face mode. Kiểm tra lại IP hoặc face pipeline.', 'status-error');
   });
 
   snapshotView.addEventListener('load', async () => {
-    const fallbackTitle = snapshotView.dataset.mode === 'recognize'
+    const fallbackTitle = snapshotMode === 'recognize'
       ? 'Đã nhận snapshot recognition.'
       : 'Đã nhận snapshot detection.';
     await refreshLatestFaceResult(fallbackTitle);

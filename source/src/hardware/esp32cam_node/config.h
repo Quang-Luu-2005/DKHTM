@@ -3,8 +3,8 @@
 #include <Arduino.h>
 
 // Update these values before uploading.
-constexpr char kWifiSsid[] = "QuangLuu";
-constexpr char kWifiPass[] = "04112005";
+constexpr char kWifiSsid[] = "Phíchhh";
+constexpr char kWifiPass[] = "canhacungvui";
 constexpr char kServerBaseUrl[] = "http://192.168.1.10:3000";
 constexpr char kDeviceSecret[] = "demo-secret";
 constexpr char kEsp32CamDeviceId[] = "ESP32CAM_001";

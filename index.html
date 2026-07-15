@@ -38,19 +38,16 @@
         <div class="panel-header">
           <div>
             <h2>Live stream</h2>
-            <p class="helper">Fast Stream mượt nhất; Stream + Box Balanced detect mỗi vài frame, giảm JPEG quality và bỏ delay để đỡ giật.</p>
+            <p class="helper">Một nút để bật stream kèm box khuôn mặt. Bấm lại chính nút đó để tắt stream.</p>
           </div>
           <div class="button-group">
-            <button id="fastStreamBtn" type="button">Fast Stream</button>
-            <button id="startStreamBtn" type="button">Stream + Box Balanced</button>
-            <button id="streamEveryFrameBtn" type="button" class="secondary">Box Every Frame</button>
-            <button id="stopStreamBtn" type="button" class="secondary">Stop Stream</button>
+            <button id="streamBtn" type="button">Stream + Detect</button>
           </div>
         </div>
         <div class="viewer">
           <img id="streamView" alt="Live stream từ ESP32-CAM" />
           <div id="streamPlaceholder" class="placeholder">
-            Chưa bật stream. Bấm <strong>Fast Stream</strong> để xem mượt nhất hoặc <strong>Stream + Box Balanced</strong> để vừa xem vừa detect.
+            Chưa bật stream. Bấm <strong>Stream + Detect</strong> để xem camera và box khuôn mặt.
           </div>
         </div>
       </article>
@@ -59,7 +56,7 @@
         <div class="panel-header">
           <div>
             <h2>Snapshot</h2>
-            <p class="helper">Snapshot có thể detect box hoặc nhận diện manual.</p>
+            <p class="helper">Bấm để chụp snapshot có box. Bấm lại để ẩn snapshot.</p>
           </div>
           <div class="button-group">
             <button id="snapshotBtn" type="button">Take Snapshot + Box</button>
@@ -111,9 +108,7 @@
       <h2>Endpoint nhanh</h2>
       <ul>
         <li><code>/status</code> — trạng thái camera, Wi‑Fi, PSRAM và face engine</li>
-        <li><code>/stream</code> — fast stream MJPEG, không detect để FPS mượt nhất</li>
-        <li><code>/stream?detect=1&amp;detectEvery=5</code> — stream có box cân bằng tốc độ</li>
-        <li><code>/stream?detect=1&amp;detectEvery=1</code> — stream detect từng frame, chính xác hơn nhưng chậm hơn</li>
+        <li><code>/stream?detect=1&amp;detectEvery=5</code> — stream có box cân bằng tốc độ; bấm lại nút stream để tắt</li>
         <li><code>/capture?detect=1</code> — snapshot có box khuôn mặt</li>
         <li><code>/capture?detect=1&amp;recognize=1</code> — snapshot nhận diện manual</li>
         <li><code>/face/enroll?name=...</code> — đăng ký khuôn mặt từ frame hiện tại</li>
