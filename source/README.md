@@ -8,14 +8,22 @@ The reorganized project has three connected parts:
 
 ## Run locally
 
+Start PostgreSQL and the backend with Docker Compose:
+
 ```powershell
+Copy-Item software/backend/.env.example software/backend/.env
+docker compose --env-file software/backend/.env up -d postgres
 cd software/backend
-Copy-Item .env.example .env
 npm install
+npm run prisma:deploy
 npm run dev
 ```
 
-In a second terminal:
+The complete backend + PostgreSQL stack can also be started with
+`docker compose --env-file software/backend/.env up -d`.
+The backend exposes REST and SSE on port `3001`.
+
+The frontend runs in a second terminal:
 
 ```powershell
 cd software/frontend
@@ -48,5 +56,5 @@ ESP32-CAM sends device events to `/api/device/events` and JPEG snapshots to
 `/api/device/camera/snapshot`. Dashboard commands are stored by the backend and forwarded
 to the main controller at `/api/hardware/command` when `CONTROLLER_URL` is configured.
 
-When the backend is temporarily unavailable, the frontend uses its local browser cache and
-resynchronizes every three seconds after the backend returns.
+When SSE is temporarily unavailable, the frontend falls back to REST synchronization. User,
+log and hardware records are no longer seeded from browser localStorage.

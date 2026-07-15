@@ -5,16 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  getUsers, 
-  saveUser, 
-  deleteUser, 
-  getAuditLogs, 
-  addAuditLog, 
-  getHardwareState, 
-  saveHardwareState,
-  INITIAL_INCIDENT 
-} from "./data";
+import { INITIAL_INCIDENT } from "./data";
 import { User, AuditLog, HardwareState, SecurityIncident } from "./types";
 import { api } from "./api";
 import Header from "./components/Header";
@@ -114,95 +105,83 @@ export default function App() {
         systemBuzzer: "ACTIVE"
       };
       setHardware(automatedLockdownState);
-      saveHardwareState(automatedLockdownState);
       void api.updateHardware(automatedLockdownState).catch(console.error);
     }
   }, [logs]);
 
-  // Load shared state from the backend, then keep hardware telemetry and logs fresh.
+  // PostgreSQL is the source of truth; SSE keeps the dashboard current.
   useEffect(() => {
     let mounted = true;
+    let pollInterval: number | undefined;
 
-    const sync = async (seedEmptyBackend = false) => {
+    const sync = async () => {
       try {
         const [remoteUsers, remoteLogs, remoteHardware] = await Promise.all([
           api.users(), api.logs(), api.hardware()
         ]);
         if (!mounted) return;
 
-        const localUsers = getUsers();
-        const localLogs = getAuditLogs();
-        setUsers(remoteUsers.length ? remoteUsers : localUsers);
-        setLogs(remoteLogs.length ? remoteLogs : localLogs);
+        setUsers(remoteUsers);
+        setLogs(remoteLogs);
         setHardware(remoteHardware);
-        saveHardwareState(remoteHardware);
-
-        if (seedEmptyBackend && remoteUsers.length === 0) {
-          void Promise.all(localUsers.map(user => api.saveUser(user))).catch(console.error);
-        }
-        if (seedEmptyBackend && remoteLogs.length === 0) {
-          void Promise.all([...localLogs].reverse().map(log => api.addLog(log))).catch(console.error);
-        }
       } catch (error) {
-        if (!mounted) return;
-        console.warn("Backend unavailable; using local cache.", error);
-        setUsers(getUsers());
-        setLogs(getAuditLogs());
-        setHardware(getHardwareState());
+        if (mounted) console.warn("Backend synchronization failed.", error);
       }
     };
 
-    void sync(true);
-    const interval = window.setInterval(() => void sync(false), 3000);
+    const startPollingFallback = () => {
+      if (pollInterval !== undefined) return;
+      pollInterval = window.setInterval(() => void sync(), 10000);
+    };
+    const stopPollingFallback = () => {
+      if (pollInterval === undefined) return;
+      window.clearInterval(pollInterval);
+      pollInterval = undefined;
+    };
+
+    void sync();
+    const unsubscribe = api.subscribe({
+      onOpen: stopPollingFallback,
+      onError: startPollingFallback,
+      onAuditLog: event => {
+        if (!mounted) return;
+        setLogs(current => [event.data, ...current.filter(log => log.id !== event.data.id)]);
+      },
+      onHardwareState: event => {
+        if (mounted) setHardware(event.data);
+      }
+    });
     return () => {
       mounted = false;
-      window.clearInterval(interval);
+      stopPollingFallback();
+      unsubscribe();
     };
   }, []);
 
-  // Handle saving new user
-  const handleSaveUser = (user: User) => {
-    const updatedUsers = saveUser(user);
-    setUsers(updatedUsers);
-    void api.saveUser(user).catch(console.error);
-
-    // Automatically log this as an enrollment action
-    const updatedLogs = addAuditLog({
-      subjectName: user.fullName,
-      accessMethod: "Face ID",
-      gateId: "GT-NORTH-01",
-      status: "ONLINE",
-      confidence: "100%"
-    });
-    setLogs(updatedLogs);
-    void api.addLog({
-      subjectName: user.fullName,
-      accessMethod: "Face ID",
-      gateId: "GT-NORTH-01",
-      status: "ONLINE",
-      confidence: "100%"
+  // Callback to insert manual logs
+  const handleAddLog = (log: Omit<AuditLog, "id" | "timestamp">) => {
+    void api.addLog(log).then(created => {
+      setLogs(current => [created, ...current.filter(item => item.id !== created.id)]);
     }).catch(console.error);
   };
 
-  // Handle deleting a user
-  const handleDeleteUser = (id: string) => {
-    const updatedUsers = deleteUser(id);
-    setUsers(updatedUsers);
-    void api.deleteUser(id).catch(console.error);
+  const handleSaveUser = (user: User) => {
+    setUsers(current => [user, ...current.filter(item => item.id !== user.id)]);
+    void api.saveUser(user).then(saved => {
+      setUsers(current => [saved, ...current.filter(item => item.id !== saved.id)]);
+      handleAddLog({ subjectName: saved.fullName, accessMethod: "Face ID", gateId: "GT-NORTH-01", status: "ONLINE", confidence: "100%" });
+    }).catch(console.error);
   };
 
-  // Callback to insert manual logs
-  const handleAddLog = (log: Omit<AuditLog, "id" | "timestamp">) => {
-    const updatedLogs = addAuditLog(log);
-    setLogs(updatedLogs);
-    void api.addLog(log).catch(console.error);
+  const handleDeleteUser = (id: string) => {
+    setUsers(current => current.filter(user => user.id !== id));
+    void api.deleteUser(id).catch(console.error);
   };
 
   // Synchronize hardware changes
   const handleUpdateHardware = (hw: HardwareState) => {
     setHardware(hw);
-    saveHardwareState(hw);
-    void api.updateHardware(hw).catch(console.error);
+    void api.updateHardware(hw).then(updated => setHardware(updated)).catch(console.error);
   };
 
   // Trigger Emergency system lockdown
@@ -225,14 +204,13 @@ export default function App() {
       handleUpdateHardware(lockedState);
 
       // Add audit log entry
-      const updatedLogs = addAuditLog({
+      handleAddLog({
         subjectName: "Emergency Override",
         accessMethod: "Manual Override",
         gateId: "SYS-CORE-01",
         status: "VIOLATION",
         confidence: "N/A"
       });
-      setLogs(updatedLogs);
     } else {
       // Release hardware
       const normalState: HardwareState = {
@@ -243,14 +221,13 @@ export default function App() {
       };
       handleUpdateHardware(normalState);
 
-      const updatedLogs = addAuditLog({
+      handleAddLog({
         subjectName: "Lock Release",
         accessMethod: "Manual Override",
         gateId: "SYS-CORE-01",
         status: "ONLINE",
         confidence: "N/A"
       });
-      setLogs(updatedLogs);
     }
   };
 
@@ -300,14 +277,13 @@ export default function App() {
     });
 
     // Write a violation directly to logs
-    const updatedLogs = addAuditLog({
+    handleAddLog({
       subjectName: subjectName,
       accessMethod: accessMethod,
       gateId: "GT-NORTH-01",
       status: "VIOLATION",
       confidence: "N/A"
     });
-    setLogs(updatedLogs);
   };
 
   // Dismiss threat modal
@@ -404,7 +380,6 @@ export default function App() {
                     hardware={hardware}
                     onUpdateHardware={handleUpdateHardware}
                     logs={logs}
-                    onAddLog={handleAddLog}
                     isEmergencyLocked={isEmergencyLocked}
                   />
                 )}

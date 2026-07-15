@@ -22,13 +22,31 @@ export interface AuditLog {
   status: "ONLINE" | "VIOLATION" | "EXPIRED";
   confidence: string; // "99.8%" or "N/A"
   avatarUrl?: string;
+  source?: string;
+  deviceId?: string;
+  metadata?: Record<string, unknown>;
 }
+
+export type HardwareCommandStatus = "PENDING" | "SENT" | "ACKED" | "FAILED" | "TIMEOUT";
 
 export interface HardwareState {
   servoArm: "SECURED / CLOSED" | "OPENED / UNSECURED";
   servoLocked: boolean;
   indicatorLed: "RED / RESTRICTED" | "GREEN / ACCESS ALLOWED";
   systemBuzzer: "MUTED" | "ACTIVE";
+  desiredState?: HardwareState;
+  reportedState?: HardwareState;
+  connectionStatus?: "UNKNOWN" | "ONLINE" | "OFFLINE";
+  lastReportedAt?: string | null;
+  commandId?: string | null;
+  commandStatus?: HardwareCommandStatus | null;
+}
+
+export interface SseEnvelope<T = unknown> {
+  id: string;
+  type: string;
+  occurredAt: string;
+  data: T;
 }
 
 export interface SecurityIncident {

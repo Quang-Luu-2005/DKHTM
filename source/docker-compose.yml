@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - sentinel-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./software/backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://sentinel:sentinel@postgres:5432/sentinel?schema=public
+      DEVICE_SECRET: ${DEVICE_SECRET:-demo-secret}
+      CONTROLLER_URL: ${CONTROLLER_URL:-}
+      CONTROLLER_DEVICE_ID: ${CONTROLLER_DEVICE_ID:-MAIN_CONTROLLER_001}
+      DEFAULT_GATE_ID: ${DEFAULT_GATE_ID:-GATE_01}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      COMMAND_TIMEOUT_MS: ${COMMAND_TIMEOUT_MS:-5000}
+      COMMAND_MAX_ATTEMPTS: ${COMMAND_MAX_ATTEMPTS:-3}
+      DEVICE_OFFLINE_AFTER_MS: ${DEVICE_OFFLINE_AFTER_MS:-45000}
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "3001:3001"
+    volumes:
+      - sentinel-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  sentinel-postgres:
+  sentinel-uploads:

@@ -10,5 +10,6 @@ npm run dev
 ```
 
 Set `VITE_API_URL` in `.env.local` only when the backend is not reachable through the
-Vite proxy. If the API is offline, the dashboard falls back to its browser cache and
-automatically retries synchronization every three seconds.
+Vite proxy. If SSE is offline, the dashboard falls back to REST synchronization and
+automatically retries the stream; users, logs and hardware state are not seeded from
+browser localStorage.

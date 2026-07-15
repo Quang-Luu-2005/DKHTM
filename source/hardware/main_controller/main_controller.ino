@@ -71,28 +71,81 @@ void sendCors() {
   webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
-void handleControllerStatus() {
+String jsonStringField(const String& json, const String& key) {
+  const String marker = "\"" + key + "\"";
+  int keyIndex = json.indexOf(marker);
+  if (keyIndex < 0) return "";
+  int colonIndex = json.indexOf(':', keyIndex + marker.length());
+  int startQuote = json.indexOf('"', colonIndex + 1);
+  int endQuote = json.indexOf('"', startQuote + 1);
+  if (colonIndex < 0 || startQuote < 0 || endQuote < 0) return "";
+  return json.substring(startQuote + 1, endQuote);
+}
+
+bool jsonBoolField(const String& json, const String& key, bool fallback) {
+  const String marker = "\"" + key + "\"";
+  int keyIndex = json.indexOf(marker);
+  if (keyIndex < 0) return fallback;
+  int colonIndex = json.indexOf(':', keyIndex + marker.length());
+  if (colonIndex < 0) return fallback;
+  String value = json.substring(colonIndex + 1, colonIndex + 8);
+  value.trim();
+  if (value.startsWith("true")) return true;
+  if (value.startsWith("false")) return false;
+  return fallback;
+}
+
+void applyDesiredState(const String& body) {
+  gateLocked = jsonBoolField(body, "servoLocked", gateLocked);
+  String requestedBuzzer = jsonStringField(body, "systemBuzzer");
+  if (!requestedBuzzer.isEmpty()) buzzerActive = requestedBuzzer == "ACTIVE";
+  String requestedLed = jsonStringField(body, "indicatorLed");
+  if (!requestedLed.isEmpty()) ledState = requestedLed;
+
+  gateServo.write(gateLocked ? kLockAngle : kUnlockAngle);
+  const bool green = ledState.indexOf("GREEN") >= 0;
+  digitalWrite(kGrantedLedPin, green ? HIGH : LOW);
+  digitalWrite(kDeniedLedPin, green ? LOW : HIGH);
+  Serial.println(gateLocked ? "Desired state applied: locked." : "Desired state applied: unlocked.");
+}
+
+void sendControllerStatus(const String& commandId = "") {
   sendCors();
-  String body = "{\"online\":true,\"servoLocked\":";
+  String body = "{\"ok\":true";
+  if (!commandId.isEmpty()) body += ",\"commandId\":\"" + commandId + "\"";
+  body += ",\"online\":true,\"servoLocked\":";
   body += gateLocked ? "true" : "false";
   body += ",\"servoArm\":\"";
   body += gateLocked ? "SECURED / CLOSED" : "OPENED / UNSECURED";
   body += "\",\"indicatorLed\":\"" + ledState + "\",\"systemBuzzer\":\"";
   body += buzzerActive ? "ACTIVE" : "MUTED";
-  body += "\"}";
+  body += "\",\"hardware\":{\"servoLocked\":";
+  body += gateLocked ? "true" : "false";
+  body += ",\"servoArm\":\"";
+  body += gateLocked ? "SECURED / CLOSED" : "OPENED / UNSECURED";
+  body += "\",\"indicatorLed\":\"" + ledState + "\",\"systemBuzzer\":\"";
+  body += buzzerActive ? "ACTIVE" : "MUTED";
+  body += "\"}}";
   webServer.send(200, "application/json", body);
+}
+
+void handleControllerStatus() {
+  sendControllerStatus();
 }
 
 void handleControllerCommand() {
   String body = webServer.arg("plain");
-  body.toLowerCase();
+  const String commandId = jsonStringField(body, "commandId");
+  String command = jsonStringField(body, "command");
+  command.toLowerCase();
   sendCors();
-  if (body.indexOf("grant") >= 0) unlockGate();
-  else if (body.indexOf("deny") >= 0) signalDenied();
-  else if (body.indexOf("idle") >= 0) { setIdleLed(); buzzerActive = false; }
-  else if (body.indexOf("lock") >= 0) lockGate();
-  else { webServer.send(400, "application/json", "{\"error\":\"Unknown command\"}"); return; }
-  handleControllerStatus();
+  if (command == "set_state") applyDesiredState(body);
+  else if (command == "grant") unlockGate();
+  else if (command == "deny") signalDenied();
+  else if (command == "idle") { setIdleLed(); buzzerActive = false; }
+  else if (command == "lock") lockGate();
+  else { webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown command\"}"); return; }
+  sendControllerStatus(commandId);
 }
 
 void startControllerServer() {

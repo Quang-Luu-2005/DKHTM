@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMINISTRATOR
+  SECURITY_OFFICER
+  TECHNICIAN
+  GENERAL_STAFF
+}
+
+enum FaceIdStatus {
+  ENROLLED
+  PENDING
+}
+
+enum AccessMethod {
+  FACE_ID
+  RFID
+  MANUAL_OVERRIDE
+  GATE_JUMPING
+  TAILGATING
+}
+
+enum AuditStatus {
+  ONLINE
+  VIOLATION
+  EXPIRED
+}
+
+enum DeviceType {
+  CAMERA
+  CONTROLLER
+}
+
+enum HardwareConnectionStatus {
+  UNKNOWN
+  ONLINE
+  OFFLINE
+}
+
+enum HardwareCommandType {
+  SET_STATE
+  LOCK
+  GRANT
+  DENY
+  IDLE
+}
+
+enum HardwareCommandStatus {
+  PENDING
+  SENT
+  ACKED
+  FAILED
+  TIMEOUT
+}
+
+model User {
+  id           String       @id
+  fullName     String
+  role         UserRole
+  rfidUid      String?
+  faceIdStatus FaceIdStatus @default(PENDING)
+  avatarUrl    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([fullName])
+  @@index([rfidUid])
+}
+
+model AuditLog {
+  id           String       @id @default(uuid())
+  timestamp    DateTime     @default(now())
+  subjectName  String
+  subjectId    String?
+  accessMethod AccessMethod
+  gateId       String
+  status       AuditStatus
+  confidence   String
+  avatarUrl    String?
+  source       String?
+  deviceId     String?
+  metadata     Json?
+  device       Device?      @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp(sort: Desc)])
+  @@index([gateId, timestamp(sort: Desc)])
+  @@index([deviceId])
+}
+
+model Device {
+  id           String            @id
+  type         DeviceType
+  name         String
+  gateId       String
+  ipAddress    String?
+  online       Boolean           @default(false)
+  lastSeenAt   DateTime?
+  capabilities Json?
+  lastError    String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  events       DeviceEvent[]
+  logs         AuditLog[]
+  snapshots    Snapshot[]
+  commands     HardwareCommand[]
+
+  @@index([gateId])
+  @@index([lastSeenAt])
+}
+
+model DeviceEvent {
+  id         String    @id @default(uuid())
+  deviceId   String
+  eventId    String
+  eventType  String
+  message    String
+  confidence Float?
+  occurredAt DateTime?
+  receivedAt DateTime  @default(now())
+  payload    Json?
+  device     Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, eventId])
+  @@index([receivedAt(sort: Desc)])
+}
+
+model GateHardwareState {
+  gateId           String                   @id
+  desiredState     Json
+  reportedState    Json
+  connectionStatus HardwareConnectionStatus @default(UNKNOWN)
+  lastReportedAt   DateTime?
+  lastCommandId    String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+}
+
+model HardwareCommand {
+  id             String                @id @default(uuid())
+  commandId      String                @unique
+  gateId         String
+  targetDeviceId String?
+  command        HardwareCommandType
+  requestedState Json
+  status         HardwareCommandStatus @default(PENDING)
+  retryCount     Int                   @default(0)
+  ackPayload     Json?
+  lastError      String?
+  createdAt      DateTime              @default(now())
+  sentAt         DateTime?
+  acknowledgedAt DateTime?
+  updatedAt      DateTime              @updatedAt
+  targetDevice   Device?               @relation(fields: [targetDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([gateId, createdAt(sort: Desc)])
+  @@index([status])
+}
+
+model Snapshot {
+  id         String   @id @default(uuid())
+  deviceId   String
+  gateId     String
+  filePath   String
+  mimeType   String
+  size       Int
+  capturedAt DateTime @default(now())
+  eventId    String?
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([capturedAt(sort: Desc)])
+  @@index([deviceId, capturedAt(sort: Desc)])
+}

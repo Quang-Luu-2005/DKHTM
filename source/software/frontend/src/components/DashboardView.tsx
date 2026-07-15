@@ -19,7 +19,6 @@ interface DashboardViewProps {
   hardware: HardwareState;
   onUpdateHardware: (hw: HardwareState) => void;
   logs: AuditLog[];
-  onAddLog: (log: Omit<AuditLog, "id" | "timestamp">) => void;
   isEmergencyLocked: boolean;
 }
 
@@ -27,7 +26,6 @@ export default function DashboardView({
   hardware,
   onUpdateHardware,
   logs,
-  onAddLog,
   isEmergencyLocked
 }: DashboardViewProps) {
   const cameraBaseUrl = (import.meta.env.VITE_CAMERA_URL || "").replace(/\/$/, "");
@@ -38,6 +36,8 @@ export default function DashboardView({
   const [servoLoading, setServoLoading] = React.useState(false);
   const [lightsLoading, setLightsLoading] = React.useState(false);
   const [buzzerLoading, setBuzzerLoading] = React.useState(false);
+  // Hardware commands create their audit entry in the backend queue service.
+  const onAddLog = (_log: Omit<AuditLog, "id" | "timestamp">) => undefined;
 
   // Active status totals
   const totalToday = logs.filter(l => l.status === "ONLINE").length * 15 + 420;

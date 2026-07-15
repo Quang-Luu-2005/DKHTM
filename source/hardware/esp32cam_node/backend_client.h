@@ -7,6 +7,10 @@
 #include "app_state.h"
 #include "config.h"
 #include "camera_service.h"
+#include "json_utils.h"
+
+static unsigned long cameraEventSequence = 0;
+static uint32_t cameraBootId = 0;
 
 static bool isWiFiConnected() {
   return WiFi.status() == WL_CONNECTED;
@@ -95,12 +99,16 @@ static int postJpegToBackend(const String& pathAndQuery, uint8_t* payload, size_
 }
 
 static void sendCameraEvent(const String& eventType, const String& message) {
+  cameraEventSequence++;
+  if (cameraBootId == 0) cameraBootId = esp_random();
+  const String eventId = String("camera-") + String(cameraBootId, HEX) + "-" + String(cameraEventSequence);
   String body = "{";
+  body += "\"eventId\":\"" + eventId + "\",";
   body += "\"deviceId\":\"" + String(kEsp32CamDeviceId) + "\",";
-  body += "\"doorId\":\"" + String(kDoorId) + "\",";
+  body += "\"gateId\":\"" + String(kDoorId) + "\",";
   body += "\"source\":\"ESP32_CAM\",";
-  body += "\"eventType\":\"" + eventType + "\",";
-  body += "\"message\":\"" + message + "\",";
+  body += "\"eventType\":\"" + escapeJson(eventType) + "\",";
+  body += "\"message\":\"" + escapeJson(message) + "\",";
   body += "\"confidence\":0.90";
   body += "}";
 
