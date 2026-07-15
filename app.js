@@ -20,11 +20,8 @@ const STORAGE_KEY = 'esp32cam-base-url';
 const STREAM_DETECT_PATH = '/stream?detect=1&detectEvery=5&quality=60&delay=0';
 
 let streamActive = false;
-let streamFallbackAttempted = false;
-let snapshotMode = '';
-const STREAM_DETECT_PATH = '/stream?detect=1&detectEvery=5&quality=60&delay=0';
-
-let streamActive = false;
+let streamStarting = false;
+let streamStartCancelled = false;
 let streamFallbackAttempted = false;
 let snapshotMode = '';
 
@@ -44,10 +41,15 @@ function setStatus(text, hint, className = '') {
 
 function setFaceResult(title, detail = '', variant = 'neutral') {
   faceResult.className = `face-result ${variant}`;
-  faceResult.innerHTML = `
-    <strong>${title}</strong>
-    <span>${detail || 'Không có thông tin bổ sung.'}</span>
-  `;
+  faceResult.replaceChildren();
+
+  const titleElement = document.createElement('strong');
+  titleElement.textContent = title;
+  faceResult.appendChild(titleElement);
+
+  const detailElement = document.createElement('span');
+  detailElement.textContent = detail || 'Không có thông tin bổ sung.';
+  faceResult.appendChild(detailElement);
 }
 
 function showImage(img, placeholder) {
@@ -170,6 +172,8 @@ function resetStreamButton() {
 
 function stopStream(text = 'Đã tắt stream', hint = 'Bấm Stream + Detect để mở lại camera.', className = 'status-warn') {
   streamActive = false;
+  streamStarting = false;
+  streamStartCancelled = true;
   streamFallbackAttempted = false;
   hideImage(streamView, streamPlaceholder);
   streamView.dataset.mode = '';
@@ -184,10 +188,14 @@ async function toggleStream() {
     return;
   }
 
-  if (streamActive) {
+  if (streamActive || streamStarting) {
     stopStream();
     return;
   }
+
+  streamStarting = true;
+  streamStartCancelled = false;
+  streamBtn.textContent = 'Tắt Stream';
 
   let path = STREAM_DETECT_PATH;
   let hint = 'Đang stream kèm box; ESP32-CAM detect mỗi 5 frame để cân bằng tốc độ.';
@@ -202,11 +210,18 @@ async function toggleStream() {
     hint = 'Đang mở stream detect; nếu face engine lỗi, web sẽ tự fallback sang stream thường.';
   }
 
+  if (streamStartCancelled) {
+    streamStarting = false;
+    streamStartCancelled = false;
+    return;
+  }
+
   streamFallbackAttempted = false;
   streamView.dataset.mode = path === '/stream' ? 'plain' : 'detect';
   streamView.src = `${baseUrl}${path}${path.includes('?') ? '&' : '?'}t=${Date.now()}`;
   showImage(streamView, streamPlaceholder);
   streamActive = true;
+  streamStarting = false;
   streamBtn.textContent = 'Tắt Stream';
   setStatus('Đang mở live stream', hint, 'status-warn');
 }
@@ -287,11 +302,25 @@ async function loadFaceIds() {
       return;
     }
 
-    identityList.innerHTML = data.identities
-      .map((item) => `<li><strong>${item.name || `ID ${item.id}`}</strong> <span class="helper">(ID ${item.id})</span></li>`)
-      .join('');
+    identityList.replaceChildren();
+    data.identities.forEach((item) => {
+      const row = document.createElement('li');
+      const name = document.createElement('strong');
+      name.textContent = item.name || `ID ${item.id}`;
+      row.appendChild(name);
+
+      const id = document.createElement('span');
+      id.className = 'helper';
+      id.textContent = `(ID ${item.id})`;
+      row.appendChild(id);
+
+      identityList.appendChild(row);
+    });
   } catch (error) {
-    identityList.innerHTML = `<li>Lỗi tải danh sách: ${error.message}</li>`;
+    identityList.replaceChildren();
+    const row = document.createElement('li');
+    row.textContent = `Lỗi tải danh sách: ${error.message}`;
+    identityList.appendChild(row);
   }
 }
 

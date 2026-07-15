@@ -203,8 +203,8 @@ Sau khi nạp xong:
 5. Nếu face engine không khả dụng, giao diện tự fallback sang `/stream` thường.
 6. Bấm **Take Snapshot + Box** để chụp `/capture?detect=1`; bấm lại để ẩn snapshot.
 7. Bấm **Recognize Snapshot** để nhận diện `/capture?detect=1&recognize=1`; bấm lại để ẩn snapshot recognition.
-9. Nhập tên và bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
-10. Bấm **Refresh IDs** để tải danh sách `/face/ids`.
+8. Nhập tên và bấm **Đăng ký khuôn mặt** để gọi `/face/enroll?name=...`.
+9. Bấm **Refresh IDs** để tải danh sách `/face/ids`.
 
 Các endpoint ESP32-CAM cung cấp:
 
