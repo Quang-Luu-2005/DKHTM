@@ -1,29 +1,62 @@
-# Sentinel access control
+# Sentinel — hệ thống kiểm soát ra vào
 
-The reorganized project has three connected parts:
+Sentinel kết nối dashboard React, backend Node.js/Express, PostgreSQL và hai node ESP32:
 
-- `software/frontend`: React/Vite control panel (port `3000`)
-- `software/backend`: REST bridge and persistent event store (port `3001`)
-- `hardware`: ESP32-CAM and ESP32 main-controller firmware
+- `software/frontend`: dashboard React/Vite (`http://localhost:3000`).
+- `software/backend`: REST API, SSE realtime, command queue và lưu dữ liệu (`http://localhost:3001`).
+- `hardware/esp32cam_node`: camera gửi device event và snapshot JPEG.
+- `hardware/main_controller`: điều khiển servo/LED/buzzer, nhận lệnh khóa/mở.
+- `docs/backend_sentinel_v1_plan.md`: đặc tả backend v1.
 
-## Run locally
+Luồng chính: ESP32-CAM gửi event/ảnh vào backend; dashboard đọc REST và SSE; lệnh phần cứng từ dashboard được backend chuyển tới main controller và theo dõi acknowledgement.
 
-Start PostgreSQL and the backend with Docker Compose:
+## 1. Chuẩn bị
+
+Cài Node.js 20+ (khuyến nghị 22), Docker Desktop + Compose v2, và PlatformIO nếu cần nạp firmware.
+
+```powershell
+node --version
+docker --version
+docker compose version
+pio --version
+```
+
+Các lệnh dưới đây chạy từ thư mục gốc repo (`D:\DKHTM\source`).
+
+## 2. Tạo file `.env`
 
 ```powershell
 Copy-Item software/backend/.env.example software/backend/.env
-docker compose --env-file software/backend/.env up -d postgres
-cd software/backend
-npm install
-npm run prisma:deploy
-npm run dev
+Copy-Item software/frontend/.env.example software/frontend/.env.local
 ```
 
-The complete backend + PostgreSQL stack can also be started with
-`docker compose --env-file software/backend/.env up -d`.
-The backend exposes REST and SSE on port `3001`.
+Trong `software/backend/.env`, kiểm tra:
 
-The frontend runs in a second terminal:
+```dotenv
+DATABASE_URL=postgresql://sentinel:sentinel@localhost:5432/sentinel?schema=public
+DEVICE_SECRET=demo-secret
+CONTROLLER_URL=
+```
+
+Để trống `CONTROLLER_URL` cho tới khi biết IP main controller. Trong frontend, để trống `VITE_API_URL` khi chạy local; đặt `VITE_CAMERA_URL=http://<IP-ESP32-CAM>` nếu muốn xem camera thật.
+
+## 3. Chạy toàn bộ phần mềm bằng Docker + Vite
+
+Docker chạy PostgreSQL và backend. Backend tự chạy Prisma migration trước khi start:
+
+```powershell
+docker compose up -d --build
+docker compose ps
+docker compose logs -f backend
+```
+
+Kiểm tra backend:
+
+```powershell
+Invoke-RestMethod http://localhost:3001/api/health
+```
+
+Mở terminal thứ hai để chạy dashboard:
 
 ```powershell
 cd software/frontend
@@ -31,30 +64,82 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/api` to `http://localhost:3001`. To use a separately hosted backend, set
-`VITE_API_URL` in `software/frontend/.env.local`.
-Set `VITE_CAMERA_URL` to the ESP32-CAM IP to replace the dashboard's placeholder image
-with the live MJPEG stream.
+Mở `http://localhost:3000`. Vite proxy `/api` tới backend, còn `/api/events` là SSE realtime.
 
-## Connect the boards
-
-1. Set Wi-Fi credentials in both `hardware/esp32cam_node/config.h` and
-   `hardware/main_controller/main_controller.ino`.
-2. Start the backend and set `CONTROLLER_URL` in `software/backend/.env` to the URL
-   printed by the main controller (for example `http://192.168.1.51`).
-3. Set `kServerBaseUrl` in `hardware/esp32cam_node/config.h` to the LAN address of the
-   backend machine on port `3001` (never `localhost` from an ESP32).
-4. Keep `DEVICE_SECRET` in the backend equal to `kDeviceSecret` in the ESP32-CAM config.
-5. Build firmware:
+Dừng hệ thống:
 
 ```powershell
-pio run -e esp32_main_controller
-pio run -e esp32cam_node
+docker compose stop       # dừng, giữ dữ liệu
+docker compose down       # xóa container, giữ volume
+docker compose down -v    # xóa cả database/uploads (MẤT DỮ LIỆU)
 ```
 
-ESP32-CAM sends device events to `/api/device/events` and JPEG snapshots to
-`/api/device/camera/snapshot`. Dashboard commands are stored by the backend and forwarded
-to the main controller at `/api/hardware/command` when `CONTROLLER_URL` is configured.
+## 4. Chạy backend local để debug
 
-When SSE is temporarily unavailable, the frontend falls back to REST synchronization. User,
-log and hardware records are no longer seeded from browser localStorage.
+PostgreSQL vẫn chạy trong Docker, Node.js chạy trực tiếp trên máy:
+
+```powershell
+docker compose up -d postgres
+cd software/backend
+npm install
+npx prisma generate
+npm run prisma:deploy
+npm run dev
+```
+
+Khi backend chạy local, `DATABASE_URL` dùng `localhost`. Khi backend chạy trong container, Compose dùng hostname `postgres`.
+
+## 5. PostgreSQL và Prisma
+
+Schema ở `software/backend/prisma/schema.prisma`; database mới bắt đầu rỗng, không seed demo. Ảnh snapshot nằm trong volume Docker `sentinel-uploads`, PostgreSQL chỉ lưu metadata/path.
+
+```powershell
+cd software/backend
+npx prisma migrate status
+npm run prisma:migrate
+npm run prisma:deploy
+npx prisma studio
+```
+
+## 6. Cấu hình và nạp ESP32
+
+Sửa Wi-Fi trong `hardware/esp32cam_node/config.h` và `hardware/main_controller/main_controller.ino`. Trên ESP32-CAM, đặt `kServerBaseUrl` tới IP LAN máy chạy backend, ví dụ `http://192.168.1.188:3001`; không dùng `localhost`. `kDeviceSecret` phải trùng `DEVICE_SECRET`.
+
+```powershell
+pio run -e esp32cam_node
+pio run -e esp32_main_controller
+pio run -e esp32cam_node -t upload --upload-port COM5
+pio run -e esp32_main_controller -t upload --upload-port COM6
+pio device monitor --port COM5 -b 115200
+pio device monitor --port COM6 -b 115200
+```
+
+Sau khi main controller in ra IP, điền `CONTROLLER_URL=http://<IP-CONTROLLER>` rồi chạy lại backend. Hardware command đi qua `PENDING → SENT → ACKED` hoặc `TIMEOUT`.
+
+## 7. Kiểm thử
+
+```powershell
+cd software/backend
+npm test
+$env:RUN_INTEGRATION='1'; node --test test/api.integration.test.js
+cd ..\frontend
+npm run lint
+npm run build
+```
+
+Các endpoint chính: `/api/users`, `/api/logs`, `/api/hardware`, `/api/device/events`, `/api/device/camera/snapshot`, `/api/device/:id`, `/api/events` (SSE), `/api/health`.
+
+## 8. Xử lý lỗi nhanh
+
+- Database chưa connected: `docker compose ps` và `docker compose logs postgres`.
+- Port 5432/3000/3001 bị chiếm: dừng tiến trình hoặc đổi port mapping.
+- ESP32 không gửi event: kiểm tra cùng LAN, IP backend, secret và serial monitor.
+- Command timeout: kiểm tra `CONTROLLER_URL` và IP main controller.
+- Camera không hiện: đặt `VITE_CAMERA_URL`, rồi restart Vite.
+
+Sau khi sửa backend đang chạy bằng Docker:
+
+```powershell
+docker compose up -d --build backend
+```
+
