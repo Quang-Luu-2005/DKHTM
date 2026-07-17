@@ -1,0 +1,13 @@
+{
+  "system": {
+    "status": 0 
+  },
+  "devices": {
+    "rfid": true,
+    "ultrasonic": false,
+    "buzzer": false,
+    "servo": false,
+    "camera": false,
+    "led": false
+  }
+}

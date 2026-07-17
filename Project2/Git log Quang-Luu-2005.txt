@@ -1,0 +1,199 @@
+commit ad3085e810b80a88fb8ab7739f758493971c5065
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri May 29 21:35:36 2026 +0700
+
+    Add Beamer presentation template version 2.0
+    
+    - Introduced a comprehensive LaTeX template for creating presentations using Beamer.
+    - Configured document class, layout themes, color themes, font themes, and inner/outer themes.
+    - Included sections for text examples, tables, figures, mathematics, referencing, acknowledgments, and closing slides.
+    - Provided detailed comments for customization and usage.
+
+commit 70f056ceefd8d626daa07bbceeb84e7be93ef757
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri May 29 21:42:38 2026 +0700
+
+    Update AIoT presentation: enhance post-processing and validation sections for clarity
+
+commit ff07e24b30bcdeb2ad6333cd43b95cfdb723c727
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri May 29 22:02:34 2026 +0700
+
+    Update AIoT presentation: restructure sections and add mockup images for clarity
+
+commit 6845ac5aa35a75f814f54fb395ecd7d3a91d9447
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri May 29 22:11:59 2026 +0700
+
+    Update AIoT presentation: revise technology selection section for clarity and detail
+
+commit e23225fc63acfec8ed471a058c7dd1a3c57d4316
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri May 29 22:40:15 2026 +0700
+
+    Refactor AIoT 3D Face Presentation: Update subtitle, enhance system architecture, and revise technology choices. Replace 3D face reconstruction with 2D face recognition using YOLOv11-Face and ArcFace. Introduce liveness detection and adjust project plan and responsibilities.
+
+commit f25bf64b453f1684276881fc9237f58d16fd9d7b
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri May 29 22:56:03 2026 +0700
+
+    Add presentation on Smart Security Door using Face Recognition
+    
+    - Introduced a new Beamer presentation titled "Cửa an ninh xác thực bằng khuôn mặt"
+    - Included sections covering project introduction, technology selection, proposed methods, and system architecture
+    - Detailed the use of YOLOv11 for face detection, ArcFace for face embedding, and liveness detection techniques
+    - Provided a comprehensive overview of the system's architecture and control loop for intelligent device management
+    - Added references for related works and technologies used in the project
+
+commit 11cd91829806f84cd5403d2fa2cdd7ca73ca2d4c
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri Jun 12 16:00:20 2026 +0700
+
+    update slide
+
+commit 219a757d9f1f2d5ba843c8e8db59b4a4d9c874c8
+Merge: 11cd918 732220f
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri Jun 12 16:00:22 2026 +0700
+
+    Merge branch 'main' of https://github.com/Quang-Luu-2005/DKHTM
+
+commit 4caee9b0714a62d575fe4ea719dfb0aa8fe25987
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jun 27 13:13:25 2026 +0700
+
+    sửa mục đích, mục tiêu
+
+commit 70abb94e2b79da293626c454c0e97ee9bec64202
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Tue Jun 30 01:40:39 2026 +0700
+
+    implement coding
+
+commit e743f2020b7acdc4d1687440c340cc8595dbaa82
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Wed Jul 1 08:02:15 2026 +0700
+
+    feat: add system architecture diagram and logging/warning information
+
+commit 9b030e0cfe1003fdd18c9f67079c41e7cf3a070f
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Wed Jul 1 08:05:40 2026 +0700
+
+    feat: update system architecture and logging information in presentation slides
+
+commit cd7aeef3387c1e3e5602da89ac260156bf733b29
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Wed Jul 1 09:10:49 2026 +0700
+
+    feat: update presentation slides with enhanced system features and add new media assets
+
+commit 496bbb714d45416343ae22f24c97fac490f6ec9b
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Thu Jul 2 00:12:44 2026 +0700
+
+    Refactor documentation for smart access control system: prioritize hardware setup, clarify component mapping, and streamline API descriptions.
+
+commit aa9aa738441f2c6fdbd8ada7bcb869ee3360515c
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Thu Jul 2 00:25:52 2026 +0700
+
+    feat: update hardware documentation for smart access control system, enhancing component mapping and adding ultrasonic sensor details
+
+commit e31b8497e7708e0724aa4917df803cceda0982b6
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Thu Jul 2 01:11:46 2026 +0700
+
+    feat: enhance documentation for smart access control system, adding details on ESP32-CAM functionality and embedding processing flow
+
+commit e5cdda3780e4de0888050c5b3a5d6d0f873794d6
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Fri Jul 3 01:19:27 2026 +0700
+
+    Refactor project structure and remove deprecated files
+    
+    - Deleted project_config.h and secrets.example.h as they are no longer needed.
+    - Removed device_events.h, exit_button.h, gate_control.h, heartbeat.h, indicators.h, intrusion_monitor.h, rfid_access.h, sensors.h, camera_pins.h, and main_controller_pins.h headers.
+    - Eliminated corresponding implementation files for device events, exit button handling, gate control, heartbeat sending, indicators, intrusion monitoring, RFID access, and sensor management.
+    - Removed backend_client and wifi_manager implementations as they are no longer utilized.
+    - Added new main sketches for esp32cam_node and main_controller with updated logic.
+    - Introduced platformio wrappers for both main sketches to facilitate compilation.
+    - Updated platformio.ini to reflect the new structure and dependencies.
+    - Added .gitignore and VSCode configuration files for better development experience.
+
+commit 82864491a6a52d89c608322250729a173580c081
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jul 4 20:16:18 2026 +0700
+
+    Refactor ESP32-CAM and Main Controller Code Structure
+    
+    - Moved esp32cam_node.ino and main_controller.ino to a new hardware directory for better organization.
+    - Updated platformio.ini to reflect new source directory structure.
+    - Reimplemented esp32cam_node.ino with enhanced web server capabilities for live streaming and snapshot functionality.
+    - Added a new JavaScript application (app.js) for managing the ESP32-CAM interface, including status checks and stream controls.
+    - Created HTML (index.html) and CSS (styles.css) files for the web interface, providing a user-friendly experience for interacting with the ESP32-CAM.
+    - Removed old platformio wrapper files as they are no longer needed with the new structure.
+
+commit 024dd6569653651fd2cb5cd2dae61d42f471b3be
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jul 4 20:41:10 2026 +0700
+
+    feat: add GitHub Actions workflow for deploying static web to GitHub Pages
+
+commit 7df96533e642700b035f88c3d0b02500a7ba8b2d
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jul 4 21:03:20 2026 +0700
+
+    feat: add GitHub Actions workflow for deploying static web to GitHub Pages
+
+commit c2aa5ca6c41092a6223574fe7a1e9dd021384463
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jul 4 21:45:18 2026 +0700
+
+    feat: restructure project by removing deprecated files and adding new application files
+
+commit 2a6be2ebc9f21db21645b7c8aea0a43f0649dcce
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Mon Jul 6 07:33:29 2026 +0700
+
+    Enhance ESP32-CAM functionality with face detection and recognition features
+    
+    - Updated documentation to reflect the new structure and capabilities of the ESP32-CAM system, including face detection and recognition.
+    - Modified platformio.ini to include partition configuration for face recognition.
+    - Implemented face detection and recognition logic in esp32cam_node.ino, including endpoints for enrolling and managing identities.
+    - Added new CSS styles for face result display and identity management in the web interface.
+    - Created a new partition layout for storing face recognition data.
+
+commit 6e2929cd185fbaba81710b721f163f93e9e05704
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Mon Jul 6 19:46:47 2026 +0700
+
+    feat: add fast stream and frame detection options to ESP32-CAM functionality
+
+commit dbeedb442b646c3845f94f5cfddb8fcd09d43da6
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Tue Jul 7 23:49:29 2026 +0700
+
+    Add face recognition and camera services for ESP32-CAM
+    
+    - Introduced configuration header (config.h) for WiFi and camera settings.
+    - Created types header (types.h) for face processing options and outcomes.
+    - Implemented face engine functionality in face_engine.cpp and face_engine.h.
+    - Developed backend client for handling HTTP requests to a server (backend_client.cpp, backend_client.h).
+    - Established camera service for initializing camera hardware and capturing frames (camera_service.cpp, camera_service.h).
+    - Added JSON utility functions for escaping strings and handling query parameters (json_utils.cpp, json_utils.h).
+    - Built web server handlers for managing HTTP requests and responses (web_handlers.cpp, web_handlers.h).
+    - Implemented web server functionality to serve endpoints and handle CORS (web_server.cpp, web_server.h).
+
+commit a0ef437614d0cb95b348431250acafae6faa7b82
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jul 11 09:17:09 2026 +0700
+
+    fix: update include paths for face recognition and detection models
+
+commit 6a5ab54ff47d81843147cac3aa51bf252f67daeb
+Merge: a0ef437 c455cb9
+Author: Quang-Luu-2005 <162467787+Quang-Luu-2005@users.noreply.github.com>
+Date:   Sat Jul 11 09:17:21 2026 +0700
+
+    Merge branch 'main' of https://github.com/Quang-Luu-2005/DKHTM
