@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import fs from "node:fs/promises";
+import "dotenv/config";
 
 const enabled = process.env.RUN_INTEGRATION === "1";
 
@@ -102,6 +103,14 @@ test("PostgreSQL API, device deduplication, snapshot, SSE and command acknowledg
   } finally {
     if (controller.listening) await new Promise(resolve => controller.close(resolve));
     await new Promise(resolve => apiServer.close(resolve));
+    await prisma.snapshot.deleteMany();
+    await prisma.deviceEvent.deleteMany();
+    await prisma.auditLog.deleteMany();
+    await prisma.hardwareCommand.deleteMany();
+    await prisma.gateHardwareState.deleteMany();
+    await prisma.device.deleteMany();
+    await prisma.user.deleteMany();
+    await fs.rm(config.UPLOAD_DIR, { recursive: true, force: true });
     await prisma.$disconnect();
   }
 });
