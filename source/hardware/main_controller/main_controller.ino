@@ -3,66 +3,137 @@
 #include <WiFi.h>
 #include <WebServer.h>
 
+#include "gate_state_machine.h"
+
 // Set these to the same network used by the Sentinel backend.
 constexpr char kWifiSsid[] = "PhĂ­chhh";
 constexpr char kWifiPass[] = "canhacungvui";
 constexpr int kWifiMaxRetries = 30;
 WebServer webServer(80);
 
-constexpr uint8_t kGrantedLedPin = 21;
-constexpr uint8_t kDeniedLedPin = 19;
-constexpr uint8_t kServoPin = 22;
+// Keep these aligned with src/GPIO_Mapping.md on the Van branch.
+// GPIO19 is reserved for RFID MISO and GPIO21 is reserved for the buzzer.
+constexpr uint8_t kGrantedLedPin = 32;
+constexpr uint8_t kDeniedLedPin = 33;
+constexpr uint8_t kServoPin = 26;
+
+static_assert(kGrantedLedPin != kDeniedLedPin, "LED pins must be unique");
+static_assert(kGrantedLedPin != kServoPin, "Servo and LED pins must be unique");
+static_assert(kDeniedLedPin != kServoPin, "Servo and LED pins must be unique");
 
 constexpr int kLockAngle = 0;
 constexpr int kUnlockAngle = 90;
-constexpr unsigned long kUnlockDurationMs = 3000UL;
+constexpr unsigned long kServoTravelDurationMs = 500UL;
+constexpr unsigned long kGateHoldDurationMs = 3000UL;
+constexpr unsigned long kDeniedIndicatorDurationMs = 500UL;
 
 Servo gateServo;
+GateStateMachine gateStateMachine(kServoTravelDurationMs, kGateHoldDurationMs);
 String serialBuffer;
-bool gateLocked = true;
 bool buzzerActive = false;
 String ledState = "RED / RESTRICTED";
+bool deniedIndicatorActive = false;
+unsigned long deniedIndicatorStartedAtMs = 0;
 
 void setIdleLed() {
   digitalWrite(kGrantedLedPin, LOW);
   digitalWrite(kDeniedLedPin, LOW);
 }
 
-void lockGate() {
-  gateServo.write(kLockAngle);
+bool isGateOpenState(GateState state) {
+  return state == GateState::OPENING || state == GateState::HOLDING;
+}
+
+void applyGateIndicators() {
+  if (deniedIndicatorActive) {
+    digitalWrite(kGrantedLedPin, LOW);
+    digitalWrite(kDeniedLedPin, HIGH);
+    buzzerActive = true;
+    ledState = "RED / RESTRICTED";
+    return;
+  }
+
+  if (isGateOpenState(gateStateMachine.state())) {
+    digitalWrite(kGrantedLedPin, HIGH);
+    digitalWrite(kDeniedLedPin, LOW);
+    buzzerActive = false;
+    ledState = "GREEN / ACCESS ALLOWED";
+    return;
+  }
+
   setIdleLed();
-  gateLocked = true;
   buzzerActive = false;
   ledState = "RED / RESTRICTED";
-  Serial.println("Gate locked.");
 }
 
-void unlockGate() {
-  digitalWrite(kGrantedLedPin, HIGH);
-  digitalWrite(kDeniedLedPin, LOW);
-  gateServo.write(kUnlockAngle);
-  gateLocked = false;
-  buzzerActive = false;
-  ledState = "GREEN / ACCESS ALLOWED";
-  Serial.println("Gate unlocked.");
+void applyGateTransition(GateState previous, GateState current) {
+  if (previous == current) {
+    return;
+  }
+
+  if (current == GateState::OPENING) {
+    gateServo.write(kUnlockAngle);
+  } else if (current == GateState::CLOSING ||
+             current == GateState::CLOSED) {
+    gateServo.write(kLockAngle);
+  }
+
+  applyGateIndicators();
+  Serial.print("Gate state: ");
+  Serial.print(GateStateMachine::name(previous));
+  Serial.print(" -> ");
+  Serial.println(GateStateMachine::name(current));
 }
 
-void unlockGateDemo() {
-  unlockGate();
-  delay(kUnlockDurationMs);
-  lockGate();
+void requestGateOpen() {
+  const unsigned long now = millis();
+  const GateState previous = gateStateMachine.state();
+  deniedIndicatorActive = false;
+  const bool changed = gateStateMachine.requestOpen(now);
+
+  if (changed) {
+    applyGateTransition(previous, gateStateMachine.state());
+  } else if (previous == GateState::HOLDING) {
+    applyGateIndicators();
+    Serial.println("Gate hold extended.");
+  }
+}
+
+void requestGateClose() {
+  const GateState previous = gateStateMachine.state();
+  if (gateStateMachine.requestClose(millis())) {
+    applyGateTransition(previous, gateStateMachine.state());
+  } else {
+    // Keep status and indicators consistent for an idempotent lock command.
+    applyGateIndicators();
+  }
+}
+
+void updateGateControl() {
+  const GateState previous = gateStateMachine.state();
+  if (gateStateMachine.update(millis())) {
+    applyGateTransition(previous, gateStateMachine.state());
+  }
 }
 
 void signalDenied() {
-  digitalWrite(kGrantedLedPin, LOW);
-  digitalWrite(kDeniedLedPin, HIGH);
-  gateLocked = true;
-  buzzerActive = true;
-  ledState = "RED / RESTRICTED";
+  requestGateClose();
+  deniedIndicatorActive = true;
+  deniedIndicatorStartedAtMs = millis();
+  applyGateIndicators();
   Serial.println("Access denied indicator on.");
-  delay(500);
-  setIdleLed();
-  buzzerActive = false;
+}
+
+void updateDeniedIndicator() {
+  if (!deniedIndicatorActive) {
+    return;
+  }
+
+  if (millis() - deniedIndicatorStartedAtMs >=
+      kDeniedIndicatorDurationMs) {
+    deniedIndicatorActive = false;
+    applyGateIndicators();
+  }
 }
 
 void sendCors() {
@@ -96,20 +167,33 @@ bool jsonBoolField(const String& json, const String& key, bool fallback) {
 }
 
 void applyDesiredState(const String& body) {
-  gateLocked = jsonBoolField(body, "servoLocked", gateLocked);
+  const bool requestedLocked =
+      jsonBoolField(body, "servoLocked", gateStateMachine.isLocked());
+  if (requestedLocked) {
+    requestGateClose();
+  } else {
+    requestGateOpen();
+  }
+
   String requestedBuzzer = jsonStringField(body, "systemBuzzer");
   if (!requestedBuzzer.isEmpty()) buzzerActive = requestedBuzzer == "ACTIVE";
   String requestedLed = jsonStringField(body, "indicatorLed");
   if (!requestedLed.isEmpty()) ledState = requestedLed;
 
-  gateServo.write(gateLocked ? kLockAngle : kUnlockAngle);
   const bool green = ledState.indexOf("GREEN") >= 0;
   digitalWrite(kGrantedLedPin, green ? HIGH : LOW);
   digitalWrite(kDeniedLedPin, green ? LOW : HIGH);
-  Serial.println(gateLocked ? "Desired state applied: locked." : "Desired state applied: unlocked.");
+  Serial.println(requestedLocked ? "Desired state applied: closing."
+                                 : "Desired state applied: opening.");
 }
 
 void sendControllerStatus(const String& commandId = "") {
+  const unsigned long now = millis();
+  const bool gateLocked = gateStateMachine.isLocked();
+  const char* gateState = GateStateMachine::name(gateStateMachine.state());
+  const unsigned long remainingHoldMs =
+      gateStateMachine.remainingHoldMs(now);
+
   sendCors();
   String body = "{\"ok\":true";
   if (!commandId.isEmpty()) body += ",\"commandId\":\"" + commandId + "\"";
@@ -119,13 +203,25 @@ void sendControllerStatus(const String& commandId = "") {
   body += gateLocked ? "SECURED / CLOSED" : "OPENED / UNSECURED";
   body += "\",\"indicatorLed\":\"" + ledState + "\",\"systemBuzzer\":\"";
   body += buzzerActive ? "ACTIVE" : "MUTED";
-  body += "\",\"hardware\":{\"servoLocked\":";
+  body += "\",\"gateState\":\"";
+  body += gateState;
+  body += "\",\"remainingHoldMs\":";
+  body += String(remainingHoldMs);
+  body += ",\"holdDurationMs\":";
+  body += String(kGateHoldDurationMs);
+  body += ",\"hardware\":{\"servoLocked\":";
   body += gateLocked ? "true" : "false";
   body += ",\"servoArm\":\"";
   body += gateLocked ? "SECURED / CLOSED" : "OPENED / UNSECURED";
   body += "\",\"indicatorLed\":\"" + ledState + "\",\"systemBuzzer\":\"";
   body += buzzerActive ? "ACTIVE" : "MUTED";
-  body += "\"}}";
+  body += "\",\"gateState\":\"";
+  body += gateState;
+  body += "\",\"remainingHoldMs\":";
+  body += String(remainingHoldMs);
+  body += ",\"holdDurationMs\":";
+  body += String(kGateHoldDurationMs);
+  body += "}}";
   webServer.send(200, "application/json", body);
 }
 
@@ -140,10 +236,14 @@ void handleControllerCommand() {
   command.toLowerCase();
   sendCors();
   if (command == "set_state") applyDesiredState(body);
-  else if (command == "grant") unlockGate();
+  else if (command == "grant") requestGateOpen();
   else if (command == "deny") signalDenied();
-  else if (command == "idle") { setIdleLed(); buzzerActive = false; }
-  else if (command == "lock") lockGate();
+  else if (command == "idle") {
+    deniedIndicatorActive = false;
+    setIdleLed();
+    buzzerActive = false;
+    ledState = "IDLE";
+  } else if (command == "lock") requestGateClose();
   else { webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown command\"}"); return; }
   sendControllerStatus(commandId);
 }
@@ -169,10 +269,11 @@ void printHelp() {
   Serial.println();
   Serial.println("=== ESP32 main controller demo ===");
   Serial.println("Commands via Serial Monitor:");
-  Serial.println("  grant | 1 | d  -> open servo + granted LED");
+  Serial.println("  grant | 1 | d  -> open, hold, then auto-close");
   Serial.println("  deny  | 0 | s  -> blink denied LED");
   Serial.println("  lock           -> force lock position");
   Serial.println("  idle           -> turn both LEDs off");
+  Serial.println("  status         -> print current gate state");
   Serial.println("  help           -> show this message");
   Serial.println();
 }
@@ -186,7 +287,7 @@ void handleCommand(String command) {
   }
 
   if (command == "grant" || command == "1" || command == "d") {
-    unlockGateDemo();
+    requestGateOpen();
     return;
   }
 
@@ -196,13 +297,25 @@ void handleCommand(String command) {
   }
 
   if (command == "lock") {
-    lockGate();
+    requestGateClose();
     return;
   }
 
   if (command == "idle") {
+    deniedIndicatorActive = false;
     setIdleLed();
+    buzzerActive = false;
+    ledState = "IDLE";
     Serial.println("Indicators set to idle.");
+    return;
+  }
+
+  if (command == "status") {
+    Serial.print("Gate state: ");
+    Serial.print(GateStateMachine::name(gateStateMachine.state()));
+    Serial.print(", remaining hold: ");
+    Serial.print(gateStateMachine.remainingHoldMs(millis()));
+    Serial.println(" ms");
     return;
   }
 
@@ -249,13 +362,18 @@ void setup() {
   gateServo.setPeriodHertz(50);
   gateServo.attach(kServoPin, 500, 2400);
 
-  lockGate();
+  gateStateMachine.begin(millis());
+  gateServo.write(kLockAngle);
+  applyGateIndicators();
+  Serial.println("Gate state initialized: CLOSED.");
   printHelp();
   if (connectWifi()) startControllerServer();
   else Serial.println("WiFi unavailable; serial control remains active.");
 }
 
 void loop() {
+  updateGateControl();
+  updateDeniedIndicator();
   pollSerialCommands();
   webServer.handleClient();
   delay(20);

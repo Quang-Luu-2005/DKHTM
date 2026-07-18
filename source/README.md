@@ -116,6 +116,32 @@ pio device monitor --port COM6 -b 115200
 
 Sau khi main controller in ra IP, điền `CONTROLLER_URL=http://<IP-CONTROLLER>` rồi chạy lại backend. Hardware command đi qua `PENDING → SENT → ACKED` hoặc `TIMEOUT`.
 
+### Gate control state machine
+
+Main controller điều khiển cổng theo state machine không chặn:
+
+```text
+CLOSED -> OPENING -> HOLDING -> CLOSING -> CLOSED
+```
+
+- `grant` mở servo, giữ cổng trong 3 giây rồi tự đóng.
+- Gửi lại `grant` trong lúc `HOLDING` sẽ gia hạn thời gian giữ.
+- `lock` ngắt trạng thái mở/giữ và đóng cổng ngay.
+- Serial Monitor và HTTP API vẫn hoạt động trong lúc cổng chờ tự đóng vì firmware dùng `millis()` thay cho `delay()`.
+- `GET /api/hardware/status` trả thêm `gateState`, `remainingHoldMs` và `holdDurationMs`.
+
+Các lệnh Serial: `grant`, `deny`, `lock`, `idle`, `status`, `help`.
+
+GPIO của main controller được đồng bộ với `src/GPIO_Mapping.md` trên nhánh `Van`:
+
+| Thiết bị | GPIO |
+|---|---:|
+| Servo signal | 26 |
+| Green LED | 32 |
+| Red LED | 33 |
+
+GPIO19 được dành cho RFID MISO và GPIO21 được dành cho buzzer nên không được dùng lại cho LED.
+
 ## 7. Kiểm thử
 
 ```powershell
@@ -142,4 +168,3 @@ Sau khi sửa backend đang chạy bằng Docker:
 ```powershell
 docker compose up -d --build backend
 ```
-
