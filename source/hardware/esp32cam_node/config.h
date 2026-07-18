@@ -6,7 +6,7 @@
 constexpr char kWifiSsid[] = "Phíchhh";
 constexpr char kWifiPass[] = "canhacungvui";
 // Use the LAN IP of the computer running software/backend (not localhost).
-constexpr char kServerBaseUrl[] = "http://192.168.1.10:3001";
+constexpr char kServerBaseUrl[] = "http://192.168.1.31:3001";
 constexpr char kDeviceSecret[] = "demo-secret";
 constexpr char kEsp32CamDeviceId[] = "ESP32CAM_001";
 constexpr char kDoorId[] = "GATE_01";

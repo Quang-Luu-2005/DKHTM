@@ -29,8 +29,11 @@ export default function DashboardView({
   isEmergencyLocked
 }: DashboardViewProps) {
   const cameraBaseUrl = (import.meta.env.VITE_CAMERA_URL || "").replace(/\/$/, "");
+  // Temporarily disable face detection until the ESP32 firmware includes the
+  // compatible ESP-DL model headers.
+  // const cameraStreamWithDetectionUrl = `${cameraBaseUrl}/stream?detect=1&detectEvery=5&quality=60&delay=0`;
   const cameraStreamUrl = cameraBaseUrl
-    ? `${cameraBaseUrl}/stream?detect=1&detectEvery=5&quality=60&delay=0`
+    ? `${cameraBaseUrl}/stream`
     : "https://lh3.googleusercontent.com/aida-public/AB6AXuDQEaScEEtCFS5Bn2sUz-z6g3_PdMNTHi4JIU0cPL7N7j1NxLFSFf1CgUuP_LO7eqkBMcW0tXWT-JTOAxSyEZaIyqR5HlSi7Bfo9Y2Ols_j3n7ovO_rf2bEnXwMylDHc2GfW4Kf23o8rs_MtiCjaPTjTtDuRgtZKY9KqucI_507qN1vvtqPW9xqdG8xlgHqJGclmrR0YH7kkdYwu_ePLJDFGf6S5rOSyl4D2DYMQltRPzJQGshnWlfrm3-myEiALI5_Tc5B1QRd87Y";
   const [timeStr, setTimeStr] = React.useState("");
   const [servoLoading, setServoLoading] = React.useState(false);
@@ -174,7 +177,7 @@ export default function DashboardView({
             <img
               alt="Luồng camera trực tiếp từ sảnh tòa nhà"
               src={cameraStreamUrl}
-              className="w-full h-full object-cover grayscale brightness-75 contrast-[1.05]"
+              className="w-full h-full object-cover"
             />
 
             {/* Simulated target box overlay */}
