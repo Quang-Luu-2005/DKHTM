@@ -11,9 +11,15 @@ constexpr char kWifiPass[] = "canhacungvui";
 constexpr int kWifiMaxRetries = 30;
 WebServer webServer(80);
 
-constexpr uint8_t kGrantedLedPin = 21;
-constexpr uint8_t kDeniedLedPin = 19;
-constexpr uint8_t kServoPin = 22;
+// Keep these aligned with src/GPIO_Mapping.md on the Van branch.
+// GPIO19 is reserved for RFID MISO and GPIO21 is reserved for the buzzer.
+constexpr uint8_t kGrantedLedPin = 32;
+constexpr uint8_t kDeniedLedPin = 33;
+constexpr uint8_t kServoPin = 26;
+
+static_assert(kGrantedLedPin != kDeniedLedPin, "LED pins must be unique");
+static_assert(kGrantedLedPin != kServoPin, "Servo and LED pins must be unique");
+static_assert(kDeniedLedPin != kServoPin, "Servo and LED pins must be unique");
 
 constexpr int kLockAngle = 0;
 constexpr int kUnlockAngle = 90;

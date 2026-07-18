@@ -132,6 +132,16 @@ CLOSED -> OPENING -> HOLDING -> CLOSING -> CLOSED
 
 Các lệnh Serial: `grant`, `deny`, `lock`, `idle`, `status`, `help`.
 
+GPIO của main controller được đồng bộ với `src/GPIO_Mapping.md` trên nhánh `Van`:
+
+| Thiết bị | GPIO |
+|---|---:|
+| Servo signal | 26 |
+| Green LED | 32 |
+| Red LED | 33 |
+
+GPIO19 được dành cho RFID MISO và GPIO21 được dành cho buzzer nên không được dùng lại cho LED.
+
 ## 7. Kiểm thử
 
 ```powershell
