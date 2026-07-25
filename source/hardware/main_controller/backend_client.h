@@ -2,6 +2,16 @@
 
 #include <Arduino.h>
 
+struct BackendEventResponse {
+  int statusCode = -1;
+  String accessDecision;
+  String commandId;
+
+  bool successful() const {
+    return statusCode >= 200 && statusCode < 300;
+  }
+};
+
 class ControllerBackendClient {
  public:
   ControllerBackendClient(
@@ -11,7 +21,7 @@ class ControllerBackendClient {
     const char* gateId
   );
 
-  int sendEvent(
+  BackendEventResponse sendEvent(
     const String& eventType,
     const String& message,
     const String& extraJson = "",

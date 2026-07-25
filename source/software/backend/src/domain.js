@@ -23,7 +23,17 @@ export const accessMethodToDb = {
 export const accessMethodFromDb = Object.fromEntries(Object.entries(accessMethodToDb).map(([key, value]) => [value, key]));
 
 export function serializeUser(user) {
-  return { ...user, role: roleFromDb[user.role], createdAt: undefined, updatedAt: undefined };
+  const { faceProfile, createdAt: _createdAt, updatedAt: _updatedAt, ...record } = user;
+  const hasFaceProfile = Boolean(faceProfile);
+  return {
+    ...record,
+    role: roleFromDb[user.role],
+    rfidUid: user.rfidUid || "NOT LINKED",
+    faceIdStatus: hasFaceProfile ? "ENROLLED" : "PENDING",
+    avatarUrl: hasFaceProfile ? `/api/users/${encodeURIComponent(user.id)}/portrait` : (user.avatarUrl || undefined),
+    faceModel: hasFaceProfile ? faceProfile.model : undefined,
+    faceEmbeddingDimension: hasFaceProfile ? faceProfile.dimension : undefined
+  };
 }
 
 export function serializeAuditLog(log) {

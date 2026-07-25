@@ -65,10 +65,11 @@ Upload snapshot status: 201
 Các địa chỉ trên do DHCP cấp và có thể thay đổi. Không nên xem chúng là cấu hình
 cố định lâu dài.
 
-### 3.2. Dashboard chỉ hiển thị ảnh minh họa
+### 3.2. Dashboard chỉ hiển thị camera thật khi đã cấu hình
 
-`software/frontend/.env.local` ban đầu để trống `VITE_CAMERA_URL`. Khi biến này
-trống, `DashboardView.tsx` chủ động dùng ảnh Google làm fallback.
+`software/frontend/.env.local` phải khai báo `VITE_CAMERA_URL`. Nếu biến này
+trống, `DashboardView.tsx` hiện thông báo chưa cấu hình và không dùng ảnh minh
+họa thay cho camera thật.
 
 Cấu hình dùng trong lần kiểm tra:
 
@@ -80,7 +81,7 @@ VITE_CAMERA_URL=http://192.168.1.210
 `VITE_API_URL` được giữ trống trong môi trường phát triển để Vite proxy `/api`
 tới `http://localhost:3001`. Sau khi thay `.env.local` phải khởi động lại Vite.
 
-### 3.3. Thẻ camera bị lỗi ảnh dù `/capture` hoạt động
+### 3.3. Lỗi lịch sử khi firmware chưa có ESP-DL
 
 Frontend từng yêu cầu URL:
 
@@ -107,17 +108,16 @@ GET /stream -> 200 OK
 Content-Type: multipart/x-mixed-replace; boundary=frame
 ```
 
-Cách xử lý tạm thời trong
-`software/frontend/src/components/DashboardView.tsx`:
+Lỗi này đã được xử lý bằng firmware hiện tại: project đã link ESP-DL, khởi tạo
+`HumanFaceDetectMSR01`, `HumanFaceDetectMNP01` và
+`FaceRecognition112V1S8`. Dashboard hiện dùng:
 
-```tsx
-// Tạm giữ lại URL có nhận diện để bật lại sau khi firmware có ESP-DL phù hợp.
-// const cameraStreamWithDetectionUrl = `${cameraBaseUrl}/stream?detect=1&detectEvery=5&quality=60&delay=0`;
-
-const cameraStreamUrl = cameraBaseUrl
-  ? `${cameraBaseUrl}/stream`
-  : fallbackImageUrl;
+```text
+/stream?detect=1&detectEvery=15&quality=72&delay=10
 ```
+
+Nếu `/status` trên một board đã nạp lại vẫn báo model không khả dụng thì cần
+kiểm tra đúng PlatformIO environment và nạp lại binary mới.
 
 ### 3.4. Stream hiển thị đen trắng
 
@@ -196,8 +196,10 @@ từng frame.
 ### 4.5. Không chạy AI trên từng frame
 
 Chế độ `detect=1` cần xử lý ảnh, chạy model, vẽ box và có thể encode JPEG lại.
-Tạm tắt nhận diện loại bỏ phần tải CPU lớn nhất. Đây là lý do `/stream` mượt hơn
-đáng kể so với luồng dự kiến có nhận diện.
+Dashboard đặt `detectEvery=15`, vì vậy chỉ chạy detection định kỳ và phát xen kẽ
+JPEG gốc. Luồng nhận diện truy cập chạy riêng theo chu kỳ
+`kAutomaticRecognitionIntervalMs = 1500 ms`; backend chỉ ra quyết định khi
+presence-window do HC-SR04 mở còn hiệu lực.
 
 ### 4.6. Khoảng nghỉ ngắn giữa các frame
 
@@ -339,19 +341,21 @@ Thứ tự ưu tiên đề xuất:
 3. Thêm trạng thái giao diện: `Đang kết nối`, `Đang phát`, `Mất kết nối` và retry.
 4. Đo FPS, kích thước frame và số byte/giây thay vì chỉ đánh giá bằng mắt.
 5. Tách stream khỏi tác vụ upload snapshot nhưng dùng mutex camera an toàn.
-6. Sau khi stream ổn định mới tích hợp phiên bản ESP-DL/ESP-WHO tương thích.
-7. Khi bật AI, không nhất thiết detect mọi frame; có thể detect mỗi 5-10 frame và
-   phát xen kẽ frame JPEG gốc để giữ độ mượt.
+6. Tách HTTP stream sang task/server riêng nếu cần phục vụ đồng thời stream,
+   enrollment và snapshot với độ ổn định cao hơn.
 
 ## 8. Trạng thái sau lần xử lý này
 
 - Backend nhận được event và snapshot từ ESP32-CAM.
 - Frontend dùng `VITE_CAMERA_URL=http://192.168.1.210` tại thời điểm kiểm tra.
-- Dashboard phát trực tiếp từ `/stream`, không yêu cầu `detect=1`.
-- URL nhận diện cũ được giữ dưới dạng comment để phục hồi sau.
+- Dashboard phát trực tiếp từ
+  `/stream?detect=1&detectEvery=15&quality=72&delay=10`.
+- Khi chưa có `VITE_CAMERA_URL`, dashboard báo chưa cấu hình thay vì dùng ảnh
+  minh họa.
 - Bộ lọc đen trắng của frontend đã được bỏ.
 - `npm run build` của frontend hoàn tất thành công.
-- Nhận diện tự động phát `FACE_RECOGNIZED`/`FACE_DENIED`, gửi snapshot gắn
-  `eventId`, và backend chuyển quyết định thành lệnh mở/khóa cửa.
+- Camera phát normalized `FACE_EMBEDDING`; backend chỉ so khớp trong
+  presence-window do HC-SR04 mở và trả quyết định. Snapshot gắn `eventId` chỉ
+  được upload khi response là `GRANT` hoặc `DENY`.
 - Binary PlatformIO đã được xác nhận có symbol `HumanFaceDetectMSR01`,
   `HumanFaceDetectMNP01` và `FaceRecognition112V1S8`.

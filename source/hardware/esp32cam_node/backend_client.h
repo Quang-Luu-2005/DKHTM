@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 
@@ -13,9 +14,17 @@
 static unsigned long cameraEventSequence = 0;
 static uint32_t cameraBootId = 0;
 static unsigned long lastRecognitionAttemptTime = 0;
-static unsigned long lastRecognitionEventTime = 0;
 static unsigned long lastHeartbeatTime = 0;
-static String lastRecognitionEventKey;
+
+struct CameraBackendResponse {
+  int statusCode = -1;
+  String accessDecision;
+  String commandId;
+
+  bool successful() const {
+    return statusCode >= 200 && statusCode < 300;
+  }
+};
 
 static bool isWiFiConnected() {
   return WiFi.status() == WL_CONNECTED;
@@ -49,15 +58,17 @@ static bool connectWiFi() {
   return false;
 }
 
-static int postJsonToBackend(const String& path, const String& body) {
+static CameraBackendResponse postJsonToBackend(const String& path, const String& body) {
+  CameraBackendResponse result;
   if (!kEnableBackendUpload) {
     Serial.println("Backend upload disabled. Skip JSON request.");
-    return 0;
+    result.statusCode = 0;
+    return result;
   }
 
   if (!connectWiFi()) {
     Serial.println("WiFi not connected. Skip JSON request.");
-    return -1;
+    return result;
   }
 
   WiFiClient client;
@@ -69,13 +80,24 @@ static int postJsonToBackend(const String& path, const String& body) {
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-device-secret", kDeviceSecret);
 
-  const int statusCode = http.POST(body);
+  result.statusCode = http.POST(body);
   const String response = http.getString();
   http.end();
 
   Serial.print("Backend response: ");
   Serial.println(response);
-  return statusCode;
+  if (response.length() > 0) {
+    JsonDocument document;
+    const DeserializationError error = deserializeJson(document, response);
+    if (!error) {
+      result.accessDecision = String(document["accessDecision"] | "");
+      result.commandId = String(document["commandId"] | "");
+      result.accessDecision.toUpperCase();
+    } else {
+      Serial.printf("Backend JSON parse failed: %s\n", error.c_str());
+    }
+  }
+  return result;
 }
 
 static int postJpegToBackend(const String& pathAndQuery, const uint8_t* payload, size_t payloadLength) {
@@ -109,7 +131,7 @@ static String nextCameraEventId() {
   return String("camera-") + String(cameraBootId, HEX) + "-" + String(cameraEventSequence);
 }
 
-static int sendEventWithId(
+static CameraBackendResponse sendEventWithId(
   const String& eventId,
   const String& eventType,
   const String& message,
@@ -129,9 +151,9 @@ static int sendEventWithId(
   }
   body += "}";
 
-  const int statusCode = postJsonToBackend("/api/device/events", body);
-  Serial.printf("Camera event %s status: %d\n", eventType.c_str(), statusCode);
-  return statusCode;
+  CameraBackendResponse result = postJsonToBackend("/api/device/events", body);
+  Serial.printf("Camera event %s status: %d\n", eventType.c_str(), result.statusCode);
+  return result;
 }
 
 static String sendCameraEvent(const String& eventType, const String& message) {
@@ -171,48 +193,34 @@ static bool automaticRecognitionDue() {
   return true;
 }
 
-static bool publishRecognitionOutcome(const FaceProcessingOutcome& outcome) {
-  if (!outcome.detected) {
+static bool publishFaceEmbeddingOutcome(const FaceProcessingOutcome& outcome) {
+  if (!outcome.detected || !outcome.embeddingExtracted || outcome.embedding.empty()) {
     return false;
   }
-
-  const String eventKey = outcome.recognized
-    ? String("GRANT:") + outcome.matchedName
-    : String("DENY:UNKNOWN");
-  const unsigned long now = millis();
-  if (eventKey == lastRecognitionEventKey
-      && now - lastRecognitionEventTime < kRecognitionEventCooldownMs) {
-    return false;
-  }
-
-  lastRecognitionEventKey = eventKey;
-  lastRecognitionEventTime = now;
 
   const String eventId = nextCameraEventId();
-  const String eventType = outcome.recognized ? "FACE_RECOGNIZED" : "FACE_DENIED";
-  const String subjectName = outcome.recognized ? outcome.matchedName : "Khuôn mặt không xác định";
-  const String message = outcome.recognized
-    ? "Nhận diện thành công: " + subjectName
-    : "Từ chối truy cập: khuôn mặt chưa đăng ký";
+  String extra;
+  extra.reserve(outcome.embedding.size() * 11U + 220U);
+  extra += "\"faceCount\":" + String(outcome.faceCount);
+  extra += ",\"detectionScore\":" + String(outcome.detectionScore, 4);
+  extra += ",\"model\":\"" + escapeJson(outcome.embeddingModel) + "\"";
+  extra += ",\"dimension\":" + String(outcome.embedding.size());
+  extra += ",\"embeddingNormalized\":true";
+  extra += ",\"vector\":" + buildEmbeddingArrayJson(outcome.embedding);
 
-  String extra = "\"recognized\":";
-  extra += outcome.recognized ? "true" : "false";
-  extra += ",\"recognizedId\":" + String(outcome.recognizedId);
-  extra += ",\"recognizedName\":\"" + escapeJson(subjectName) + "\"";
-  extra += ",\"faceCount\":" + String(outcome.faceCount);
-  extra += ",\"accessDecision\":\"";
-  extra += outcome.recognized ? "GRANT" : "DENY";
-  extra += "\"";
-
-  const int statusCode = sendEventWithId(
+  CameraBackendResponse result = sendEventWithId(
     eventId,
-    eventType,
-    message,
-    outcome.recognized ? outcome.similarity : 0.0F,
+    "FACE_EMBEDDING",
+    "ESP32-CAM extracted a normalized face embedding",
+    constrain(outcome.detectionScore, 0.0F, 1.0F),
     extra
   );
-  uploadRecognitionSnapshot(eventId, outcome.jpegBuffer, outcome.jpegLength);
-  return statusCode >= 200 && statusCode < 300;
+
+  if (result.successful()
+      && (result.accessDecision == "GRANT" || result.accessDecision == "DENY")) {
+    uploadRecognitionSnapshot(eventId, outcome.jpegBuffer, outcome.jpegLength);
+  }
+  return result.successful();
 }
 
 static void processAutomaticRecognitionTask() {
@@ -223,15 +231,16 @@ static void processAutomaticRecognitionTask() {
   camera_fb_t* frame = captureCameraFrame();
   FaceProcessingOptions options;
   options.detect = true;
-  options.recognize = true;
+  options.extractEmbedding = true;
+  options.requireSingleFaceForEmbedding = true;
   options.drawBoxes = true;
-  options.action = "automatic-recognition";
+  options.action = "automatic-embedding";
 
   FaceProcessingOutcome outcome;
   const bool processed = processFrameForFace(frame, options, outcome);
   if (processed) {
     updateLastFaceResult(buildFaceResultJson(options.action, outcome));
-    publishRecognitionOutcome(outcome);
+    publishFaceEmbeddingOutcome(outcome);
   } else {
     updateLastFaceResult(buildSimpleFaceResultJson(false, options.action, outcome.error));
   }

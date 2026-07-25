@@ -69,7 +69,7 @@
   & .bg-\[\#161618\] { background-color: #F8FAFC !important; }
   & .bg-\[\#161618\]\/40 { background-color: rgba(241, 245, 249, 0.4) !important; }
   & .bg-\[\#161618\]\/30 { background-color: rgba(241, 245, 249, 0.3) !important; }
-  & .bg-black\/85, & .bg-black\/75, & .bg-black\/80, & .bg-black\/90, & .bg-[#111113]\/80 { background-color: rgba(255, 255, 255, 0.9) !important; }
+  & .bg-black\/85, & .bg-black\/75, & .bg-black\/80, & .bg-black\/90, & .bg-\[\#111113\]\/80 { background-color: rgba(255, 255, 255, 0.9) !important; }
 
   /* Force border color changes for hardcoded border classes */
   & .border-\[\#1E293B\], & .border-border-elegant { border-color: #E2E8F0 !important; }

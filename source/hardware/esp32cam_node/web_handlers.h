@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp32-hal-psram.h>
 
 #include "app_state.h"
 #include "config.h"
@@ -17,6 +18,8 @@ static void handleFaceLastResult();
 static void handleFaceIds();
 static void handleFaceDelete();
 static void handleFaceEnroll();
+static void handleFaceEmbedding();
+static void handleFaceEmbeddingRaw();
 static void handleCapture();
 static void handleStream();
 static void handleNotFound();
@@ -30,6 +33,12 @@ static void registerPreviewRoutes() {
   webServer.on("/face/enroll", HTTP_GET, handleFaceEnroll);
   webServer.on("/face/ids", HTTP_GET, handleFaceIds);
   webServer.on("/face/delete", HTTP_GET, handleFaceDelete);
+  webServer.on(
+    "/face/embedding",
+    HTTP_POST,
+    handleFaceEmbedding,
+    handleFaceEmbeddingRaw
+  );
 
   webServer.on("/", HTTP_OPTIONS, handleOptions);
   webServer.on("/status", HTTP_OPTIONS, handleOptions);
@@ -39,6 +48,7 @@ static void registerPreviewRoutes() {
   webServer.on("/face/enroll", HTTP_OPTIONS, handleOptions);
   webServer.on("/face/ids", HTTP_OPTIONS, handleOptions);
   webServer.on("/face/delete", HTTP_OPTIONS, handleOptions);
+  webServer.on("/face/embedding", HTTP_OPTIONS, handleOptions);
 
   webServer.onNotFound(handleNotFound);
 }
@@ -59,6 +69,10 @@ static String buildStatusJson() {
   body += ",\"faceRecognitionAvailable\":";
   body += faceRecognitionAvailable ? "true" : "false";
   body += ",\"faceRecognitionMode\":\"" + faceRecognitionMode() + "\"";
+  body += ",\"embeddingModel\":\"" + String(kFaceEmbeddingModel) + "\"";
+  body += ",\"embeddingUploadWidth\":" + String(kEmbeddingUploadWidth);
+  body += ",\"embeddingUploadHeight\":" + String(kEmbeddingUploadHeight);
+  body += ",\"embeddingUploadMaxBytes\":" + String(kMaxEmbeddingUploadBytes);
   body += ",\"faceBusy\":";
   body += faceBusy ? "true" : "false";
   body += ",\"enrolledCount\":" + String(enrolledFaceCount());
@@ -102,9 +116,10 @@ static void handleRoot() {
     "  /stream?detect=1       - MJPEG stream with face boxes every frame\n"
     "  /stream?detect=1&detectEvery=5 - balanced stream, detect every 5 frames\n"
     "  /face/last-result      - latest face metadata JSON\n"
-    "  /face/enroll?name=...  - enroll one face from current frame\n"
-    "  /face/ids              - list enrolled identities\n"
-    "  /face/delete?id=...    - delete an enrolled identity\n"
+    "  /face/enroll?name=...  - deprecated (returns HTTP 410)\n"
+    "  /face/ids              - deprecated; local roster is always empty\n"
+    "  /face/delete?id=...    - deprecated (returns HTTP 410)\n"
+    "  POST /face/embedding   - authenticated raw QVGA JPEG to normalized embedding\n"
   );
 }
 
@@ -121,109 +136,332 @@ static void handleFaceLastResult() {
 }
 
 static void handleFaceIds() {
-#if !ESP32CAM_HAS_FACE_MODELS
-  sendJsonResponse(503, buildSimpleFaceResultJson(false, "list-ids", faceEngineMessage));
-  return;
-#else
-  if (!faceRecognitionAvailable) {
-    sendJsonResponse(503, buildSimpleFaceResultJson(false, "list-ids", faceEngineMessage));
-    return;
-  }
-
-  std::vector<face_info_t> ids = recognizer.get_enrolled_ids();
-  String body = "{";
-  body += "\"ok\":true";
-  body += ",\"count\":" + String(ids.size());
-  body += ",\"identities\":[";
-
-  for (size_t index = 0; index < ids.size(); ++index) {
-    if (index > 0) {
-      body += ",";
-    }
-
-    body += "{";
-    body += "\"id\":" + String(ids[index].id);
-    body += ",\"name\":\"" + escapeJson(String(ids[index].name.c_str())) + "\"";
-    body += "}";
-  }
-
-  body += "]}";
-  sendJsonResponse(200, body);
-#endif
+  sendJsonResponse(
+    200,
+    "{\"ok\":true,\"deprecated\":true,\"count\":0,\"identities\":[],"
+    "\"message\":\"Identity profiles are stored and matched by the backend database.\"}"
+  );
 }
 
 static void handleFaceDelete() {
-#if !ESP32CAM_HAS_FACE_MODELS
-  sendJsonResponse(503, buildSimpleFaceResultJson(false, "delete", faceEngineMessage));
-  return;
-#else
-  if (!faceRecognitionAvailable) {
-    sendJsonResponse(503, buildSimpleFaceResultJson(false, "delete", faceEngineMessage));
-    return;
-  }
-
-  if (!webServer.hasArg("id")) {
-    sendJsonResponse(400, buildSimpleFaceResultJson(false, "delete", "Thiếu tham số id."));
-    return;
-  }
-
-  const int id = webServer.arg("id").toInt();
-  const int remaining = recognizer.delete_id(id, true);
-  if (remaining < 0) {
-    sendJsonResponse(404, buildSimpleFaceResultJson(false, "delete", "Không tìm thấy ID cần xóa."));
-    return;
-  }
-
-  String body = "{";
-  body += "\"ok\":true";
-  body += ",\"message\":\"Đã xóa danh tính khỏi bộ nhớ.\"";
-  body += ",\"remaining\":" + String(remaining);
-  body += "}";
-  sendJsonResponse(200, body);
-#endif
+  sendJsonResponse(
+    410,
+    buildSimpleFaceResultJson(
+      false,
+      "delete",
+      "Local identity deletion is disabled. Delete the user's FaceProfile through the backend."
+    )
+  );
 }
 
 static void handleFaceEnroll() {
-  if (!faceRecognitionAvailable) {
-    sendJsonResponse(503, buildSimpleFaceResultJson(false, "enroll", faceEngineMessage));
+  sendJsonResponse(
+    410,
+    buildSimpleFaceResultJson(
+      false,
+      "enroll",
+      "Local face enrollment is disabled. Upload a JPEG through the backend, which calls POST /face/embedding."
+    )
+  );
+}
+
+static uint8_t* faceEmbeddingUploadBuffer = nullptr;
+static size_t faceEmbeddingUploadExpectedLength = 0;
+static size_t faceEmbeddingUploadLength = 0;
+static int faceEmbeddingUploadErrorStatus = 0;
+static String faceEmbeddingUploadError;
+static bool faceEmbeddingUploadComplete = false;
+
+static void resetFaceEmbeddingUpload() {
+  if (faceEmbeddingUploadBuffer != nullptr) {
+    free(faceEmbeddingUploadBuffer);
+    faceEmbeddingUploadBuffer = nullptr;
+  }
+  faceEmbeddingUploadExpectedLength = 0;
+  faceEmbeddingUploadLength = 0;
+  faceEmbeddingUploadErrorStatus = 0;
+  faceEmbeddingUploadError = "";
+  faceEmbeddingUploadComplete = false;
+}
+
+static bool deviceSecretMatches(const String& supplied) {
+  const size_t expectedLength = strlen(kDeviceSecret);
+  if (supplied.length() != expectedLength) {
+    return false;
+  }
+
+  uint8_t difference = 0;
+  for (size_t index = 0; index < expectedLength; ++index) {
+    difference |= static_cast<uint8_t>(supplied[index] ^ kDeviceSecret[index]);
+  }
+  return difference == 0;
+}
+
+static bool isJpegContentType() {
+  String contentType = webServer.header("Content-Type");
+  contentType.trim();
+  contentType.toLowerCase();
+  return contentType == "image/jpeg" || contentType.startsWith("image/jpeg;");
+}
+
+static void setFaceEmbeddingUploadError(int statusCode, const String& message) {
+  faceEmbeddingUploadErrorStatus = statusCode;
+  faceEmbeddingUploadError = message;
+  faceEmbeddingUploadComplete = false;
+  if (faceEmbeddingUploadBuffer != nullptr) {
+    free(faceEmbeddingUploadBuffer);
+    faceEmbeddingUploadBuffer = nullptr;
+  }
+  faceEmbeddingUploadLength = 0;
+}
+
+static void handleFaceEmbeddingRaw() {
+  // The same WebServer callback is also used for multipart upload chunks.
+  // This endpoint accepts raw image/jpeg only, so never dereference raw()
+  // for another content type.
+  if (!isJpegContentType()) {
     return;
   }
 
-  String name = normalizeIdentityName(webServer.arg("name"));
-  if (name.length() == 0) {
-    sendJsonResponse(400, buildSimpleFaceResultJson(false, "enroll", "Tên người đăng ký không được để trống."));
+  HTTPRaw& raw = webServer.raw();
+  if (raw.status == RAW_START) {
+    resetFaceEmbeddingUpload();
+
+    if (!deviceSecretMatches(webServer.header("x-device-secret"))) {
+      setFaceEmbeddingUploadError(401, "Invalid device secret.");
+      return;
+    }
+    if (!psramFound()) {
+      setFaceEmbeddingUploadError(503, "PSRAM is required for JPEG embedding extraction.");
+      return;
+    }
+
+    const int contentLength = webServer.clientContentLength();
+    if (contentLength <= 0) {
+      setFaceEmbeddingUploadError(411, "A non-empty Content-Length is required.");
+      return;
+    }
+    if (static_cast<size_t>(contentLength) > kMaxEmbeddingUploadBytes) {
+      setFaceEmbeddingUploadError(413, "JPEG exceeds the configured upload limit.");
+      return;
+    }
+
+    faceEmbeddingUploadExpectedLength = static_cast<size_t>(contentLength);
+    faceEmbeddingUploadBuffer =
+      static_cast<uint8_t*>(ps_malloc(faceEmbeddingUploadExpectedLength));
+    if (faceEmbeddingUploadBuffer == nullptr) {
+      setFaceEmbeddingUploadError(503, "Not enough PSRAM for the uploaded JPEG.");
+    }
     return;
   }
 
+  if (raw.status == RAW_ABORTED) {
+    setFaceEmbeddingUploadError(400, "JPEG upload was aborted.");
+    return;
+  }
+
+  if (faceEmbeddingUploadErrorStatus != 0 || faceEmbeddingUploadBuffer == nullptr) {
+    return;
+  }
+
+  if (raw.status == RAW_WRITE) {
+    if (raw.currentSize > faceEmbeddingUploadExpectedLength - faceEmbeddingUploadLength) {
+      setFaceEmbeddingUploadError(413, "JPEG body is larger than Content-Length.");
+      return;
+    }
+    memcpy(
+      faceEmbeddingUploadBuffer + faceEmbeddingUploadLength,
+      raw.buf,
+      raw.currentSize
+    );
+    faceEmbeddingUploadLength += raw.currentSize;
+    return;
+  }
+
+  if (raw.status == RAW_END) {
+    if (faceEmbeddingUploadLength != faceEmbeddingUploadExpectedLength) {
+      setFaceEmbeddingUploadError(400, "JPEG body length does not match Content-Length.");
+      return;
+    }
+    faceEmbeddingUploadComplete = true;
+  }
+}
+
+static bool isJpegStartOfFrameMarker(uint8_t marker) {
+  switch (marker) {
+    case 0xC0:
+    case 0xC1:
+    case 0xC2:
+    case 0xC3:
+    case 0xC5:
+    case 0xC6:
+    case 0xC7:
+    case 0xC9:
+    case 0xCA:
+    case 0xCB:
+    case 0xCD:
+    case 0xCE:
+    case 0xCF:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool readJpegDimensions(
+  const uint8_t* jpeg,
+  size_t length,
+  uint16_t& width,
+  uint16_t& height
+) {
+  width = 0;
+  height = 0;
+  if (jpeg == nullptr || length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8) {
+    return false;
+  }
+
+  size_t index = 2;
+  while (index + 1 < length) {
+    while (index < length && jpeg[index] == 0xFF) {
+      ++index;
+    }
+    if (index >= length) {
+      return false;
+    }
+
+    const uint8_t marker = jpeg[index++];
+    if (marker == 0x00) {
+      continue;
+    }
+    if (marker == 0xD9 || marker == 0xDA) {
+      return false;
+    }
+    if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+      continue;
+    }
+    if (index + 2 > length) {
+      return false;
+    }
+
+    const size_t segmentLength =
+      (static_cast<size_t>(jpeg[index]) << 8U) | jpeg[index + 1];
+    if (segmentLength < 2 || segmentLength > length - index) {
+      return false;
+    }
+
+    if (isJpegStartOfFrameMarker(marker)) {
+      if (segmentLength < 7) {
+        return false;
+      }
+      height = static_cast<uint16_t>(
+        (static_cast<uint16_t>(jpeg[index + 3]) << 8U) | jpeg[index + 4]
+      );
+      width = static_cast<uint16_t>(
+        (static_cast<uint16_t>(jpeg[index + 5]) << 8U) | jpeg[index + 6]
+      );
+      return width > 0 && height > 0;
+    }
+
+    index += segmentLength;
+  }
+  return false;
+}
+
+static void sendFaceEmbeddingUploadError(int statusCode, const String& message) {
+  const String body = buildSimpleFaceResultJson(false, "embedding-upload", message);
+  resetFaceEmbeddingUpload();
+  sendJsonResponse(statusCode, body);
+}
+
+static void handleFaceEmbedding() {
+  if (!deviceSecretMatches(webServer.header("x-device-secret"))) {
+    sendFaceEmbeddingUploadError(401, "Invalid device secret.");
+    return;
+  }
+  if (!isJpegContentType()) {
+    sendFaceEmbeddingUploadError(415, "Content-Type must be image/jpeg.");
+    return;
+  }
+  if (faceEmbeddingUploadErrorStatus != 0) {
+    const int statusCode = faceEmbeddingUploadErrorStatus;
+    const String message = faceEmbeddingUploadError;
+    sendFaceEmbeddingUploadError(statusCode, message);
+    return;
+  }
+  if (!faceEmbeddingUploadComplete
+      || faceEmbeddingUploadBuffer == nullptr
+      || faceEmbeddingUploadLength == 0) {
+    sendFaceEmbeddingUploadError(400, "A complete raw JPEG body is required.");
+    return;
+  }
+  if (!faceDetectionAvailable || !faceRecognitionAvailable) {
+    sendFaceEmbeddingUploadError(503, faceEngineMessage);
+    return;
+  }
+
+  uint16_t width = 0;
+  uint16_t height = 0;
+  if (!readJpegDimensions(
+        faceEmbeddingUploadBuffer,
+        faceEmbeddingUploadLength,
+        width,
+        height
+      )) {
+    sendFaceEmbeddingUploadError(400, "Invalid JPEG header or missing SOF dimensions.");
+    return;
+  }
+  if (width != kEmbeddingUploadWidth || height != kEmbeddingUploadHeight) {
+    sendFaceEmbeddingUploadError(
+      422,
+      "JPEG must be exactly "
+        + String(kEmbeddingUploadWidth)
+        + "x"
+        + String(kEmbeddingUploadHeight)
+        + " pixels (QVGA)."
+    );
+    return;
+  }
   if (!acquireFaceLock()) {
-    sendJsonResponse(409, buildSimpleFaceResultJson(false, "enroll", "ESP32-CAM đang bận xử lý khuôn mặt khác."));
+    sendFaceEmbeddingUploadError(409, "ESP32-CAM is busy processing another face.");
     return;
   }
 
-  camera_fb_t* frame = captureCameraFrame();
+  camera_fb_t uploadedFrame;
+  memset(&uploadedFrame, 0, sizeof(uploadedFrame));
+  uploadedFrame.buf = faceEmbeddingUploadBuffer;
+  uploadedFrame.len = faceEmbeddingUploadLength;
+  uploadedFrame.width = width;
+  uploadedFrame.height = height;
+  uploadedFrame.format = PIXFORMAT_JPEG;
+
   FaceProcessingOptions options;
   options.detect = true;
-  options.enroll = true;
-  options.drawBoxes = true;
-  options.enrollName = name;
-  options.action = "enroll";
+  options.extractEmbedding = true;
+  options.requireSingleFaceForEmbedding = true;
+  options.encodeJpeg = false;
+  options.returnFrameToCamera = false;
+  options.action = "embedding-upload";
 
   FaceProcessingOutcome outcome;
-  bool processed = processFrameForFace(frame, options, outcome);
-  if (processed) {
-    const String body = buildFaceResultJson(options.action, outcome);
-    updateLastFaceResult(body);
-    sendJsonResponse(outcome.ok ? 200 : 422, body);
-    if (outcome.jpegBuffer != nullptr) {
-      free(outcome.jpegBuffer);
-    }
+  const bool processed = processFrameForFace(&uploadedFrame, options, outcome);
+  updateLastFaceResult(
+    processed
+      ? buildFaceResultJson(options.action, outcome)
+      : buildSimpleFaceResultJson(false, options.action, outcome.error)
+  );
+
+  String responseBody;
+  int responseStatus = 500;
+  if (!processed) {
+    responseBody = buildSimpleFaceResultJson(false, options.action, outcome.error);
   } else {
-    const String errorBody = buildSimpleFaceResultJson(false, options.action, outcome.error);
-    updateLastFaceResult(errorBody);
-    sendJsonResponse(500, errorBody);
+    responseBody = buildEmbeddingResultJson(options.action, outcome, true);
+    responseStatus = outcome.ok && outcome.embeddingExtracted ? 200 : 422;
   }
 
   releaseFaceLock();
+  resetFaceEmbeddingUpload();
+  sendJsonResponse(responseStatus, responseBody);
 }
 
 static void handleCapture() {
@@ -270,8 +508,10 @@ static void handleCapture() {
   FaceProcessingOptions options;
   options.detect = true;
   options.recognize = recognize;
+  options.extractEmbedding = recognize;
+  options.requireSingleFaceForEmbedding = recognize;
   options.drawBoxes = true;
-  options.action = recognize ? "recognize" : "detect";
+  options.action = recognize ? "embedding-probe" : "detect";
 
   FaceProcessingOutcome outcome;
   bool processed = processFrameForFace(frame, options, outcome);
@@ -288,7 +528,7 @@ static void handleCapture() {
 
   updateLastFaceResult(buildFaceResultJson(options.action, outcome));
   if (recognize) {
-    publishRecognitionOutcome(outcome);
+    publishFaceEmbeddingOutcome(outcome);
   }
   sendJpegResponse(outcome.jpegBuffer, outcome.jpegLength);
   if (outcome.jpegBuffer != nullptr) {
@@ -352,9 +592,10 @@ static void handleStream() {
 
       FaceProcessingOptions options;
       options.detect = true;
-      options.recognize = faceLockAcquired;
+      options.extractEmbedding = faceLockAcquired;
+      options.requireSingleFaceForEmbedding = faceLockAcquired;
       options.drawBoxes = true;
-      options.action = faceLockAcquired ? "stream-recognition" : "stream-detect";
+      options.action = faceLockAcquired ? "stream-embedding" : "stream-detect";
 
       FaceProcessingOutcome outcome;
       if (!processFrameForFace(frame, options, outcome, static_cast<uint8_t>(streamJpegQuality))) {
@@ -367,7 +608,7 @@ static void handleStream() {
 
       updateLastFaceResult(buildFaceResultJson(options.action, outcome));
       if (faceLockAcquired) {
-        publishRecognitionOutcome(outcome);
+        publishFaceEmbeddingOutcome(outcome);
         releaseFaceLock();
       }
       jpegBuffer = outcome.jpegBuffer;

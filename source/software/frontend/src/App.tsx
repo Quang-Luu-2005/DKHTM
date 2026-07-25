@@ -5,12 +5,10 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { INITIAL_INCIDENT } from "./data";
-import { User, AuditLog, HardwareState, SecurityIncident } from "./types";
+import { User, UserSaveRequest, AuditLog, HardwareDirectCommand, HardwareState } from "./types";
 import { api } from "./api";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
-import IncidentModal from "./components/IncidentModal";
 import DashboardView from "./components/DashboardView";
 import RegistrationView from "./components/RegistrationView";
 import LogsView from "./components/LogsView";
@@ -68,14 +66,11 @@ export default function App() {
   // Automated Security Behavior state
   const [isAutomatedLockActive, setIsAutomatedLockActive] = useState(false);
 
-  // Biometric Threat Modal state
-  const [isViolationOpen, setIsViolationOpen] = useState(false);
-  const [activeIncident, setActiveIncident] = useState<SecurityIncident>(INITIAL_INCIDENT);
-
   // Support & Settings customized form states
   const [supportMessage, setSupportMessage] = useState("");
   const [isSupportSubmitted, setIsSupportSubmitted] = useState(false);
-  const [facialThreshold, setFacialThreshold] = useState(98.5);
+  const [facialThreshold, setFacialThreshold] = useState(55);
+  const [facePresenceWindowMs, setFacePresenceWindowMs] = useState(5000);
 
   // Automated Security Behavior Listener
   useEffect(() => {
@@ -116,14 +111,16 @@ export default function App() {
 
     const sync = async () => {
       try {
-        const [remoteUsers, remoteLogs, remoteHardware] = await Promise.all([
-          api.users(), api.logs(), api.hardware()
+        const [remoteUsers, remoteLogs, remoteHardware, health] = await Promise.all([
+          api.users(), api.logs(), api.hardware(), api.health()
         ]);
         if (!mounted) return;
 
         setUsers(remoteUsers);
         setLogs(remoteLogs);
         setHardware(remoteHardware);
+        setFacialThreshold(health.faceMatchThreshold * 100);
+        setFacePresenceWindowMs(health.facePresenceWindowMs);
       } catch (error) {
         if (mounted) console.warn("Backend synchronization failed.", error);
       }
@@ -165,12 +162,22 @@ export default function App() {
     }).catch(console.error);
   };
 
-  const handleSaveUser = (user: User) => {
-    setUsers(current => [user, ...current.filter(item => item.id !== user.id)]);
-    void api.saveUser(user).then(saved => {
-      setUsers(current => [saved, ...current.filter(item => item.id !== saved.id)]);
-      handleAddLog({ subjectName: saved.fullName, accessMethod: "Face ID", gateId: "GT-NORTH-01", status: "ONLINE", confidence: "100%" });
-    }).catch(console.error);
+  const handleSaveUser = async ({ user, portrait }: UserSaveRequest): Promise<User> => {
+    let saved: User;
+    if (portrait) {
+      const formData = new FormData();
+      formData.append("id", user.id);
+      formData.append("fullName", user.fullName);
+      formData.append("role", user.role);
+      formData.append("rfidUid", user.rfidUid);
+      formData.append("portrait", portrait, portrait.name);
+      saved = await api.enrollUser(formData);
+    } else {
+      saved = await api.saveUser(user);
+    }
+
+    setUsers(current => [saved, ...current.filter(item => item.id !== saved.id)]);
+    return saved;
   };
 
   const handleDeleteUser = (id: string) => {
@@ -182,6 +189,11 @@ export default function App() {
   const handleUpdateHardware = (hw: HardwareState) => {
     setHardware(hw);
     void api.updateHardware(hw).then(updated => setHardware(updated)).catch(console.error);
+  };
+
+  const handleHardwareCommand = async (command: HardwareDirectCommand) => {
+    const response = await api.commandHardware(command);
+    setHardware(response.hardware);
   };
 
   // Trigger Emergency system lockdown
@@ -231,71 +243,6 @@ export default function App() {
     }
   };
 
-  // Simulate intruder event with customizable threat scenario
-  const handleSimulateViolation = (type?: "FACE_MISMATCH" | "GATE_JUMPING" | "TAILGATING") => {
-    // Generate an incident structure
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-    
-    let id = "EVT_ID: #404-ERR";
-    let violationDetails = "A face recognition mismatch occurred at primary gate Node ESP32_SEC_01. The neural model failed to correlate the scanned biometrics with any verified account index. Silent alarm buzzer triggered.";
-    let subjectName = "Intruder Detected";
-    let accessMethod: "Face ID" | "RFID" | "Manual Override" | "Gate Jumping / Climbing detected" | "Tailgating detected" = "Face ID";
-
-    if (type === "GATE_JUMPING") {
-      id = "EVT_ID: #JUMP-911";
-      subjectName = "Intruder: Gate Jumping";
-      accessMethod = "Gate Jumping / Climbing detected";
-      violationDetails = "CRITICAL METRIC: LiDAR / Microwave perimeter beam disruption detected at primary North Gate Node. Dynamic spatial model confirms a subject scaled and jumped physical fence barrier. System automatic containment triggered.";
-    } else if (type === "TAILGATING") {
-      id = "EVT_ID: #TAIL-402";
-      subjectName = "Intruder: Tailgating";
-      accessMethod = "Tailgating detected";
-      violationDetails = "CRITICAL METRIC: High-dimensional stereoscopic density scanning reports a tailgating anomaly behind Marcus Thorne at Gate 01. Multiple physical silhouettes detected on single token scan. System automatic containment triggered.";
-    }
-
-    const simulatedIncident: SecurityIncident = {
-      id: id,
-      timestamp: timeStr,
-      gateId: "GT-SOUTH-04",
-      violationDetails: violationDetails,
-      servoLocked: true,
-      buzzerActive: true,
-      policeNotified: "PENDING",
-      captureImageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuA1-U-sOKlVXo3ex17StlU2Z4m1fVHX66Fvwho1CR515JP6SQ0SawYOTugf5fuVrj6TMOgIPMh5wrqZIQw_SSEq8QBepOibM4pAbPMA6iNfZw6MR2rzhWFUq_H0YeFsZFCVa5Q4U4vBQ9NMCgwnmVQhmspHltenF2teCete7C1-piRveTdU64xBEgcs8YopnOz8KtH5Yc4iHU89VqdIyWzGbyv_m3XtVqYwKXq_CgPmRZ5ICJvhxuVRDopo6HxnSVgBRXZ2mm5Hyho"
-    };
-
-    setActiveIncident(simulatedIncident);
-    setIsViolationOpen(true);
-
-    // Set hardware indicators to high-alarm lockdown
-    handleUpdateHardware({
-      servoArm: "SECURED / CLOSED",
-      servoLocked: true,
-      indicatorLed: "RED / RESTRICTED",
-      systemBuzzer: "ACTIVE"
-    });
-
-    // Write a violation directly to logs
-    handleAddLog({
-      subjectName: subjectName,
-      accessMethod: accessMethod,
-      gateId: "GT-NORTH-01",
-      status: "VIOLATION",
-      confidence: "N/A"
-    });
-  };
-
-  // Dismiss threat modal
-  const handleCloseViolation = () => {
-    setIsViolationOpen(false);
-    // Reset hardware buzzer
-    handleUpdateHardware({
-      ...hardware,
-      systemBuzzer: "MUTED"
-    });
-  };
-
   // Handle support ticket submission
   const handleSupportSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,7 +260,7 @@ export default function App() {
       <Header 
         currentTab={currentTab} 
         setCurrentTab={setCurrentTab} 
-        onSimulateViolation={handleSimulateViolation}
+        connectionStatus={hardware.connectionStatus}
         theme={theme}
         onToggleTheme={handleToggleTheme}
       />
@@ -379,6 +326,7 @@ export default function App() {
                   <DashboardView
                     hardware={hardware}
                     onUpdateHardware={handleUpdateHardware}
+                    onCommandHardware={handleHardwareCommand}
                     logs={logs}
                     isEmergencyLocked={isEmergencyLocked}
                   />
@@ -466,20 +414,22 @@ export default function App() {
                       {/* Section 1: Facial Recognition calibration */}
                       <div className="space-y-3">
                         <div className="flex justify-between items-center text-xs">
-                          <span className="font-sans text-[10px] text-[#64748B] uppercase tracking-wider">Face Match Confidence Threshold</span>
-                          <span className="font-mono text-[#F8FAFC] font-semibold">{facialThreshold}%</span>
+                          <span className="font-sans text-[10px] text-[#64748B] uppercase tracking-wider">Ngưỡng cosine nhận diện khuôn mặt</span>
+                          <span className="font-mono text-[#F8FAFC] font-semibold">{facialThreshold.toFixed(1)}%</span>
                         </div>
                         <input
                           type="range"
-                          min="90"
+                          min="0"
                           max="100"
                           step="0.1"
                           value={facialThreshold}
-                          onChange={(e) => setFacialThreshold(parseFloat(e.target.value))}
-                          className="w-full accent-[#94A3B8] bg-[#161618] rounded-lg h-1.5 cursor-pointer"
+                          disabled
+                          readOnly
+                          className="w-full accent-[#94A3B8] bg-[#161618] rounded-lg h-1.5 cursor-default disabled:opacity-80"
                         />
                         <p className="text-[10px] text-[#64748B] leading-relaxed font-sans">
-                          Scans yielding high-dimensionality vector distances below this threshold trigger automatic denial of access.
+                          Giá trị thực do backend áp dụng từ <span className="font-mono">FACE_MATCH_THRESHOLD</span>.
+                          Cửa chỉ xét embedding trong {(facePresenceWindowMs / 1000).toFixed(1)} giây sau khi cảm biến khoảng cách phát hiện người.
                         </p>
                       </div>
 
@@ -495,15 +445,15 @@ export default function App() {
                           <div className="bg-[#161618] p-4 rounded-xl border border-[#1E293B]/60 flex items-center gap-3">
                             <Cpu className="w-4 h-4 text-[#94A3B8]" />
                             <div>
-                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Processor Temp</div>
-                              <div className="text-xs font-semibold text-[#F8FAFC]">41.5°C (NOMINAL)</div>
+                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Ngưỡng cosine backend</div>
+                              <div className="text-xs font-semibold text-[#F8FAFC]">{facialThreshold.toFixed(1)}%</div>
                             </div>
                           </div>
                           <div className="bg-[#161618] p-4 rounded-xl border border-[#1E293B]/60 flex items-center gap-3">
                             <Database className="w-4 h-4 text-[#94A3B8]" />
                             <div>
-                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Ping Latency</div>
-                              <div className="text-xs font-semibold text-[#F8FAFC]">12ms (STABLE)</div>
+                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Cửa sổ nhận diện</div>
+                              <div className="text-xs font-semibold text-[#F8FAFC]">{(facePresenceWindowMs / 1000).toFixed(1)} giây</div>
                             </div>
                           </div>
                         </div>
@@ -513,12 +463,12 @@ export default function App() {
 
                       {/* Section 3: Diagnostic Logs Terminal */}
                       <div className="bg-[#0A0A0B] rounded-xl p-4 border border-[#1E293B] font-mono text-[10px] text-emerald-500/80 space-y-1.5 overflow-x-auto select-all">
-                        <p className="text-[#64748B]">// SENTINEL SECURE LINUX DAEMON STARTUP //</p>
-                        <p>[OK] Loaded face_id_neural_weight.bin ... 128-dim vectors</p>
-                        <p>[OK] RFID PN532 Reader initialized via I2C address 0x24</p>
-                        <p>[OK] SG90 Servo motor calibrated to neutral secured 0°</p>
-                        <p>[OK] Connected to Sentinel Cloud server: {window.location.origin}</p>
-                        <p className="text-[#94A3B8] animate-pulse">SYSTEM READY. WAITING FOR ENTRY INTERACTION...</p>
+                        <p className="text-[#64748B]">// CẤU HÌNH SENTINEL ĐANG ÁP DỤNG //</p>
+                        <p>[MODEL] Detection: HumanFaceDetectMSR01 + HumanFaceDetectMNP01</p>
+                        <p>[MODEL] Embedding: FaceRecognition112V1S8, L2-normalized</p>
+                        <p>[HW] RFID MFRC522 giao tiếp SPI; servo SG90 điều khiển cửa</p>
+                        <p>[API] Dashboard kết nối backend tại: {window.location.origin}</p>
+                        <p className="text-[#94A3B8] animate-pulse">ĐANG CHỜ SỰ KIỆN TỪ CAMERA VÀ CONTROLLER...</p>
                       </div>
                     </div>
                   </div>
@@ -528,15 +478,6 @@ export default function App() {
           </div>
         </main>
       </div>
-
-      {/* Persistent Biometric Intrusion Detection Modal Overlay */}
-      <IncidentModal
-        isOpen={isViolationOpen}
-        incident={activeIncident}
-        onClose={handleCloseViolation}
-        onEscalate={() => {}}
-        isAutomatedLockActive={isAutomatedLockActive}
-      />
 
     </div>
   );

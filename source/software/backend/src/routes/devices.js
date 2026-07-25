@@ -11,6 +11,7 @@ devicesRouter.post("/events", requireDevice, validate(deviceEventSchema), asyncH
   res.status(result.duplicate ? 200 : 201).json({
     ok: true,
     duplicate: result.duplicate,
+    ignored: result.ignored || false,
     accessDecision: result.accessDecision || null,
     commandId: result.hardware?.commandId || null
   });

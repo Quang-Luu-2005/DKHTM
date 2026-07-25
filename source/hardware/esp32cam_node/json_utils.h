@@ -81,5 +81,5 @@ static int queryInt(const char* name, int defaultValue, int minValue, int maxVal
 }
 
 static String faceRecognitionMode() {
-  return "snapshot/manual";
+  return "embedding/backend-match";
 }

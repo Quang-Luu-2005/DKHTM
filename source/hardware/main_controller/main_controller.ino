@@ -12,25 +12,38 @@
 #include "ultrasonic_sensor.h"
 
 using namespace ControllerConfig;
+namespace Pins = HardwarePins::MainController;
 
 WebServer webServer(80);
-GateActuator gate(kServoPin, kLockedAngle, kUnlockedAngle);
-StatusIndicators indicators(kRedLedPin, kGreenLedPin, kBuzzerPin);
-RfidReader rfid(kRfidSsPin, kRfidRstPin);
-UltrasonicSensor ultrasonic(kUltrasonicTrigPin, kUltrasonicEchoPin);
-SafetyButton safetyButton(kButtonPin);
+GateActuator gate(Pins::kServo, kLockedAngle, kUnlockedAngle);
+StatusIndicators indicators(Pins::kRedLed, Pins::kGreenLed, Pins::kBuzzer);
+RfidReader rfid(Pins::kRfidSs, Pins::kRfidReset);
+UltrasonicSensor ultrasonic(Pins::kUltrasonicTrigger, Pins::kUltrasonicEcho);
+SafetyButton safetyButton(Pins::kSafetyButton);
 ControllerBackendClient backend(kBackendBaseUrl, kDeviceSecret, kDeviceId, kGateId);
 
 unsigned long lastSensorPollAt = 0;
-unsigned long lastViolationAt = 0;
+unsigned long lastPresenceEventAt = 0;
 unsigned long lastHeartbeatAt = 0;
 unsigned long lastWifiAttemptAt = 0;
 bool serverRoutesRegistered = false;
 
 void sendCors() {
   webServer.sendHeader("Access-Control-Allow-Origin", "*");
-  webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type, x-device-secret");
   webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+}
+
+bool controllerSecretMatches() {
+  const String supplied = webServer.header("x-device-secret");
+  const size_t expectedLength = strlen(kDeviceSecret);
+  if (supplied.length() != expectedLength) return false;
+
+  uint8_t difference = 0;
+  for (size_t index = 0; index < expectedLength; ++index) {
+    difference |= static_cast<uint8_t>(supplied[index] ^ kDeviceSecret[index]);
+  }
+  return difference == 0;
 }
 
 bool connectWifi() {
@@ -99,11 +112,17 @@ void applyDesiredState(JsonObjectConst desiredState) {
 
   const String buzzerState = desiredState["systemBuzzer"] | "";
   if (buzzerState == "ACTIVE") {
-    indicators.signalDenied(kDeniedSignalDurationMs);
+    indicators.setBuzzer(true);
   }
 }
 
 void handleControllerCommand() {
+  if (!controllerSecretMatches()) {
+    sendCors();
+    webServer.send(401, "application/json", "{\"ok\":false,\"error\":\"Invalid device secret\"}");
+    return;
+  }
+
   JsonDocument document;
   const DeserializationError error = deserializeJson(document, webServer.arg("plain"));
   if (error) {
@@ -140,6 +159,8 @@ void handleControllerCommand() {
 
 void startControllerServer() {
   if (!serverRoutesRegistered) {
+    static const char* kCollectedHeaders[] = { "x-device-secret" };
+    webServer.collectHeaders(kCollectedHeaders, 1);
     webServer.on("/api/hardware/status", HTTP_GET, []() { sendControllerStatus(); });
     webServer.on("/api/hardware/command", HTTP_POST, handleControllerCommand);
     webServer.on("/api/hardware/status", HTTP_OPTIONS, []() {
@@ -164,11 +185,31 @@ void processRfid() {
   }
 
   Serial.println("RFID scanned: " + uid);
-  backend.sendEvent(
+  const BackendEventResponse response = backend.sendEvent(
     "RFID_SCANNED",
     "Đã quét thẻ RFID " + uid,
     "\"rfidUid\":\"" + uid + "\""
   );
+
+  if (!response.successful()) {
+    Serial.println("RFID decision unavailable; gate remains in its current safe state.");
+    return;
+  }
+
+  if (response.accessDecision == "GRANT") {
+    gate.unlock(kUnlockDurationMs);
+    indicators.granted();
+    Serial.println("RFID access granted locally from backend response.");
+  } else if (response.accessDecision == "DENY") {
+    // A denied scan must not slam a gate that is already open under a valid
+    // access lease. When locked, signal denial immediately.
+    if (gate.isLocked()) {
+      indicators.signalDenied(kDeniedSignalDurationMs);
+    }
+    Serial.println("RFID access denied locally from backend response.");
+  } else {
+    Serial.println("RFID response did not contain a final GRANT/DENY decision.");
+  }
 }
 
 void processUltrasonic() {
@@ -179,19 +220,20 @@ void processUltrasonic() {
   lastSensorPollAt = now;
 
   const int distance = ultrasonic.distanceCm();
-  if (distance <= 0 || distance > kViolationDistanceCm) {
+  if (distance <= 0 || distance > kRecognitionDistanceCm) {
     return;
   }
-  if (lastViolationAt != 0 && now - lastViolationAt < kViolationCooldownMs) {
+  if (lastPresenceEventAt != 0
+      && now - lastPresenceEventAt < kPresenceEventCooldownMs) {
     return;
   }
-  lastViolationAt = now;
+  lastPresenceEventAt = now;
 
-  indicators.signalDenied(kDeniedSignalDurationMs);
   backend.sendEvent(
-    "INTRUSION_DETECTED",
-    "Phát hiện vật cản khi cửa đang khóa",
+    "PRESENCE_DETECTED",
+    "Phát hiện người/vật thể trong vùng nhận diện khuôn mặt",
     "\"distanceCm\":" + String(distance)
+      + ",\"recognitionDistanceCm\":" + String(kRecognitionDistanceCm)
   );
 }
 
@@ -222,7 +264,7 @@ void setup() {
 
   gate.begin();
   indicators.begin();
-  rfid.begin(kRfidSckPin, kRfidMisoPin, kRfidMosiPin);
+  rfid.begin(Pins::kRfidClock, Pins::kRfidMiso, Pins::kRfidMosi);
   ultrasonic.begin();
   safetyButton.begin();
 

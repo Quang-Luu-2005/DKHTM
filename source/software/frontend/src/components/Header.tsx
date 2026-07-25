@@ -1,10 +1,11 @@
 import React from "react";
-import { Activity, Cpu, Settings, Sun, Moon } from "lucide-react";
+import { Activity, Cpu, Settings, Sun, Moon, UserRound } from "lucide-react";
+import { HardwareState } from "../types";
 
 interface HeaderProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
-  onSimulateViolation: (type?: "FACE_MISMATCH" | "GATE_JUMPING" | "TAILGATING") => void;
+  connectionStatus?: HardwareState["connectionStatus"];
   theme: "light" | "dark";
   onToggleTheme: () => void;
 }
@@ -12,10 +13,21 @@ interface HeaderProps {
 export default function Header({ 
   currentTab, 
   setCurrentTab, 
-  onSimulateViolation,
+  connectionStatus = "UNKNOWN",
   theme,
   onToggleTheme
 }: HeaderProps) {
+  const telemetryLabel = connectionStatus === "ONLINE"
+    ? "Mạch điều khiển đang trực tuyến"
+    : connectionStatus === "OFFLINE"
+      ? "Mạch điều khiển đang ngoại tuyến"
+      : "Chưa xác định trạng thái mạch điều khiển";
+  const telemetryDot = connectionStatus === "ONLINE"
+    ? "bg-[#10B981] animate-pulse"
+    : connectionStatus === "OFFLINE"
+      ? "bg-rose-500"
+      : "bg-[#64748B]";
+
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-[#111113] border-b border-[#1E293B] z-50 flex items-center justify-between px-6 lg:px-8">
       {/* Brand Logo Section */}
@@ -32,31 +44,6 @@ export default function Header({
 
       {/* Telemetry Status Controls & Admin profile */}
       <div className="flex items-center gap-4">
-        {/* Violation Trigger Buttons - for visual interaction and testing */}
-        <div className="flex items-center gap-1.5 mr-2">
-          <button
-            onClick={() => onSimulateViolation("FACE_MISMATCH")}
-            title="Giả lập lỗi xác thực khuôn mặt sinh trắc học"
-            className="px-2.5 py-1.5 text-[8.5px] uppercase tracking-wider border border-[#1E293B] bg-[#161618] hover:bg-[#1C1C1F] text-[#94A3B8] rounded-lg active:scale-95 transition-all cursor-pointer font-mono font-medium"
-          >
-            Lỗi khuôn mặt
-          </button>
-          <button
-            onClick={() => onSimulateViolation("GATE_JUMPING")}
-            title="Giả lập vi phạm nhảy qua cổng (Kích hoạt Khóa tự động khẩn cấp)"
-            className="px-2.5 py-1.5 text-[8.5px] uppercase tracking-wider border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg active:scale-95 transition-all cursor-pointer font-mono font-semibold shadow-[0_0_8px_rgba(239,68,68,0.1)]"
-          >
-            Nhảy cổng
-          </button>
-          <button
-            onClick={() => onSimulateViolation("TAILGATING")}
-            title="Giả lập vi phạm bám đuôi (Kích hoạt Khóa tự động khẩn cấp)"
-            className="px-2.5 py-1.5 text-[8.5px] uppercase tracking-wider border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg active:scale-95 transition-all cursor-pointer font-mono font-semibold"
-          >
-            Bám đuôi
-          </button>
-        </div>
-
         {/* Telemetry icons */}
         <div className="flex items-center gap-1">
           {/* Light/Dark Theme Toggle */}
@@ -68,19 +55,19 @@ export default function Header({
             {theme === "light" ? <Moon className="w-4 h-4 text-[#475569]" /> : <Sun className="w-4 h-4 text-amber-400" />}
           </button>
 
-          <button 
-            title="Trạng thái kết nối truyền dữ liệu"
-            className="p-2 text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#1A1A1C] rounded-lg transition-colors relative group"
+          <div
+            title={telemetryLabel}
+            className="p-2 text-[#64748B] rounded-lg relative"
           >
             <Activity className="w-4 h-4" />
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-[#10B981] rounded-full animate-ping" />
-          </button>
-          <button 
-            title="Trạng thái telemetry ESP32"
-            className="p-2 text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#1A1A1C] rounded-lg transition-colors"
+            <span className={`absolute top-2 right-2 w-1.5 h-1.5 rounded-full ${telemetryDot}`} />
+          </div>
+          <div
+            title={telemetryLabel}
+            className="p-2 text-[#64748B] rounded-lg"
           >
             <Cpu className="w-4 h-4" />
-          </button>
+          </div>
           <button 
             title="Cài đặt cấu hình"
             className="p-2 text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#1A1A1C] rounded-lg transition-colors"
@@ -89,13 +76,9 @@ export default function Header({
           </button>
         </div>
 
-        {/* Admin profile thumbnail with elegant simple border */}
-        <div className="w-8 h-8 rounded-full border border-[#334155] overflow-hidden ml-1 shrink-0">
-          <img 
-            alt="Cybersecurity Administrator" 
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRGHDCy0UzftYA4Of5ZQMbTb8j1yEMSuFQz18xL69TcAn7QLX6nEzqk1rkSbeETOLjWMrIZDxNszA0g9KYyZb5jr2waSEsmCzSqqS5agC8-wgKBEI5vwLFH4hmviK4i0JI-slxq0vhODttDZdyloBwySdTzQlLRX8FI8JdYJ9NMXGsVvYGT6tf0WSlEWSoGzH64u5bP73PVa3jirVbMb8hFkJWYJTvmj9bI_Sqr3iSdws2PCz1Ge3w37im0GhaKM2azZ5oCzxU92A" 
-            className="w-full h-full object-cover grayscale brightness-90 hover:grayscale-0 transition-all duration-300"
-          />
+        {/* Generic account marker: no fabricated profile photo. */}
+        <div className="w-8 h-8 rounded-full border border-[#334155] bg-[#161618] ml-1 shrink-0 flex items-center justify-center text-[#64748B]">
+          <UserRound className="w-4 h-4" aria-label="Tài khoản quản trị" />
         </div>
       </div>
     </header>

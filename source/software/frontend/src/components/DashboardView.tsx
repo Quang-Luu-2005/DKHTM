@@ -8,16 +8,27 @@ import {
   Volume2, 
   VolumeX, 
   Activity, 
-  Maximize2,
   Loader2,
   Lock,
   Unlock
 } from "lucide-react";
-import { AuditLog, HardwareState } from "../types";
+import { AuditLog, HardwareDirectCommand, HardwareState } from "../types";
+
+interface CameraAiStatus {
+  cameraReady: boolean;
+  faceDetectionAvailable: boolean;
+  faceRecognitionAvailable: boolean;
+  faceBusy: boolean;
+  enrolledCount: number;
+  faceEngineMessage: string;
+}
+
+type CameraConnectionPhase = "UNCONFIGURED" | "CHECKING" | "ONLINE" | "DEGRADED" | "OFFLINE";
 
 interface DashboardViewProps {
   hardware: HardwareState;
   onUpdateHardware: (hw: HardwareState) => void;
+  onCommandHardware: (command: HardwareDirectCommand) => Promise<void>;
   logs: AuditLog[];
   isEmergencyLocked: boolean;
 }
@@ -25,27 +36,83 @@ interface DashboardViewProps {
 export default function DashboardView({
   hardware,
   onUpdateHardware,
+  onCommandHardware,
   logs,
   isEmergencyLocked
 }: DashboardViewProps) {
   const cameraBaseUrl = (import.meta.env.VITE_CAMERA_URL || "").replace(/\/$/, "");
-  // Temporarily disable face detection until the ESP32 firmware includes the
-  // compatible ESP-DL model headers.
-  // const cameraStreamWithDetectionUrl = `${cameraBaseUrl}/stream?detect=1&detectEvery=5&quality=60&delay=0`;
   const cameraStreamUrl = cameraBaseUrl
-    ? `${cameraBaseUrl}/stream`
-    : "https://lh3.googleusercontent.com/aida-public/AB6AXuDQEaScEEtCFS5Bn2sUz-z6g3_PdMNTHi4JIU0cPL7N7j1NxLFSFf1CgUuP_LO7eqkBMcW0tXWT-JTOAxSyEZaIyqR5HlSi7Bfo9Y2Ols_j3n7ovO_rf2bEnXwMylDHc2GfW4Kf23o8rs_MtiCjaPTjTtDuRgtZKY9KqucI_507qN1vvtqPW9xqdG8xlgHqJGclmrR0YH7kkdYwu_ePLJDFGf6S5rOSyl4D2DYMQltRPzJQGshnWlfrm3-myEiALI5_Tc5B1QRd87Y";
+    ? `${cameraBaseUrl}/stream?detect=1&detectEvery=15&quality=72&delay=10`
+    : "";
   const [timeStr, setTimeStr] = React.useState("");
   const [servoLoading, setServoLoading] = React.useState(false);
   const [lightsLoading, setLightsLoading] = React.useState(false);
   const [buzzerLoading, setBuzzerLoading] = React.useState(false);
+  const [directCommand, setDirectCommand] = React.useState<HardwareDirectCommand | null>(null);
+  const [directCommandError, setDirectCommandError] = React.useState("");
+  const [cameraAiStatus, setCameraAiStatus] = React.useState<CameraAiStatus | null>(null);
+  const [cameraConnection, setCameraConnection] = React.useState<CameraConnectionPhase>(
+    cameraBaseUrl ? "CHECKING" : "UNCONFIGURED"
+  );
   // Hardware commands create their audit entry in the backend queue service.
   const onAddLog = (_log: Omit<AuditLog, "id" | "timestamp">) => undefined;
 
-  // Active status totals
-  const totalToday = logs.filter(l => l.status === "ONLINE").length * 15 + 420;
-  const violationCount = logs.filter(l => l.status === "VIOLATION").length;
+  // Derive KPIs only from persisted audit data; never synthesize dashboard counts.
+  const now = new Date();
+  const todayPrefix = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
+  const todayLogs = logs.filter(log => {
+    const normalized = log.timestamp.includes("T")
+      ? log.timestamp
+      : `${log.timestamp.replace(" ", "T")}Z`;
+    const occurredAt = new Date(normalized);
+    if (Number.isNaN(occurredAt.getTime())) return false;
+    const localPrefix = [
+      occurredAt.getFullYear(),
+      String(occurredAt.getMonth() + 1).padStart(2, "0"),
+      String(occurredAt.getDate()).padStart(2, "0")
+    ].join("-");
+    return localPrefix === todayPrefix;
+  });
+  const totalToday = todayLogs.filter(log =>
+    log.status === "ONLINE" && (log.accessMethod === "Face ID" || log.accessMethod === "RFID")
+  ).length;
+  const violationCount = todayLogs.filter(log => log.status === "VIOLATION").length;
   const latestFaceLog = logs.find(log => log.accessMethod === "Face ID");
+  const hardwareConnection = hardware.connectionStatus || "UNKNOWN";
+  const transportStatus = (() => {
+    if (cameraConnection === "UNCONFIGURED") {
+      return { label: "Chưa cấu hình camera", dot: "bg-[#64748B]" };
+    }
+    if (cameraConnection === "CHECKING") {
+      return { label: "Đang kiểm tra camera và mạch", dot: "bg-amber-400 animate-pulse" };
+    }
+    if (cameraConnection === "OFFLINE") {
+      return { label: "Không kết nối được camera", dot: "bg-rose-500" };
+    }
+    if (cameraConnection === "DEGRADED") {
+      return { label: "Camera kết nối nhưng chưa sẵn sàng", dot: "bg-amber-400" };
+    }
+    if (hardwareConnection === "OFFLINE") {
+      return { label: "Camera trực tuyến · mạch ngoại tuyến", dot: "bg-rose-500" };
+    }
+    if (hardwareConnection === "ONLINE") {
+      return { label: "Camera và mạch đang trực tuyến", dot: "bg-[#10B981] animate-pulse" };
+    }
+    return { label: "Camera trực tuyến · chờ trạng thái mạch", dot: "bg-amber-400" };
+  })();
+  const cameraAiLabel = cameraConnection === "UNCONFIGURED"
+    ? "CHƯA CẤU HÌNH ESP32-CAM"
+    : cameraConnection === "CHECKING"
+      ? "ĐANG KIỂM TRA ESP32-CAM"
+      : cameraConnection === "OFFLINE"
+        ? "ESP32-CAM NGOẠI TUYẾN"
+        : cameraAiStatus?.faceRecognitionAvailable
+          ? "AI DETECT + EMBEDDING // BACKEND MATCH"
+          : "CAMERA ONLINE // MODEL CHƯA SẴN SÀNG";
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -61,6 +128,53 @@ export default function DashboardView({
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  React.useEffect(() => {
+    if (!cameraBaseUrl) {
+      setCameraAiStatus(null);
+      setCameraConnection("UNCONFIGURED");
+      return;
+    }
+    let active = true;
+    setCameraConnection("CHECKING");
+
+    const syncCameraStatus = async () => {
+      try {
+        const response = await fetch(`${cameraBaseUrl}/status`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Camera status ${response.status}`);
+        const status = await response.json() as CameraAiStatus;
+        if (active) {
+          setCameraAiStatus(status);
+          setCameraConnection(status.cameraReady ? "ONLINE" : "DEGRADED");
+        }
+      } catch {
+        if (active) {
+          setCameraAiStatus(null);
+          setCameraConnection("OFFLINE");
+        }
+      }
+    };
+
+    void syncCameraStatus();
+    const interval = window.setInterval(() => void syncCameraStatus(), 10000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [cameraBaseUrl]);
+
+  const handleDirectCommand = async (command: HardwareDirectCommand) => {
+    if (directCommand || (command === "grant" && isEmergencyLocked)) return;
+    setDirectCommand(command);
+    setDirectCommandError("");
+    try {
+      await onCommandHardware(command);
+    } catch (error) {
+      setDirectCommandError(error instanceof Error ? error.message : "Không gửi được lệnh tới mạch.");
+    } finally {
+      setDirectCommand(null);
+    }
+  };
 
   const translateLed = (led: string) => {
     if (led.includes("GREEN")) return "XANH / ĐƯỢC PHÉP VÀO";
@@ -154,14 +268,14 @@ export default function DashboardView({
             Giám sát Hoạt động Ra vào
           </h1>
           <p className="text-[10px] text-[#64748B] mt-1 font-mono uppercase tracking-widest">
-            NODE UPLINK: ESP32_SEC_01 • CỔNG CHÍNH SẢNH
+            ESP32-CAM • MẠCH ĐIỀU KHIỂN CỔNG
           </p>
         </div>
         <div className="flex shrink-0">
           <div className="flex items-center gap-2 bg-[#111113] px-3.5 py-1.5 rounded-xl border border-[#1E293B]">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
+            <span className={`w-2 h-2 rounded-full ${transportStatus.dot}`} />
             <span className="font-mono text-[9px] font-semibold text-[#94A3B8] tracking-widest uppercase">
-              Luồng truyền tải Ổn định
+              {transportStatus.label}
             </span>
           </div>
         </div>
@@ -171,81 +285,74 @@ export default function DashboardView({
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Left Column: Security Feed & Summary KPIs */}
         <div className="xl:col-span-8 flex flex-col gap-6">
-          {/* Simulated Camera Feed View */}
+          {/* Camera Feed View */}
           <div className="relative aspect-video bg-[#111113] rounded-2xl border border-[#1E293B] overflow-hidden shadow-xl group" title="Luồng Camera trực tiếp (ESP32-CAM)">
-            {/* Ambient lobby camera stream */}
             <div className="absolute inset-0 shimmer opacity-[0.03]" />
-            <img
-              alt="Luồng camera trực tiếp từ sảnh tòa nhà"
-              src={cameraStreamUrl}
-              className="w-full h-full object-cover"
-            />
+            {cameraStreamUrl ? (
+              <img
+                alt="Luồng camera trực tiếp từ ESP32-CAM"
+                src={cameraStreamUrl}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-center px-6">
+                <p className="font-mono text-[10px] text-[#64748B] uppercase tracking-widest">
+                  Chưa cấu hình VITE_CAMERA_URL — không hiển thị ảnh minh họa thay cho camera thật
+                </p>
+              </div>
+            )}
 
-            {/* Simulated target box overlay */}
+            {/* Detection metadata overlay */}
             <div className="absolute inset-0 pointer-events-none p-6 flex flex-col justify-between">
               {/* Top Banner */}
               <div className="flex justify-between items-start">
                 <div className="bg-black/85 backdrop-blur-md px-3 py-1.5 border border-[#1E293B] rounded-lg flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping shrink-0" />
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    cameraConnection === "ONLINE" && cameraAiStatus?.faceRecognitionAvailable
+                      ? "bg-emerald-400 animate-pulse"
+                      : cameraConnection === "OFFLINE"
+                        ? "bg-rose-500"
+                        : "bg-amber-400"
+                  }`} />
                   <span className="font-mono text-[9px] font-bold text-[#94A3B8] tracking-widest uppercase">
-                    TRỰC TIẾP // LUỒNG CAMERA (ESP32-CAM)
+                    {cameraAiLabel}
                   </span>
                 </div>
                 <div className="bg-black/85 backdrop-blur-md px-4 py-1.5 border border-[#1E293B] rounded-lg font-mono text-[#94A3B8] text-xs">
-                  {timeStr || "2026-06-27 14:32:01"}
+                  {timeStr || "--"}
                 </div>
-              </div>
-
-              {/* Middle wireframe bounds */}
-              <div className="absolute top-[30%] left-[35%] w-[30%] h-[40%] border border-dashed border-[#94A3B8]/30 rounded-xl flex items-center justify-center">
-                <span className={`font-mono text-[8px] tracking-widest bg-black/75 px-2.5 py-1 rounded border uppercase ${
-                  latestFaceLog?.status === "VIOLATION"
-                    ? "text-rose-400 border-rose-500/30"
-                    : "text-[#94A3B8] border-[#1E293B]"
-                }`}>
-                  {latestFaceLog
-                    ? `${latestFaceLog.status === "ONLINE" ? "ĐÃ NHẬN DIỆN" : "TỪ CHỐI"} · ${latestFaceLog.subjectName}`
-                    : "ĐANG CHỜ NHẬN DIỆN"}
-                </span>
               </div>
 
               {/* Bottom Details */}
-              <div className="flex justify-between items-end">
+              <div className="flex items-end">
                 <div className="flex flex-col gap-1.5">
                   <div className="bg-black/75 border border-[#1E293B] text-[#94A3B8] text-[8px] font-mono font-medium px-2 py-1 rounded tracking-widest uppercase">
-                    Phát hiện sự hiện diện
+                    HC-SR04 kích hoạt phiên nhận diện
                   </div>
                   <div className="bg-black/75 border border-[#1E293B] text-[#94A3B8] text-[8px] font-mono font-medium px-2 py-1 rounded tracking-widest uppercase">
-                    {latestFaceLog ? `Độ tin cậy ${latestFaceLog.confidence}` : "Đang quét nơ-ron"}
+                    {latestFaceLog
+                      ? `${latestFaceLog.status === "ONLINE" ? "Đã nhận diện" : "Từ chối"} · ${latestFaceLog.subjectName} · ${latestFaceLog.confidence}`
+                      : "Chưa có kết quả Face ID"}
                   </div>
                 </div>
-                <button className="bg-black/75 hover:bg-[#1A1A1C] p-2 rounded-lg border border-[#1E293B] text-[#94A3B8] pointer-events-auto active:scale-90 transition-transform">
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
               </div>
             </div>
-
-            {/* Surveillance crosshairs */}
-            <div className="absolute top-6 left-6 w-4 h-4 border-t border-l border-[#1E293B]" />
-            <div className="absolute top-6 right-6 w-4 h-4 border-t border-r border-[#1E293B]" />
-            <div className="absolute bottom-6 left-6 w-4 h-4 border-b border-l border-[#1E293B]" />
-            <div className="absolute bottom-6 right-6 w-4 h-4 border-b border-r border-[#1E293B]" />
           </div>
 
           {/* KPI Widget Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            {/* KPI: Connection Status */}
+            {/* KPI: successful persisted access decisions */}
             <div className="bg-[#111113] p-6 border border-[#1E293B] rounded-2xl flex flex-col justify-between hover:border-[#334155] transition-colors">
               <div className="flex justify-between items-start mb-2">
                 <span className="font-sans text-[10px] text-[#64748B] uppercase tracking-widest font-semibold">
-                  Trạng thái Kết nối
+                  Truy cập hợp lệ hôm nay
                 </span>
-                <span className="font-mono text-[9px] text-[#10B981] bg-emerald-500/10 px-2 py-0.5 rounded uppercase font-semibold">Ổn định</span>
+                <span className="font-mono text-[9px] text-[#10B981] bg-emerald-500/10 px-2 py-0.5 rounded uppercase font-semibold">Dữ liệu audit</span>
               </div>
               <div className="text-3xl font-serif font-light text-[#F8FAFC] mt-2">
                 {totalToday} <span className="text-xs font-sans text-[#64748B] uppercase tracking-wide">Lượt Ra Vào</span>
               </div>
-              <p className="text-[9px] font-mono text-[#64748B] mt-2.5 uppercase tracking-wider">LUỒNG TRUYỀN TẢI HOẠT ĐỘNG • TELEMETRY NODE ESP32 BÌNH THƯỜNG</p>
+              <p className="text-[9px] font-mono text-[#64748B] mt-2.5 uppercase tracking-wider">CHỈ TÍNH FACE ID / RFID ĐÃ ĐƯỢC BACKEND CHẤP NHẬN</p>
               <div className="h-6 w-full mt-4 overflow-hidden opacity-40">
                 <svg className="w-full h-full text-[#94A3B8]" preserveAspectRatio="none" viewBox="0 0 100 20">
                   <path d="M0 15 Q 10 5, 20 12 T 40 8 T 60 14 T 80 5 T 100 10" fill="none" stroke="currentColor" strokeWidth="1" />
@@ -253,11 +360,11 @@ export default function DashboardView({
               </div>
             </div>
 
-            {/* KPI: System Health */}
+            {/* KPI: persisted violations */}
             <div className="bg-[#111113] p-6 border border-[#1E293B] rounded-2xl flex flex-col justify-between hover:border-rose-500/40 transition-colors">
               <div className="flex justify-between items-start mb-2">
                 <span className="font-sans text-[10px] text-[#64748B] uppercase tracking-widest font-semibold">
-                  Sức khỏe Hệ thống
+                  Sự cố truy cập hôm nay
                 </span>
                 <span className={`font-mono text-[9px] px-2 py-0.5 rounded uppercase font-semibold ${
                   violationCount > 0 ? "bg-amber-500/10 text-amber-400 animate-pulse" : "bg-emerald-500/10 text-[#10B981]"
@@ -266,7 +373,7 @@ export default function DashboardView({
                 </span>
               </div>
               <div className="text-3xl font-serif font-light text-[#F8FAFC] mt-2">
-                {violationCount === 0 ? "100%" : "94%"} <span className="text-xs font-sans text-[#64748B] uppercase tracking-wide">Khả dụng</span>
+                {violationCount} <span className="text-xs font-sans text-[#64748B] uppercase tracking-wide">Sự cố hôm nay</span>
               </div>
               <p className="text-[9px] font-mono text-rose-500/80 mt-2.5 uppercase tracking-wider">
                 {violationCount === 0 ? "Không phát hiện xâm nhập hay vi phạm hoạt động" : `Đã giảm thiểu ${violationCount} sự cố xâm nhập`}
@@ -282,6 +389,58 @@ export default function DashboardView({
 
         {/* Right Column: Hardware Status & Live Activity logs */}
         <div className="xl:col-span-4 flex flex-col gap-6">
+          {/* Direct circuit command panel */}
+          <div className="bg-[#111113] p-5 rounded-2xl border border-[#1E293B]">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-serif text-sm font-light text-[#F8FAFC] tracking-wider">
+                  Điều khiển trực tiếp mạch
+                </h3>
+                <p className="text-[9px] font-mono text-[#64748B] mt-1 uppercase tracking-wider">
+                  Lệnh được gửi qua backend tới ESP32 controller
+                </p>
+              </div>
+              <span className={`w-2 h-2 rounded-full ${
+                hardware.connectionStatus === "ONLINE"
+                  ? "bg-emerald-400 animate-pulse"
+                  : hardware.connectionStatus === "OFFLINE"
+                  ? "bg-rose-500"
+                  : "bg-amber-400"
+              }`} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {([
+                { command: "grant", label: "Mở cửa", icon: Unlock, tone: "text-emerald-400 hover:border-emerald-500/40" },
+                { command: "lock", label: "Khóa cửa", icon: Lock, tone: "text-sky-300 hover:border-sky-400/40" },
+                { command: "deny", label: "Báo động", icon: AlertTriangle, tone: "text-rose-400 hover:border-rose-500/40" },
+                { command: "idle", label: "Tắt cảnh báo", icon: VolumeX, tone: "text-[#94A3B8] hover:border-[#475569]" }
+              ] as const).map(({ command, label, icon: Icon, tone }) => {
+                const loading = directCommand === command;
+                const disabled = directCommand !== null || (command === "grant" && isEmergencyLocked);
+                return (
+                  <button
+                    key={command}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => void handleDirectCommand(command)}
+                    className={`min-h-11 px-3 py-2.5 bg-[#161618] border border-[#1E293B] rounded-xl text-[9px] font-sans font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-35 disabled:cursor-not-allowed ${tone}`}
+                  >
+                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Icon className="w-3.5 h-3.5" />}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {directCommandError && (
+              <p className="mt-3 text-[9px] font-mono text-rose-400">{directCommandError}</p>
+            )}
+            <p className="mt-3 text-[9px] font-mono text-[#64748B]">
+              Controller: {hardware.connectionStatus || "UNKNOWN"}
+              {hardware.commandStatus ? ` · Lệnh gần nhất: ${hardware.commandStatus}` : ""}
+            </p>
+          </div>
+
           {/* Gate Hardware Status Console */}
           <div className="bg-[#111113] p-6 rounded-2xl border border-[#1E293B]">
             <h3 className="font-serif text-sm font-light text-[#F8FAFC] mb-6 tracking-wider flex items-center gap-2">

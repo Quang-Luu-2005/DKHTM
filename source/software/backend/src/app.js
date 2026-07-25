@@ -15,7 +15,15 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", asyncHandler(async (_req, res) => {
   await prisma.$queryRaw`SELECT 1`;
-  res.json({ ok: true, database: "connected", controllerConfigured: Boolean(config.CONTROLLER_URL), sseClients: connectedClientCount() });
+  res.json({
+    ok: true,
+    database: "connected",
+    controllerConfigured: Boolean(config.CONTROLLER_URL),
+    cameraConfigured: Boolean(config.CAMERA_URL),
+    faceMatchThreshold: config.FACE_MATCH_THRESHOLD,
+    facePresenceWindowMs: config.FACE_PRESENCE_WINDOW_MS,
+    sseClients: connectedClientCount()
+  });
 }));
 app.get("/api/events", openEventStream);
 app.use("/api/users", usersRouter);

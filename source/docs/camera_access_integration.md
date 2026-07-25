@@ -22,16 +22,21 @@ Các khối đã được tách:
 ## 2. Luồng dữ liệu
 
 ```text
+HC-SR04 (cửa đang khóa, distance <= kRecognitionDistanceCm)
+  -> Main controller POST PRESENCE_DETECTED
+  -> Backend mở presence-window cho gate
 ESP32-CAM
-  -> detect/recognize
-  -> POST FACE_RECOGNIZED hoặc FACE_DENIED + confidence
-  -> POST JPEG snapshot có cùng eventId
+  -> detect đúng một khuôn mặt
+  -> FaceRecognition112V1S8 trích normalized embedding
+  -> POST FACE_EMBEDDING { model, dimension, vector }
   -> Backend access policy
+  -> so cosine với FaceProfile trong PostgreSQL và áp FACE_MATCH_THRESHOLD
   -> tạo audit log + SSE cho dashboard
   -> queue SET_STATE
   -> Main controller HTTP API
   -> servo/LED/buzzer
   -> tự queue LOCK sau ACCESS_UNLOCK_DURATION_MS
+  -> camera chỉ upload snapshot khi backend trả GRANT hoặc DENY
 ```
 
 RFID dùng cùng đường quyết định:
@@ -40,33 +45,40 @@ RFID dùng cùng đường quyết định:
 MFRC522 -> RFID_SCANNED + rfidUid -> tìm User.rfidUid
   -> có người dùng: GRANT
   -> không có người dùng: DENY
+  -> controller đọc accessDecision ngay trong response để mở/báo từ chối tại chỗ
 ```
 
-Backend là điểm quyết định duy nhất. Camera không gọi thẳng controller và
-controller không tự chấp nhận mọi thẻ, nhờ đó log dashboard, trạng thái lệnh và
-trạng thái cửa không bị tách thành nhiều nguồn sự thật.
+PostgreSQL/backend là nguồn danh tính và điểm quyết định duy nhất. Camera không
+load template cũ từ partition `fr`, không phát `FACE_RECOGNIZED` và không tự cấp
+quyền từ flash. Controller chỉ mở thẻ sau khi backend đã xác nhận UID đăng ký.
 
 ## 3. Hợp đồng event
 
-Khuôn mặt hợp lệ:
+Event hiện diện:
 
 ```json
 {
-  "eventType": "FACE_RECOGNIZED",
-  "recognized": true,
-  "recognizedId": 3,
-  "recognizedName": "Nguyen Van A",
-  "confidence": 0.91,
+  "eventType": "PRESENCE_DETECTED",
+  "distanceCm": 62,
+  "recognitionDistanceCm": 80,
   "gateId": "GATE_01"
 }
 ```
 
-Khuôn mặt lạ dùng `FACE_DENIED`; thẻ dùng `RFID_SCANNED` và trường `rfidUid`.
-Backend trả thêm `accessDecision` và `commandId`. Event được chống trùng bằng
-cặp `deviceId + eventId`; camera có cooldown để cùng một khuôn mặt không tạo
-event liên tục.
+Camera gửi `FACE_EMBEDDING` theo `kRecognitionIntervalMs`. Payload bắt buộc có
+`model`, `dimension` và mảng số thực `vector`; firmware chuẩn hóa L2 vector trước
+khi gửi. Backend chỉ so khớp event nằm trong presence-window, trả
+`accessDecision` (`GRANT`, `DENY` hoặc `null`) và `commandId`. Event được chống
+trùng bằng cặp `deviceId + eventId`; vector không được lưu vào payload audit thô.
+
+Thẻ dùng `RFID_SCANNED` và trường `rfidUid`. Event `FACE_RECOGNIZED` cũ không còn
+được tin cậy để mở cửa.
 
 ## 4. GPIO main controller
+
+Toàn bộ GPIO của main controller và AI Thinker ESP32-CAM được khai báo duy nhất
+trong `hardware/pin_config.h`. Khi đổi cách đấu dây, chỉ sửa file này rồi build
+và nạp lại firmware; không sửa số GPIO rải rác trong các module.
 
 | Thiết bị | GPIO |
 | --- | --- |
@@ -92,8 +104,11 @@ riêng đủ dòng và nối chung GND với ESP32.
 
 ```dotenv
 CONTROLLER_URL=http://<IP-CONTROLLER>
+CAMERA_URL=http://<IP-ESP32-CAM>
 ACCESS_UNLOCK_DURATION_MS=5000
 DENIED_SIGNAL_DURATION_MS=1000
+FACE_MATCH_THRESHOLD=0.55
+FACE_PRESENCE_WINDOW_MS=5000
 ```
 
 5. Frontend:
@@ -102,16 +117,38 @@ DENIED_SIGNAL_DURATION_MS=1000
 VITE_CAMERA_URL=http://<IP-ESP32-CAM>
 ```
 
+Dashboard dùng luồng `/stream?detect=1`: model detection vẽ khung định kỳ, model
+embedding chạy theo `kRecognitionIntervalMs`, và trạng thái
+`faceDetectionAvailable`/`faceRecognitionAvailable` được đọc từ `/status`.
+
 ## 6. Đăng ký người dùng
 
-- Face ID: nhập họ tên, đặt mặt trước camera, nhấn **Đăng ký trực tiếp từ
-  ESP32-CAM**, chờ camera trả thành công rồi lưu hồ sơ. Tên enroll trên camera
-  chính là tên xuất hiện trong event và dashboard.
+- Face ID: người quản trị upload JPG/PNG trên dashboard. Backend chuẩn hóa ảnh
+  thành JPEG QVGA `320x240`, gọi authenticated `POST /face/embedding` với raw
+  `image/jpeg`, rồi lưu ảnh và embedding vào `FaceProfile` trong PostgreSQL.
+  Endpoint yêu cầu đúng một khuôn mặt; ảnh sai kích thước, quá giới hạn, không có
+  mặt hoặc có nhiều mặt đều bị từ chối. Endpoint `/face/enroll` cũ trả HTTP 410.
+  ESP32-CAM dùng WebServer đồng bộ; nếu một trình duyệt khác đang giữ kết nối
+  `/stream`, hãy đóng luồng đó trước khi upload để `/face/embedding` nhận request.
 - RFID: nhấn **Quét thẻ** trên dashboard rồi đặt thẻ lên MFRC522. Dashboard chờ
   UID thật đi qua controller/backend/SSE trong tối đa 15 giây; không còn sinh UID
   giả.
 
-## 7. Build và kiểm tra
+## 7. Điều khiển trực tiếp từ dashboard
+
+Cụm **Điều khiển trực tiếp mạch** gửi lệnh qua
+`POST /api/hardware/command`:
+
+- **Mở cửa**: servo mở, LED xanh; backend tự gửi lệnh khóa lại sau thời gian cấu
+  hình.
+- **Khóa cửa**: servo về góc khóa, LED đỏ.
+- **Báo động**: giữ cửa khóa và bật còi.
+- **Tắt cảnh báo**: tắt còi, giữ trạng thái cửa an toàn.
+
+Backend gửi `x-device-secret` tới HTTP API của main controller; firmware từ chối
+lệnh điều khiển không có secret trùng với `DEVICE_SECRET`.
+
+## 8. Build và kiểm tra
 
 ```powershell
 cd D:\DKHTM\source

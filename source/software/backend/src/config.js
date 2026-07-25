@@ -10,11 +10,16 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   DEVICE_SECRET: z.string().min(8).default("demo-secret"),
   CONTROLLER_URL: z.string().url().optional().or(z.literal("")),
+  CAMERA_URL: z.string().url().optional().or(z.literal("")),
   CONTROLLER_DEVICE_ID: z.string().min(1).default("MAIN_CONTROLLER_001"),
   DEFAULT_GATE_ID: z.string().min(1).default("GATE_01"),
   FRONTEND_ORIGIN: z.string().default("http://localhost:3000"),
   COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   COMMAND_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  CAMERA_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  FACE_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
+  FACE_MATCH_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
+  FACE_PRESENCE_WINDOW_MS: z.coerce.number().int().positive().default(5000),
   ACCESS_UNLOCK_DURATION_MS: z.coerce.number().int().positive().default(5000),
   DENIED_SIGNAL_DURATION_MS: z.coerce.number().int().positive().default(1000),
   DEVICE_OFFLINE_AFTER_MS: z.coerce.number().int().positive().default(45000),
@@ -30,5 +35,6 @@ if (!parsed.success) {
 export const config = {
   ...parsed.data,
   CONTROLLER_URL: parsed.data.CONTROLLER_URL?.replace(/\/$/, "") || null,
+  CAMERA_URL: parsed.data.CAMERA_URL?.replace(/\/$/, "") || null,
   rootDir
 };

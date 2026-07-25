@@ -12,6 +12,11 @@ export interface User {
   avatarUrl?: string;
 }
 
+export interface UserSaveRequest {
+  user: User;
+  portrait?: File;
+}
+
 export interface AuditLog {
   id: string;
   timestamp: string;
@@ -28,6 +33,7 @@ export interface AuditLog {
 }
 
 export type HardwareCommandStatus = "PENDING" | "SENT" | "ACKED" | "FAILED" | "TIMEOUT";
+export type HardwareDirectCommand = "lock" | "grant" | "deny" | "idle";
 
 export interface HardwareState {
   servoArm: "SECURED / CLOSED" | "OPENED / UNSECURED";
@@ -47,15 +53,4 @@ export interface SseEnvelope<T = unknown> {
   type: string;
   occurredAt: string;
   data: T;
-}
-
-export interface SecurityIncident {
-  id: string;
-  timestamp: string;
-  gateId: string;
-  violationDetails: string;
-  servoLocked: boolean;
-  buzzerActive: boolean;
-  policeNotified: "PENDING" | "NOTIFIED" | "RESOLVED";
-  captureImageUrl: string;
 }

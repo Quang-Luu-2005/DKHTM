@@ -7,7 +7,6 @@ import {
   ChevronRight,
   TrendingUp,
   Award,
-  Zap,
   ShieldAlert,
   User,
   ScanFace,
@@ -20,13 +19,36 @@ interface LogsViewProps {
   logs: AuditLog[];
 }
 
+function parseLogTimestamp(timestamp: string): Date | null {
+  const isoLike = timestamp.includes("T") ? timestamp : timestamp.replace(" ", "T");
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(isoLike) ? isoLike : `${isoLike}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function isAccessAttempt(log: AuditLog): boolean {
+  return log.accessMethod === "Face ID" || log.accessMethod === "RFID";
+}
+
+function percentage(value: number | null): string {
+  return value === null ? "—" : `${value.toFixed(1)}%`;
+}
+
 export default function LogsView({ logs }: LogsViewProps) {
   // Advanced filters state
   const [selectedAuth, setSelectedAuth] = useState("All Methods");
   const [selectedGate, setSelectedGate] = useState("All Gates");
   const [selectedStatus, setSelectedStatus] = useState("All Statuses");
-  const [startDate, setStartDate] = useState("2026-06-20");
-  const [endDate, setEndDate] = useState("2026-06-27");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
   const logsPerPage = 5;
@@ -35,8 +57,101 @@ export default function LogsView({ logs }: LogsViewProps) {
   const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
 
   const handleExport = () => {
-    alert("Đang biên dịch cơ sở dữ liệu telemetry lịch sử...\nĐang tạo báo cáo: Sentinel_Audit_Logs_Jun2026.csv\nTải xuống sẽ tự động bắt đầu dưới nền trình duyệt.");
+    const quote = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+    const rows = [
+      ["Thời gian", "Đối tượng", "Mã đối tượng", "Phương thức", "Cổng", "Trạng thái", "Độ tin cậy"],
+      ...filteredLogs.map(log => [
+        log.timestamp,
+        log.subjectName,
+        log.subjectId || "",
+        log.accessMethod,
+        log.gateId,
+        log.status,
+        log.confidence
+      ])
+    ];
+    const csv = `\uFEFF${rows.map(row => row.map(quote).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Sentinel_Audit_Logs_${localDateKey(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
+
+  const accessLogs = logs.filter(isAccessAttempt);
+  const successfulAccessLogs = accessLogs.filter(log => log.status === "ONLINE");
+  const faceLogs = accessLogs.filter(log => log.accessMethod === "Face ID");
+  const successfulFaceLogs = faceLogs.filter(log => log.status === "ONLINE");
+  const rfidLogs = accessLogs.filter(log => log.accessMethod === "RFID");
+  const successfulRfidLogs = rfidLogs.filter(log => log.status === "ONLINE");
+  const violationLogs = logs.filter(log => log.status === "VIOLATION");
+  const faceAcceptanceRate = faceLogs.length
+    ? (successfulFaceLogs.length / faceLogs.length) * 100
+    : null;
+  const rfidAcceptanceRate = rfidLogs.length
+    ? (successfulRfidLogs.length / rfidLogs.length) * 100
+    : null;
+  const successRate = accessLogs.length
+    ? (successfulAccessLogs.length / accessLogs.length) * 100
+    : 0;
+  const violationRate = logs.length ? (violationLogs.length / logs.length) * 100 : 0;
+  const faceShare = accessLogs.length ? (faceLogs.length / accessLogs.length) * 100 : 0;
+  const rfidShare = accessLogs.length ? (rfidLogs.length / accessLogs.length) * 100 : 0;
+  const gateIds = Array.from(new Set(logs.map(log => log.gateId).filter(Boolean))).sort();
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const currentPeriodStart = new Date(todayStart);
+  currentPeriodStart.setDate(currentPeriodStart.getDate() - 6);
+  const previousPeriodStart = new Date(todayStart);
+  previousPeriodStart.setDate(previousPeriodStart.getDate() - 13);
+  const currentPeriodAccess = accessLogs.filter(log => {
+    const occurredAt = parseLogTimestamp(log.timestamp);
+    return occurredAt !== null && occurredAt >= currentPeriodStart;
+  }).length;
+  const previousPeriodAccess = accessLogs.filter(log => {
+    const occurredAt = parseLogTimestamp(log.timestamp);
+    return occurredAt !== null
+      && occurredAt >= previousPeriodStart
+      && occurredAt < currentPeriodStart;
+  }).length;
+  const trafficComparison = previousPeriodAccess > 0
+    ? `${currentPeriodAccess >= previousPeriodAccess ? "+" : ""}${Math.round(
+        ((currentPeriodAccess - previousPeriodAccess) / previousPeriodAccess) * 100
+      )}% so với 7 ngày trước`
+    : `${currentPeriodAccess} lượt trong 7 ngày`;
+
+  const dayFormatter = new Intl.DateTimeFormat("vi-VN", { weekday: "short" });
+  const dateFormatter = new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit" });
+  const weeklyTrendPoints = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(currentPeriodStart);
+    date.setDate(currentPeriodStart.getDate() + index);
+    const key = localDateKey(date);
+    const dayLogs = logs.filter(log => {
+      const occurredAt = parseLogTimestamp(log.timestamp);
+      return occurredAt !== null && localDateKey(occurredAt) === key;
+    });
+    return {
+      key,
+      day: dayFormatter.format(date),
+      dateLabel: dateFormatter.format(date),
+      successful: dayLogs.filter(log => isAccessAttempt(log) && log.status === "ONLINE").length,
+      blocked: dayLogs.filter(log => log.status === "VIOLATION").length
+    };
+  });
+  const chartMaximum = Math.max(
+    1,
+    ...weeklyTrendPoints.flatMap(point => [point.successful, point.blocked])
+  );
+  const chartX = (index: number) => (index * 700) / 6;
+  const chartY = (count: number) => 180 - (count / chartMaximum) * 150;
+  const successfulPath = weeklyTrendPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"}${chartX(index)},${chartY(point.successful)}`)
+    .join(" ");
+  const blockedPath = weeklyTrendPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"}${chartX(index)},${chartY(point.blocked)}`)
+    .join(" ");
 
   // Perform advanced filtering
   const filteredLogs = logs.filter(log => {
@@ -50,7 +165,8 @@ export default function LogsView({ logs }: LogsViewProps) {
       else if (selectedStatus === "Expired") matchesStatus = log.status === "EXPIRED";
     }
     
-    const logDate = log.timestamp.split(" ")[0]; // "YYYY-MM-DD"
+    const occurredAt = parseLogTimestamp(log.timestamp);
+    const logDate = occurredAt ? localDateKey(occurredAt) : "";
     const matchesDate = (!startDate || logDate >= startDate) && (!endDate || logDate <= endDate);
     
     return matchesAuth && matchesGate && matchesStatus && matchesDate;
@@ -61,17 +177,6 @@ export default function LogsView({ logs }: LogsViewProps) {
   const indexOfLastLog = currentPage * logsPerPage;
   const indexOfFirstLog = indexOfLastLog - logsPerPage;
   const currentLogs = filteredLogs.slice(indexOfFirstLog, indexOfLastLog);
-
-  // Weekly traffic mockup data points (representing the SVG chart path)
-  const weeklyTrendPoints = [
-    { day: "MON", value: 160, display: "4.8k" },
-    { day: "TUE", value: 120, display: "5.1k" },
-    { day: "WED", value: 140, display: "4.9k" },
-    { day: "THU", value: 100, display: "5.5k" },
-    { day: "FRI", value: 110, display: "5.8k" },
-    { day: "SAT", value: 60, display: "6.2k" },
-    { day: "SUN", value: 50, display: "6.0k" }
-  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -103,19 +208,19 @@ export default function LogsView({ logs }: LogsViewProps) {
               <TrendingUp className="w-4 h-4" />
             </span>
             <span className="text-[9px] font-sans text-[#64748B] tracking-wider uppercase">
-              +12% so với tuần trước
+              {trafficComparison}
             </span>
           </div>
           <div>
             <p className="font-sans text-[9px] text-[#64748B] uppercase tracking-widest">
-              Tổng lượt ra vào
+              Tổng lượt xác thực
             </p>
             <h3 className="text-2xl font-serif font-light text-[#F8FAFC] mt-2">
-              42.894
+              {accessLogs.length.toLocaleString("vi-VN")}
             </h3>
           </div>
           <div className="h-1.5 mt-4 w-full opacity-30 group-hover:opacity-60 transition-opacity bg-[#161618] rounded-full overflow-hidden">
-            <div className="w-3/4 h-full bg-[#94A3B8]" />
+            <div className="h-full bg-[#94A3B8]" style={{ width: `${successRate}%` }} />
           </div>
         </div>
 
@@ -126,42 +231,42 @@ export default function LogsView({ logs }: LogsViewProps) {
               <Award className="w-4 h-4" />
             </span>
             <span className="text-[9px] font-sans text-[#64748B] tracking-wider uppercase">
-              Hiệu chỉnh ổn định
+              {faceLogs.length} lượt Face ID
             </span>
           </div>
           <div>
             <p className="font-sans text-[9px] text-[#64748B] uppercase tracking-widest">
-              Độ chính xác sinh trắc học
+              Tỷ lệ Face ID được chấp nhận
             </p>
             <h3 className="text-2xl font-serif font-light text-[#F8FAFC] mt-2">
-              99.4%
+              {percentage(faceAcceptanceRate)}
             </h3>
           </div>
           <div className="h-1.5 mt-4 w-full opacity-30 group-hover:opacity-60 transition-opacity bg-[#161618] rounded-full overflow-hidden">
-            <div className="w-5/6 h-full bg-[#94A3B8]" />
+            <div className="h-full bg-[#94A3B8]" style={{ width: `${faceAcceptanceRate || 0}%` }} />
           </div>
         </div>
 
-        {/* KPI 3: Latency */}
+        {/* KPI 3: RFID */}
         <div className="bg-[#111113] p-6 border border-[#1E293B] rounded-2xl flex flex-col justify-between hover:border-[#334155] transition-colors group">
           <div className="flex justify-between items-start mb-4">
             <span className="p-3 bg-[#1A1A1C] border border-[#1E293B] text-[#94A3B8] shrink-0 rounded-xl">
-              <Zap className="w-4 h-4" />
+              <CreditCard className="w-4 h-4" />
             </span>
             <span className="text-[9px] font-sans text-[#64748B] tracking-wider uppercase">
-              -4ms Tối ưu hóa
+              {rfidLogs.length} lượt RFID
             </span>
           </div>
           <div>
             <p className="font-sans text-[9px] text-[#64748B] uppercase tracking-widest">
-              Độ trễ truy cập
+              RFID hợp lệ
             </p>
             <h3 className="text-2xl font-serif font-light text-[#F8FAFC] mt-2">
-              142ms
+              {successfulRfidLogs.length.toLocaleString("vi-VN")}
             </h3>
           </div>
           <div className="h-1.5 mt-4 w-full opacity-30 group-hover:opacity-60 transition-opacity bg-[#161618] rounded-full overflow-hidden">
-            <div className="w-2/3 h-full bg-[#94A3B8]" />
+            <div className="h-full bg-[#94A3B8]" style={{ width: `${rfidAcceptanceRate || 0}%` }} />
           </div>
         </div>
 
@@ -172,7 +277,7 @@ export default function LogsView({ logs }: LogsViewProps) {
               <ShieldAlert className="w-4 h-4" />
             </span>
             <span className="text-[9px] font-sans text-[#64748B] tracking-wider uppercase">
-              +2 Đánh dấu
+              Dữ liệu audit thực
             </span>
           </div>
           <div>
@@ -180,11 +285,11 @@ export default function LogsView({ logs }: LogsViewProps) {
               Sự cố bị ngăn chặn
             </p>
             <h3 className="text-2xl font-serif font-light text-[#F8FAFC] mt-2">
-              {logs.filter(l => l.status === "VIOLATION").length * 3}
+              {violationLogs.length.toLocaleString("vi-VN")}
             </h3>
           </div>
           <div className="h-1.5 mt-4 w-full opacity-30 group-hover:opacity-60 transition-opacity bg-[#161618] rounded-full overflow-hidden">
-            <div className="w-1/3 h-full bg-rose-400" />
+            <div className="h-full bg-rose-400" style={{ width: `${violationRate}%` }} />
           </div>
         </div>
       </div>
@@ -200,8 +305,8 @@ export default function LogsView({ logs }: LogsViewProps) {
           <div className="lg:col-span-2 bg-[#111113] p-6 rounded-2xl border border-[#1E293B] flex flex-col">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
               <div>
-                <h4 className="font-sans text-sm font-semibold text-[#F8FAFC]">Xu hướng Ra vào Hàng tuần</h4>
-                <p className="text-xs text-[#64748B] mt-0.5">Phân tích so sánh các lượt truy cập cổng</p>
+                <h4 className="font-sans text-sm font-semibold text-[#F8FAFC]">Xu hướng 7 ngày gần nhất</h4>
+                <p className="text-xs text-[#64748B] mt-0.5">Tổng hợp trực tiếp từ nhật ký truy cập đã lưu</p>
               </div>
               
               {/* Legends */}
@@ -227,7 +332,7 @@ export default function LogsView({ logs }: LogsViewProps) {
 
                 {/* Successful Line Path (Silver Steel) */}
                 <path
-                  d="M0,160 L100,120 L200,140 L300,100 L400,110 L500,60 L600,40 L700,50"
+                  d={successfulPath}
                   fill="none"
                   stroke="#94A3B8"
                   strokeWidth="2.5"
@@ -238,7 +343,7 @@ export default function LogsView({ logs }: LogsViewProps) {
 
                 {/* Blocked Line Path (dashed coral red) */}
                 <path
-                  d="M0,180 L100,175 L200,190 L300,185 L400,170 L500,180 L600,165 L700,175"
+                  d={blockedPath}
                   fill="none"
                   stroke="#F87171"
                   strokeWidth="1.5"
@@ -250,12 +355,13 @@ export default function LogsView({ logs }: LogsViewProps) {
 
                 {/* Vertical guides and hover hot-spots */}
                 {weeklyTrendPoints.map((pt, idx) => {
-                  const cx = (idx * 700) / 6;
-                  const cy = pt.value;
+                  const cx = chartX(idx);
+                  const successfulY = chartY(pt.successful);
+                  const blockedY = chartY(pt.blocked);
                   const isHovered = hoveredPoint === idx;
 
                   return (
-                    <g key={pt.day}>
+                    <g key={pt.key}>
                       {/* Interactive hover column area */}
                       <rect
                         x={cx - 30}
@@ -276,9 +382,18 @@ export default function LogsView({ logs }: LogsViewProps) {
                       {/* Point dot */}
                       <circle
                         cx={cx}
-                        cy={cy}
+                        cy={successfulY}
                         r={isHovered ? 5 : 3.5}
                         fill={isHovered ? "#F8FAFC" : "#94A3B8"}
+                        stroke="#111113"
+                        strokeWidth={2}
+                        className="transition-all duration-150"
+                      />
+                      <circle
+                        cx={cx}
+                        cy={blockedY}
+                        r={isHovered ? 4.5 : 3}
+                        fill="#F87171"
                         stroke="#111113"
                         strokeWidth={2}
                         className="transition-all duration-150"
@@ -291,27 +406,34 @@ export default function LogsView({ logs }: LogsViewProps) {
               {/* Day Labels at bottom */}
               <div className="absolute -bottom-6 left-0 right-0 flex justify-between font-mono text-[9px] text-[#64748B] uppercase font-bold tracking-widest px-1">
                 {weeklyTrendPoints.map((pt) => (
-                  <span key={pt.day} className="w-12 text-center">{pt.day}</span>
+                  <span key={pt.key} className="w-12 text-center">{pt.day}</span>
                 ))}
               </div>
 
-              {/* Simulated chart hover tooltip */}
+              {/* Tooltip backed by the selected day's persisted logs. */}
               {hoveredPoint !== null && (
                 <div
                   className="absolute z-10 bg-[#161618] p-3 border border-[#334155] rounded-xl shadow-2xl backdrop-blur-md pointer-events-none"
                   style={{
                     left: `${(hoveredPoint * 100) / 6}%`,
-                    transform: "translateX(-50%)",
-                    bottom: `${220 - weeklyTrendPoints[hoveredPoint].value + 15}px`
+                    top: `${(
+                      Math.min(
+                        chartY(weeklyTrendPoints[hoveredPoint].successful),
+                        chartY(weeklyTrendPoints[hoveredPoint].blocked)
+                      ) / 200
+                    ) * 100}%`,
+                    transform: "translate(-50%, -110%)"
                   }}
                 >
                   <p className="font-sans text-[8px] text-[#94A3B8] uppercase tracking-widest font-semibold mb-0.5">
-                    {weeklyTrendPoints[hoveredPoint].day} - CHỈ SỐ AN NINH
+                    {weeklyTrendPoints[hoveredPoint].day} · {weeklyTrendPoints[hoveredPoint].dateLabel}
                   </p>
                   <p className="text-xs font-light text-[#F8FAFC] font-serif">
-                    {weeklyTrendPoints[hoveredPoint].display} Lượt truy cập
+                    {weeklyTrendPoints[hoveredPoint].successful} thành công
                   </p>
-                  <p className="text-[9px] text-[#64748B] mt-0.5">Tỷ lệ Telemetry: 99.4%</p>
+                  <p className="text-[9px] text-rose-400 mt-0.5">
+                    {weeklyTrendPoints[hoveredPoint].blocked} bị chặn
+                  </p>
                 </div>
               )}
             </div>
@@ -321,14 +443,22 @@ export default function LogsView({ logs }: LogsViewProps) {
           <div className="bg-[#111113] p-6 rounded-2xl border border-[#1E293B] flex flex-col">
             <div className="mb-6">
               <h4 className="font-sans text-sm font-semibold text-[#F8FAFC]">Phân bổ Xác thực</h4>
-              <p className="text-xs text-[#64748B] mt-0.5">Phương thức ưa chuộng trên các cổng</p>
+              <p className="text-xs text-[#64748B] mt-0.5">Tỷ trọng Face ID và RFID trong nhật ký</p>
             </div>
 
             <div className="flex-grow flex flex-col items-center justify-center py-4">
               {/* Customized SVG Donut ring */}
               <div className="relative w-32 h-32 flex items-center justify-center">
                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                  {/* Segment 1: Face ID (70%) - Silver Steel */}
+                  <circle
+                    cx="18"
+                    cy="18"
+                    r="15.915"
+                    fill="transparent"
+                    stroke="#1E293B"
+                    strokeWidth="3.2"
+                  />
+                  {/* Segment 1: Face ID */}
                   <circle
                     cx="18"
                     cy="18"
@@ -336,10 +466,10 @@ export default function LogsView({ logs }: LogsViewProps) {
                     fill="transparent"
                     stroke="#94A3B8"
                     strokeWidth="3.2"
-                    strokeDasharray="70 30"
-                    strokeDashoffset="100"
+                    strokeDasharray={`${faceShare} ${100 - faceShare}`}
+                    strokeDashoffset="0"
                   />
-                  {/* Segment 2: RFID (30%) - Graphite Slate */}
+                  {/* Segment 2: RFID */}
                   <circle
                     cx="18"
                     cy="18"
@@ -347,16 +477,16 @@ export default function LogsView({ logs }: LogsViewProps) {
                     fill="transparent"
                     stroke="#475569"
                     strokeWidth="3.2"
-                    strokeDasharray="30 70"
-                    strokeDashoffset="30"
+                    strokeDasharray={`${rfidShare} ${100 - rfidShare}`}
+                    strokeDashoffset={-faceShare}
                   />
                 </svg>
 
                 {/* Inner label */}
                 <div className="absolute flex flex-col items-center">
-                  <span className="font-serif text-lg font-light text-[#F8FAFC]">100%</span>
+                  <span className="font-serif text-lg font-light text-[#F8FAFC]">{accessLogs.length}</span>
                   <span className="font-sans text-[8px] text-[#64748B] uppercase font-semibold tracking-widest mt-0.5">
-                    CHỈ SỐ
+                    LƯỢT
                   </span>
                 </div>
               </div>
@@ -368,14 +498,14 @@ export default function LogsView({ logs }: LogsViewProps) {
                     <span className="w-2 h-2 bg-[#94A3B8] rounded-full" />
                     <span className="font-sans text-[#E2E8F0]">Nhận diện khuôn mặt</span>
                   </div>
-                  <span className="font-mono text-[#64748B]">70%</span>
+                  <span className="font-mono text-[#64748B]">{percentage(faceShare)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 bg-[#475569] rounded-full" />
                     <span className="font-sans text-[#E2E8F0]">Thẻ từ RFID</span>
                   </div>
-                  <span className="font-mono text-[#64748B]">30%</span>
+                  <span className="font-mono text-[#64748B]">{percentage(rfidShare)}</span>
                 </div>
               </div>
             </div>
@@ -452,10 +582,9 @@ export default function LogsView({ logs }: LogsViewProps) {
               className="w-full bg-[#161618] border border-[#1E293B] rounded-xl px-3 py-2.5 text-xs text-[#F8FAFC] outline-none focus:border-[#334155] cursor-pointer"
             >
               <option value="All Gates">Tất cả các cổng</option>
-              <option value="GT-NORTH-01">GT-NORTH-01</option>
-              <option value="GT-SOUTH-04">GT-SOUTH-04</option>
-              <option value="LAB-SEC-09">LAB-SEC-09</option>
-              <option value="GT-MAIN-00">GT-MAIN-00</option>
+              {gateIds.map(gateId => (
+                <option key={gateId} value={gateId}>{gateId}</option>
+              ))}
             </select>
           </div>
 
@@ -590,7 +719,7 @@ export default function LogsView({ logs }: LogsViewProps) {
         {/* Paginated Footer */}
         <div className="p-4 bg-[#161618]/30 border-t border-[#1E293B] flex flex-col sm:flex-row justify-between items-center px-6 gap-3 shrink-0">
           <span className="font-sans text-xs text-[#64748B]">
-            Hiển thị từ {indexOfFirstLog + 1} đến {Math.min(indexOfLastLog, filteredLogs.length)} trong số {filteredLogs.length} sự kiện đã ghi nhận
+            Hiển thị từ {filteredLogs.length === 0 ? 0 : indexOfFirstLog + 1} đến {Math.min(indexOfLastLog, filteredLogs.length)} trong số {filteredLogs.length} sự kiện đã ghi nhận
           </span>
           <div className="flex items-center gap-2">
             <button

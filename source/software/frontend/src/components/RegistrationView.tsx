@@ -8,19 +8,28 @@ import {
   Edit2, 
   ChevronLeft, 
   ChevronRight, 
-  Camera, 
   Wifi, 
   ShieldCheck,
   User,
-  Image
+  Loader2
 } from "lucide-react";
-import { AuditLog, User as UserType } from "../types";
+import { AuditLog, User as UserType, UserSaveRequest } from "../types";
 
 interface RegistrationViewProps {
   users: UserType[];
   logs: AuditLog[];
-  onSaveUser: (user: UserType) => void;
+  onSaveUser: (request: UserSaveRequest) => Promise<UserType>;
   onDeleteUser: (id: string) => void;
+}
+
+let fallbackUserIdSequence = 0;
+
+function createUserId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `SENT-${uuid.toUpperCase()}`;
+
+  fallbackUserIdSequence += 1;
+  return `SENT-${Date.now().toString(36).toUpperCase()}-${fallbackUserIdSequence.toString(36).toUpperCase()}`;
 }
 
 export default function RegistrationView({
@@ -31,23 +40,26 @@ export default function RegistrationView({
 }: RegistrationViewProps) {
   // Form states
   const [fullName, setFullName] = useState("");
-  const [userId, setUserId] = useState(`SENT-${Math.floor(Math.random() * 900 + 100)}`);
+  const [userId, setUserId] = useState(createUserId);
   const [role, setRole] = useState<UserType["role"]>("General Staff");
   
   // Scans/Emulations states
   const [rfidUid, setRfidUid] = useState("NOT LINKED");
   const [isScanningRfid, setIsScanningRfid] = useState(false);
   const [faceIdStatus, setFaceIdStatus] = useState<UserType["faceIdStatus"]>("PENDING");
-  const [isEnrollingFace, setIsEnrollingFace] = useState(false);
-  const [faceEnrollmentMessage, setFaceEnrollmentMessage] = useState("");
   const rfidBaselineId = React.useRef<string | undefined>(undefined);
   const rfidTimeout = React.useRef<number | undefined>(undefined);
-  const cameraBaseUrl = (import.meta.env.VITE_CAMERA_URL || "").replace(/\/$/, "");
   
   // Drag and drop / portrait upload states
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+  const [originalAvatarUrl, setOriginalAvatarUrl] = useState<string | undefined>(undefined);
+  const [originalFaceIdStatus, setOriginalFaceIdStatus] = useState<UserType["faceIdStatus"]>("PENDING");
+  const [portraitFile, setPortraitFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState("");
 
   // Search and Directory state
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,34 +99,6 @@ export default function RegistrationView({
     if (rfidTimeout.current !== undefined) window.clearTimeout(rfidTimeout.current);
   }, []);
 
-  const handleEnrollFace = async () => {
-    if (!fullName.trim()) {
-      alert("Nhập họ tên trước khi đăng ký khuôn mặt.");
-      return;
-    }
-    if (!cameraBaseUrl) {
-      alert("Chưa cấu hình VITE_CAMERA_URL cho dashboard.");
-      return;
-    }
-
-    setIsEnrollingFace(true);
-    setFaceEnrollmentMessage("Đang chụp và mã hóa khuôn mặt...");
-    try {
-      const response = await fetch(`${cameraBaseUrl}/face/enroll?name=${encodeURIComponent(fullName.trim())}`);
-      const result = await response.json();
-      if (!response.ok || result.ok !== true) {
-        throw new Error(result.message || "ESP32-CAM không thể đăng ký khuôn mặt.");
-      }
-      setFaceIdStatus("ENROLLED");
-      setFaceEnrollmentMessage(result.message || "Đăng ký khuôn mặt thành công.");
-    } catch (error) {
-      setFaceIdStatus("PENDING");
-      setFaceEnrollmentMessage(error instanceof Error ? error.message : "Đăng ký khuôn mặt thất bại.");
-    } finally {
-      setIsEnrollingFace(false);
-    }
-  };
-
   // Drag & drop file handlers
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -143,30 +127,73 @@ export default function RegistrationView({
   };
 
   const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      alert("Vui lòng tải lên tệp hình ảnh (JPG hoặc PNG).");
+    if (file.type !== "image/jpeg" && file.type !== "image/png") {
+      setSaveError("Ảnh chân dung phải có định dạng JPG hoặc PNG.");
       return;
     }
+    if (file.size > 8 * 1024 * 1024) {
+      setSaveError("Ảnh chân dung không được lớn hơn 8 MB.");
+      return;
+    }
+
+    setPortraitFile(file);
+    setFaceIdStatus("PENDING");
+    setSaveError("");
+    setSaveSuccess("");
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
         setAvatarUrl(e.target.result as string);
       }
     };
+    reader.onerror = () => {
+      setPortraitFile(null);
+      setAvatarUrl(originalAvatarUrl);
+      setSaveError("Không thể đọc ảnh đã chọn. Vui lòng thử một ảnh khác.");
+    };
     reader.readAsDataURL(file);
   };
 
   const handleRemoveImage = () => {
-    setAvatarUrl(undefined);
+    setPortraitFile(null);
+    setAvatarUrl(originalAvatarUrl);
+    setFaceIdStatus(originalFaceIdStatus);
+    setSaveError("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const resetForm = () => {
+    setFullName("");
+    setRole("General Staff");
+    setRfidUid("NOT LINKED");
+    setFaceIdStatus("PENDING");
+    setAvatarUrl(undefined);
+    setOriginalAvatarUrl(undefined);
+    setOriginalFaceIdStatus("PENDING");
+    setPortraitFile(null);
+    setEditingUserId(null);
+    setUserId(createUserId());
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+
     if (!fullName.trim()) {
-      alert("Vui lòng nhập họ và tên hợp lệ.");
+      setSaveError("Vui lòng nhập họ và tên hợp lệ.");
+      return;
+    }
+    if (rfidUid === "SCANNING...") {
+      setSaveError("Hãy chờ quét thẻ hoàn tất trước khi lưu hồ sơ.");
+      return;
+    }
+    if (!editingUserId && !portraitFile) {
+      setSaveError("Vui lòng chọn ảnh chân dung để backend phát hiện và đăng ký khuôn mặt.");
       return;
     }
 
@@ -176,18 +203,32 @@ export default function RegistrationView({
       role,
       rfidUid,
       faceIdStatus,
-      avatarUrl
+      avatarUrl: portraitFile ? originalAvatarUrl : avatarUrl
     };
 
-    onSaveUser(newUser);
-
-    // Clear form & reset ID
-    setFullName("");
-    setRfidUid("NOT LINKED");
-    setFaceIdStatus("PENDING");
-    setAvatarUrl(undefined);
-    setEditingUserId(null);
-    setUserId(`SENT-${Math.floor(Math.random() * 900 + 100)}`);
+    setIsSaving(true);
+    setSaveError("");
+    setSaveSuccess("");
+    try {
+      const saved = await onSaveUser({
+        user: newUser,
+        portrait: portraitFile || undefined
+      });
+      resetForm();
+      setSaveSuccess(
+        portraitFile
+          ? `Đã lưu ${saved.fullName} và tạo mẫu nhận diện khuôn mặt thành công.`
+          : `Đã cập nhật hồ sơ ${saved.fullName}.`
+      );
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Không thể lưu hồ sơ hoặc xử lý khuôn mặt. Vui lòng thử lại."
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEditUser = (user: UserType) => {
@@ -198,15 +239,20 @@ export default function RegistrationView({
     setRfidUid(user.rfidUid);
     setFaceIdStatus(user.faceIdStatus);
     setAvatarUrl(user.avatarUrl);
+    setOriginalAvatarUrl(user.avatarUrl);
+    setOriginalFaceIdStatus(user.faceIdStatus);
+    setPortraitFile(null);
+    setSaveError("");
+    setSaveSuccess("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleCancelEdit = () => {
-    setFullName("");
-    setRfidUid("NOT LINKED");
-    setFaceIdStatus("PENDING");
-    setAvatarUrl(undefined);
-    setEditingUserId(null);
-    setUserId(`SENT-${Math.floor(Math.random() * 900 + 100)}`);
+    resetForm();
+    setSaveError("");
+    setSaveSuccess("");
   };
 
   // Directory filter & pagination
@@ -345,7 +391,7 @@ export default function RegistrationView({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png"
               onChange={handleFileChange}
               className="hidden"
             />
@@ -409,49 +455,66 @@ export default function RegistrationView({
 
                 <button
                   type="button"
-                  onClick={handleRemoveImage}
+                  onClick={() => portraitFile ? handleRemoveImage() : fileInputRef.current?.click()}
                   className="mt-4 px-3.5 py-1.5 rounded-lg text-[9px] font-mono uppercase tracking-wider text-rose-400 hover:text-rose-300 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 transition-colors cursor-pointer"
                 >
-                  Xóa và Tải lại
+                  {portraitFile ? "Bỏ ảnh vừa chọn" : "Chọn ảnh khác"}
                 </button>
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleEnrollFace}
-              disabled={isEnrollingFace || !cameraBaseUrl}
-              className="mt-4 w-full px-4 py-2.5 bg-[#1A1A1C] hover:bg-[#262629] disabled:opacity-40 text-[#F8FAFC] border border-[#334155] rounded-xl font-sans text-[10px] uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Camera className={`w-4 h-4 ${isEnrollingFace ? "animate-pulse" : ""}`} />
-              {isEnrollingFace ? "Đang đăng ký từ camera" : "Đăng ký trực tiếp từ ESP32-CAM"}
-            </button>
-            {faceEnrollmentMessage && (
-              <p className={`mt-2 text-[10px] font-mono ${
-                faceIdStatus === "ENROLLED" ? "text-emerald-400" : "text-amber-400"
+            <div className="mt-4 rounded-xl border border-[#1E293B] bg-[#161618]/40 px-4 py-3">
+              <p className={`text-[10px] font-mono ${
+                portraitFile ? "text-emerald-400" : "text-[#64748B]"
               }`}>
-                {faceEnrollmentMessage}
+                {portraitFile
+                  ? `Ảnh sẵn sàng xử lý: ${portraitFile.name}`
+                  : editingUserId && originalAvatarUrl
+                  ? "Giữ nguyên mẫu khuôn mặt hiện tại nếu không chọn ảnh mới."
+                  : "Ảnh sẽ được xử lý khi bạn lưu hồ sơ."}
               </p>
-            )}
+              <p className="mt-1 text-[9px] leading-relaxed text-[#64748B]">
+                Backend sẽ phát hiện đúng một khuôn mặt, trích xuất embedding và lưu mẫu nhận diện vào cơ sở dữ liệu.
+              </p>
+            </div>
           </div>
 
           {/* Action buttons */}
           <div className="flex gap-4">
             <button
-              onClick={handleSaveProfile}
-              className="flex-grow py-3.5 bg-[#1A1A1C] hover:bg-[#262629] border border-[#334155] text-[#F8FAFC] rounded-xl font-sans text-[10px] uppercase tracking-widest font-medium transition-all cursor-pointer text-center"
+              type="button"
+              onClick={(event) => void handleSaveProfile(event)}
+              disabled={isSaving}
+              className="flex-grow py-3.5 bg-[#1A1A1C] hover:bg-[#262629] disabled:opacity-50 disabled:cursor-wait border border-[#334155] text-[#F8FAFC] rounded-xl font-sans text-[10px] uppercase tracking-widest font-medium transition-all cursor-pointer text-center flex items-center justify-center gap-2"
             >
-              {editingUserId ? "Cập nhật Hồ sơ" : "Lưu Hồ sơ"}
+              {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isSaving
+                ? portraitFile ? "Đang xử lý khuôn mặt..." : "Đang lưu hồ sơ..."
+                : editingUserId
+                ? portraitFile ? "Cập nhật & xử lý khuôn mặt" : "Cập nhật hồ sơ"
+                : "Lưu hồ sơ & tạo mẫu khuôn mặt"}
             </button>
             {editingUserId && (
               <button
+                type="button"
                 onClick={handleCancelEdit}
+                disabled={isSaving}
                 className="px-5 py-3.5 bg-[#161618] hover:bg-[#1A1A1C] border border-[#1E293B] text-[#64748B] hover:text-[#94A3B8] rounded-xl font-sans text-[10px] uppercase tracking-widest font-medium transition-all cursor-pointer"
               >
                 Hủy bỏ
               </button>
             )}
           </div>
+          {saveError && (
+            <p role="alert" className="text-[10px] font-mono text-rose-400 leading-relaxed">
+              {saveError}
+            </p>
+          )}
+          {saveSuccess && (
+            <p role="status" className="text-[10px] font-mono text-emerald-400 leading-relaxed">
+              {saveSuccess}
+            </p>
+          )}
         </div>
 
         {/* Right Hand: Directory Database (cols-8) */}

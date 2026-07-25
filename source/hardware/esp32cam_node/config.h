@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "../pin_config.h"
 
 // Update these values before uploading.
 constexpr char kWifiSsid[] = "Phíchhh";
@@ -19,12 +20,16 @@ constexpr unsigned long kHttpTimeoutMs = 5000UL;
 constexpr bool kAutomaticRecognitionEnabled = true;
 constexpr bool kUploadRecognitionSnapshot = true;
 constexpr unsigned long kRecognitionIntervalMs = 1500UL;
-constexpr unsigned long kRecognitionEventCooldownMs = 8000UL;
 constexpr unsigned long kHeartbeatIntervalMs = 30000UL;
 constexpr unsigned long kStreamFrameDelayMs = 10UL;
 constexpr bool kUseFlashLed = false;
-constexpr uint8_t kFlashLedPin = 4;
 constexpr unsigned long kFlashWarmupMs = 150UL;
+
+constexpr char kFaceEmbeddingModel[] = "FaceRecognition112V1S8";
+constexpr size_t kMaxFaceEmbeddingDimension = 1024;
+constexpr size_t kMaxEmbeddingUploadBytes = 192U * 1024U;
+constexpr uint16_t kEmbeddingUploadWidth = 320;
+constexpr uint16_t kEmbeddingUploadHeight = 240;
 
 constexpr uint8_t kFaceJpegQuality = 90;
 constexpr uint8_t kStreamDetectJpegQuality = 72;
@@ -38,21 +43,3 @@ constexpr float kFaceDetectResizeScale = 0.20F;
 constexpr float kFaceKeypointScoreThreshold = 0.50F;
 constexpr float kFaceKeypointNmsThreshold = 0.30F;
 constexpr int kFaceKeypointTopK = 5;
-
-// AI Thinker ESP32-CAM pin map.
-#define PWDN_GPIO_NUM 32
-#define RESET_GPIO_NUM -1
-#define XCLK_GPIO_NUM 0
-#define SIOD_GPIO_NUM 26
-#define SIOC_GPIO_NUM 27
-#define Y9_GPIO_NUM 35
-#define Y8_GPIO_NUM 34
-#define Y7_GPIO_NUM 39
-#define Y6_GPIO_NUM 36
-#define Y5_GPIO_NUM 21
-#define Y4_GPIO_NUM 19
-#define Y3_GPIO_NUM 18
-#define Y2_GPIO_NUM 5
-#define VSYNC_GPIO_NUM 25
-#define HREF_GPIO_NUM 23
-#define PCLK_GPIO_NUM 22

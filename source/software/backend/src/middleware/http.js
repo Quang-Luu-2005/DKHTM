@@ -44,6 +44,9 @@ export function errorHandler(error, _req, res, _next) {
     if (error.code === "P2002") return res.status(409).json({ error: "Resource already exists", target: error.meta?.target });
     if (error.code === "P2025") return res.status(404).json({ error: "Resource not found" });
   }
+  if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode <= 599) {
+    return res.status(error.statusCode).json({ error: error.message });
+  }
   console.error(error);
   res.status(500).json({ error: "Internal server error" });
 }

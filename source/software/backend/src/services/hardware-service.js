@@ -95,7 +95,10 @@ async function postToController(command) {
   try {
     const response = await fetch(`${config.CONTROLLER_URL}/api/hardware/command`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-device-secret": config.DEVICE_SECRET
+      },
       body: JSON.stringify({ commandId: command.commandId, gateId: command.gateId, command: command.command, desiredState: command.requestedState }),
       signal: controller.signal
     });

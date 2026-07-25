@@ -1,5 +1,6 @@
 #include "backend_client.h"
 
+#include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 
@@ -40,14 +41,15 @@ String ControllerBackendClient::nextEventId() {
   return String("controller-") + String(bootId_, HEX) + "-" + String(sequence_);
 }
 
-int ControllerBackendClient::sendEvent(
+BackendEventResponse ControllerBackendClient::sendEvent(
   const String& eventType,
   const String& message,
   const String& extraJson,
   float confidence
 ) {
+  BackendEventResponse result;
   if (WiFi.status() != WL_CONNECTED) {
-    return -1;
+    return result;
   }
 
   String body = "{";
@@ -69,10 +71,27 @@ int ControllerBackendClient::sendEvent(
   http.setTimeout(ControllerConfig::kHttpTimeoutMs);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-device-secret", deviceSecret_);
-  const int statusCode = http.POST(body);
+  result.statusCode = http.POST(body);
   const String response = http.getString();
   http.end();
 
-  Serial.printf("Backend event %s -> %d: %s\n", eventType.c_str(), statusCode, response.c_str());
-  return statusCode;
+  Serial.printf(
+    "Backend event %s -> %d: %s\n",
+    eventType.c_str(),
+    result.statusCode,
+    response.c_str()
+  );
+
+  if (response.length() > 0) {
+    JsonDocument document;
+    const DeserializationError error = deserializeJson(document, response);
+    if (!error) {
+      result.accessDecision = String(document["accessDecision"] | "");
+      result.commandId = String(document["commandId"] | "");
+      result.accessDecision.toUpperCase();
+    } else {
+      Serial.printf("Backend JSON parse failed: %s\n", error.c_str());
+    }
+  }
+  return result;
 }

@@ -25,6 +25,15 @@ static void handleOptions() {
 static void registerPreviewRoutes();
 
 static void startPreviewServer() {
+  static const char* kCollectedHeaders[] = {
+    "x-device-secret",
+    "Content-Type",
+    "Content-Length"
+  };
+  webServer.collectHeaders(
+    kCollectedHeaders,
+    sizeof(kCollectedHeaders) / sizeof(kCollectedHeaders[0])
+  );
   registerPreviewRoutes();
   webServer.begin();
 
