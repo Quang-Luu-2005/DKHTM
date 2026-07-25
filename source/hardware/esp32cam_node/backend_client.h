@@ -5,12 +5,17 @@
 #include <WiFi.h>
 
 #include "app_state.h"
-#include "config.h"
 #include "camera_service.h"
+#include "config.h"
+#include "face_engine.h"
 #include "json_utils.h"
 
 static unsigned long cameraEventSequence = 0;
 static uint32_t cameraBootId = 0;
+static unsigned long lastRecognitionAttemptTime = 0;
+static unsigned long lastRecognitionEventTime = 0;
+static unsigned long lastHeartbeatTime = 0;
+static String lastRecognitionEventKey;
 
 static bool isWiFiConnected() {
   return WiFi.status() == WL_CONNECTED;
@@ -57,111 +62,195 @@ static int postJsonToBackend(const String& path, const String& body) {
 
   WiFiClient client;
   HTTPClient http;
-  String url = String(kServerBaseUrl) + path;
+  const String url = String(kServerBaseUrl) + path;
 
   http.begin(client, url);
   http.setTimeout(kHttpTimeoutMs);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-device-secret", kDeviceSecret);
 
-  int statusCode = http.POST(body);
-  String response = http.getString();
+  const int statusCode = http.POST(body);
+  const String response = http.getString();
   http.end();
 
-  Serial.print("JSON response: ");
+  Serial.print("Backend response: ");
   Serial.println(response);
   return statusCode;
 }
 
-static int postJpegToBackend(const String& pathAndQuery, uint8_t* payload, size_t payloadLength) {
-  if (!kEnableBackendUpload) {
-    Serial.println("Backend upload disabled. Skip JPEG request.");
+static int postJpegToBackend(const String& pathAndQuery, const uint8_t* payload, size_t payloadLength) {
+  if (!kEnableBackendUpload || payload == nullptr || payloadLength == 0) {
     return 0;
   }
 
   if (!connectWiFi()) {
-    Serial.println("WiFi not connected. Skip JPEG request.");
     return -1;
   }
 
   WiFiClient client;
   HTTPClient http;
-  String url = String(kServerBaseUrl) + pathAndQuery;
+  const String url = String(kServerBaseUrl) + pathAndQuery;
 
   http.begin(client, url);
   http.setTimeout(kHttpTimeoutMs);
   http.addHeader("Content-Type", "image/jpeg");
   http.addHeader("x-device-secret", kDeviceSecret);
 
-  int statusCode = http.POST(payload, payloadLength);
+  const int statusCode = http.POST(const_cast<uint8_t*>(payload), payloadLength);
   http.end();
   return statusCode;
 }
 
-static void sendCameraEvent(const String& eventType, const String& message) {
+static String nextCameraEventId() {
   cameraEventSequence++;
-  if (cameraBootId == 0) cameraBootId = esp_random();
-  const String eventId = String("camera-") + String(cameraBootId, HEX) + "-" + String(cameraEventSequence);
+  if (cameraBootId == 0) {
+    cameraBootId = esp_random();
+  }
+  return String("camera-") + String(cameraBootId, HEX) + "-" + String(cameraEventSequence);
+}
+
+static int sendEventWithId(
+  const String& eventId,
+  const String& eventType,
+  const String& message,
+  float confidence,
+  const String& extraJson = ""
+) {
   String body = "{";
-  body += "\"eventId\":\"" + eventId + "\",";
+  body += "\"eventId\":\"" + escapeJson(eventId) + "\",";
   body += "\"deviceId\":\"" + String(kEsp32CamDeviceId) + "\",";
   body += "\"gateId\":\"" + String(kDoorId) + "\",";
   body += "\"source\":\"ESP32_CAM\",";
   body += "\"eventType\":\"" + escapeJson(eventType) + "\",";
   body += "\"message\":\"" + escapeJson(message) + "\",";
-  body += "\"confidence\":0.90";
+  body += "\"confidence\":" + String(confidence, 4);
+  if (extraJson.length() > 0) {
+    body += "," + extraJson;
+  }
   body += "}";
 
-  int statusCode = postJsonToBackend("/api/device/events", body);
-  Serial.print("Send camera event ");
-  Serial.print(eventType);
-  Serial.print(" status: ");
-  Serial.println(statusCode);
+  const int statusCode = postJsonToBackend("/api/device/events", body);
+  Serial.printf("Camera event %s status: %d\n", eventType.c_str(), statusCode);
+  return statusCode;
 }
 
-static bool uploadSnapshot() {
-  camera_fb_t* frame = captureCameraFrame();
-  if (frame == nullptr) {
+static String sendCameraEvent(const String& eventType, const String& message) {
+  const String eventId = nextCameraEventId();
+  sendEventWithId(eventId, eventType, message, 1.0F);
+  return eventId;
+}
+
+static int uploadRecognitionSnapshot(
+  const String& eventId,
+  const uint8_t* payload,
+  size_t payloadLength
+) {
+  if (!kUploadRecognitionSnapshot) {
+    return 0;
+  }
+
+  const String path = String("/api/device/camera/snapshot")
+                    + "?deviceId=" + String(kEsp32CamDeviceId)
+                    + "&gateId=" + String(kDoorId)
+                    + "&eventId=" + eventId;
+  const int statusCode = postJpegToBackend(path, payload, payloadLength);
+  Serial.printf("Recognition snapshot status: %d\n", statusCode);
+  return statusCode;
+}
+
+static bool automaticRecognitionDue() {
+  if (!kAutomaticRecognitionEnabled || !cameraReady || !faceRecognitionAvailable || faceBusy) {
     return false;
   }
 
-  String path = String("/api/device/camera/snapshot")
-              + "?deviceId=" + String(kEsp32CamDeviceId)
-              + "&doorId=" + String(kDoorId);
-
-  int statusCode = postJpegToBackend(path, frame->buf, frame->len);
-  esp_camera_fb_return(frame);
-
-  Serial.print("Upload snapshot status: ");
-  Serial.println(statusCode);
-
-  if (statusCode >= 200 && statusCode < 300) {
-    sendCameraEvent("SNAPSHOT_UPLOADED", "Camera snapshot uploaded");
-    return true;
+  const unsigned long now = millis();
+  if (now - lastRecognitionAttemptTime < kRecognitionIntervalMs) {
+    return false;
   }
-
-  sendCameraEvent("SNAPSHOT_UPLOAD_FAILED", "Camera snapshot upload failed");
-  return false;
+  lastRecognitionAttemptTime = now;
+  return true;
 }
 
-static void processBackendSnapshotTask() {
+static bool publishRecognitionOutcome(const FaceProcessingOutcome& outcome) {
+  if (!outcome.detected) {
+    return false;
+  }
+
+  const String eventKey = outcome.recognized
+    ? String("GRANT:") + outcome.matchedName
+    : String("DENY:UNKNOWN");
+  const unsigned long now = millis();
+  if (eventKey == lastRecognitionEventKey
+      && now - lastRecognitionEventTime < kRecognitionEventCooldownMs) {
+    return false;
+  }
+
+  lastRecognitionEventKey = eventKey;
+  lastRecognitionEventTime = now;
+
+  const String eventId = nextCameraEventId();
+  const String eventType = outcome.recognized ? "FACE_RECOGNIZED" : "FACE_DENIED";
+  const String subjectName = outcome.recognized ? outcome.matchedName : "Khuôn mặt không xác định";
+  const String message = outcome.recognized
+    ? "Nhận diện thành công: " + subjectName
+    : "Từ chối truy cập: khuôn mặt chưa đăng ký";
+
+  String extra = "\"recognized\":";
+  extra += outcome.recognized ? "true" : "false";
+  extra += ",\"recognizedId\":" + String(outcome.recognizedId);
+  extra += ",\"recognizedName\":\"" + escapeJson(subjectName) + "\"";
+  extra += ",\"faceCount\":" + String(outcome.faceCount);
+  extra += ",\"accessDecision\":\"";
+  extra += outcome.recognized ? "GRANT" : "DENY";
+  extra += "\"";
+
+  const int statusCode = sendEventWithId(
+    eventId,
+    eventType,
+    message,
+    outcome.recognized ? outcome.similarity : 0.0F,
+    extra
+  );
+  uploadRecognitionSnapshot(eventId, outcome.jpegBuffer, outcome.jpegLength);
+  return statusCode >= 200 && statusCode < 300;
+}
+
+static void processAutomaticRecognitionTask() {
+  if (!automaticRecognitionDue() || !acquireFaceLock()) {
+    return;
+  }
+
+  camera_fb_t* frame = captureCameraFrame();
+  FaceProcessingOptions options;
+  options.detect = true;
+  options.recognize = true;
+  options.drawBoxes = true;
+  options.action = "automatic-recognition";
+
+  FaceProcessingOutcome outcome;
+  const bool processed = processFrameForFace(frame, options, outcome);
+  if (processed) {
+    updateLastFaceResult(buildFaceResultJson(options.action, outcome));
+    publishRecognitionOutcome(outcome);
+  } else {
+    updateLastFaceResult(buildSimpleFaceResultJson(false, options.action, outcome.error));
+  }
+
+  if (outcome.jpegBuffer != nullptr) {
+    free(outcome.jpegBuffer);
+  }
+  releaseFaceLock();
+}
+
+static void processCameraHeartbeatTask() {
   if (!kEnableBackendUpload) {
     return;
   }
 
-  unsigned long now = millis();
-  if (now - lastSnapshotTime < kSnapshotIntervalMs) {
+  const unsigned long now = millis();
+  if (now - lastHeartbeatTime < kHeartbeatIntervalMs) {
     return;
   }
-
-  lastSnapshotTime = now;
-
-  if (!cameraReady) {
-    Serial.println("Camera is not ready. Skip snapshot.");
-    sendCameraEvent("CAMERA_ERROR", "Camera is not ready");
-    return;
-  }
-
-  sendCameraEvent("PERSON_CHECK", "Camera checking gate area");
-  uploadSnapshot();
+  lastHeartbeatTime = now;
+  sendCameraEvent("CAMERA_HEARTBEAT", cameraReady ? "Camera hoạt động bình thường" : "Camera chưa sẵn sàng");
 }

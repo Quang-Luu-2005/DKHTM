@@ -15,6 +15,8 @@ const envSchema = z.object({
   FRONTEND_ORIGIN: z.string().default("http://localhost:3000"),
   COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   COMMAND_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  ACCESS_UNLOCK_DURATION_MS: z.coerce.number().int().positive().default(5000),
+  DENIED_SIGNAL_DURATION_MS: z.coerce.number().int().positive().default(1000),
   DEVICE_OFFLINE_AFTER_MS: z.coerce.number().int().positive().default(45000),
   UPLOAD_DIR: z.string().default(path.join(rootDir, "uploads"))
 });

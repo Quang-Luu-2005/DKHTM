@@ -14,16 +14,18 @@ import {
   User,
   Image
 } from "lucide-react";
-import { User as UserType } from "../types";
+import { AuditLog, User as UserType } from "../types";
 
 interface RegistrationViewProps {
   users: UserType[];
+  logs: AuditLog[];
   onSaveUser: (user: UserType) => void;
   onDeleteUser: (id: string) => void;
 }
 
 export default function RegistrationView({
   users,
+  logs,
   onSaveUser,
   onDeleteUser
 }: RegistrationViewProps) {
@@ -36,6 +38,11 @@ export default function RegistrationView({
   const [rfidUid, setRfidUid] = useState("NOT LINKED");
   const [isScanningRfid, setIsScanningRfid] = useState(false);
   const [faceIdStatus, setFaceIdStatus] = useState<UserType["faceIdStatus"]>("PENDING");
+  const [isEnrollingFace, setIsEnrollingFace] = useState(false);
+  const [faceEnrollmentMessage, setFaceEnrollmentMessage] = useState("");
+  const rfidBaselineId = React.useRef<string | undefined>(undefined);
+  const rfidTimeout = React.useRef<number | undefined>(undefined);
+  const cameraBaseUrl = (import.meta.env.VITE_CAMERA_URL || "").replace(/\/$/, "");
   
   // Drag and drop / portrait upload states
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
@@ -50,22 +57,62 @@ export default function RegistrationView({
   // Editing state tracker
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
-  // RFID emulation trigger
+  // Chờ chính UID được controller gửi qua backend/SSE, không tạo UID giả.
   const handleScanRfid = () => {
     if (isScanningRfid) return;
+    rfidBaselineId.current = logs.find(log => log.accessMethod === "RFID")?.id;
     setIsScanningRfid(true);
     setRfidUid("SCANNING...");
 
-    setTimeout(() => {
-      const hexVals = "0123456789ABCDEF";
-      let generatedUid = "";
-      for (let i = 0; i < 5; i++) {
-        generatedUid += hexVals[Math.floor(Math.random() * 16)] + hexVals[Math.floor(Math.random() * 16)];
-        if (i < 4) generatedUid += ":";
-      }
-      setRfidUid(generatedUid);
+    if (rfidTimeout.current !== undefined) window.clearTimeout(rfidTimeout.current);
+    rfidTimeout.current = window.setTimeout(() => {
       setIsScanningRfid(false);
-    }, 1500);
+      setRfidUid("NOT LINKED");
+      alert("Chưa nhận được thẻ từ controller. Hãy kiểm tra kết nối và thử quét lại.");
+    }, 15000);
+  };
+
+  React.useEffect(() => {
+    if (!isScanningRfid) return;
+    const latest = logs.find(log => log.accessMethod === "RFID");
+    const scannedUid = latest?.metadata?.rfidUid;
+    if (!latest || latest.id === rfidBaselineId.current || typeof scannedUid !== "string") return;
+
+    if (rfidTimeout.current !== undefined) window.clearTimeout(rfidTimeout.current);
+    setRfidUid(scannedUid);
+    setIsScanningRfid(false);
+  }, [isScanningRfid, logs]);
+
+  React.useEffect(() => () => {
+    if (rfidTimeout.current !== undefined) window.clearTimeout(rfidTimeout.current);
+  }, []);
+
+  const handleEnrollFace = async () => {
+    if (!fullName.trim()) {
+      alert("Nhập họ tên trước khi đăng ký khuôn mặt.");
+      return;
+    }
+    if (!cameraBaseUrl) {
+      alert("Chưa cấu hình VITE_CAMERA_URL cho dashboard.");
+      return;
+    }
+
+    setIsEnrollingFace(true);
+    setFaceEnrollmentMessage("Đang chụp và mã hóa khuôn mặt...");
+    try {
+      const response = await fetch(`${cameraBaseUrl}/face/enroll?name=${encodeURIComponent(fullName.trim())}`);
+      const result = await response.json();
+      if (!response.ok || result.ok !== true) {
+        throw new Error(result.message || "ESP32-CAM không thể đăng ký khuôn mặt.");
+      }
+      setFaceIdStatus("ENROLLED");
+      setFaceEnrollmentMessage(result.message || "Đăng ký khuôn mặt thành công.");
+    } catch (error) {
+      setFaceIdStatus("PENDING");
+      setFaceEnrollmentMessage(error instanceof Error ? error.message : "Đăng ký khuôn mặt thất bại.");
+    } finally {
+      setIsEnrollingFace(false);
+    }
   };
 
   // Drag & drop file handlers
@@ -104,7 +151,6 @@ export default function RegistrationView({
     reader.onload = (e) => {
       if (e.target?.result) {
         setAvatarUrl(e.target.result as string);
-        setFaceIdStatus("ENROLLED");
       }
     };
     reader.readAsDataURL(file);
@@ -112,7 +158,6 @@ export default function RegistrationView({
 
   const handleRemoveImage = () => {
     setAvatarUrl(undefined);
-    setFaceIdStatus("PENDING");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -370,6 +415,23 @@ export default function RegistrationView({
                   Xóa và Tải lại
                 </button>
               </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleEnrollFace}
+              disabled={isEnrollingFace || !cameraBaseUrl}
+              className="mt-4 w-full px-4 py-2.5 bg-[#1A1A1C] hover:bg-[#262629] disabled:opacity-40 text-[#F8FAFC] border border-[#334155] rounded-xl font-sans text-[10px] uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Camera className={`w-4 h-4 ${isEnrollingFace ? "animate-pulse" : ""}`} />
+              {isEnrollingFace ? "Đang đăng ký từ camera" : "Đăng ký trực tiếp từ ESP32-CAM"}
+            </button>
+            {faceEnrollmentMessage && (
+              <p className={`mt-2 text-[10px] font-mono ${
+                faceIdStatus === "ENROLLED" ? "text-emerald-400" : "text-amber-400"
+              }`}>
+                {faceEnrollmentMessage}
+              </p>
             )}
           </div>
 

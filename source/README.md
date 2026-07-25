@@ -7,6 +7,8 @@ Sentinel kết nối dashboard React, backend Node.js/Express, PostgreSQL và ha
 - `hardware/esp32cam_node`: camera gửi device event và snapshot JPEG.
 - `hardware/main_controller`: điều khiển servo/LED/buzzer, nhận lệnh khóa/mở.
 - `docs/backend_sentinel_v1_plan.md`: đặc tả backend v1.
+- `docs/camera_access_integration.md`: luồng tích hợp Face ID/RFID → backend →
+  bộ điều khiển cửa và sơ đồ module/GPIO sau khi hợp nhất `DKHTM-Van`.
 
 Luồng chính: ESP32-CAM gửi event/ảnh vào backend; dashboard đọc REST và SSE; lệnh phần cứng từ dashboard được backend chuyển tới main controller và theo dõi acknowledgement.
 

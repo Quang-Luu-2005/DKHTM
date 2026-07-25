@@ -7,7 +7,7 @@
 #include "config.h"
 #include "web_server.h"
 
-static void sendCameraEvent(const String& eventType, const String& message);
+static String sendCameraEvent(const String& eventType, const String& message);
 
 static bool initCameraHardware() {
   pinMode(kFlashLedPin, OUTPUT);

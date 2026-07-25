@@ -52,14 +52,14 @@ export async function queueHardwareUpdate(desiredState, options = {}) {
       create: { gateId, desiredState, reportedState: initialHardwareState, lastCommandId: commandId },
       update: { desiredState, lastCommandId: commandId }
     });
-    const log = await tx.auditLog.create({
+    const log = options.skipAudit ? null : await tx.auditLog.create({
       data: {
         subjectName: options.subjectName || "Hardware state command",
         accessMethod: "MANUAL_OVERRIDE",
         gateId,
         status: "ONLINE",
         confidence: "100%",
-        source: "DASHBOARD",
+        source: options.source || "DASHBOARD",
         deviceId: controller.id,
         metadata: { commandId, desiredState }
       }
@@ -69,7 +69,7 @@ export async function queueHardwareUpdate(desiredState, options = {}) {
 
   publish("hardware.command", commandView(result.command));
   publish("hardware.state", hardwareResponse(result.hardware, result.command));
-  publish("audit.log", serializeAuditLog(result.log));
+  if (result.log) publish("audit.log", serializeAuditLog(result.log));
   setImmediate(() => scheduleHardwareCommand(result.command.id, result.command.gateId));
   return hardwareResponse(result.hardware, result.command);
 }

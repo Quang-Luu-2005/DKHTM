@@ -4,16 +4,20 @@ import { config } from "../config.js";
 import { serializeAuditLog } from "../domain.js";
 import { publish } from "../events/sse.js";
 import { prisma } from "../prisma.js";
+import { applyAccessDecision } from "./access-service.js";
+import { classifyDeviceEvent, finalizeRfidDecision, normalizeRfidUid } from "./access-policy.js";
 
-function classifyEvent(event) {
-  const text = `${event.eventType} ${event.message}`.toUpperCase();
-  const violation = /(ERROR|FAILED|MISMATCH|DENIED|JUMP|CLIMB|TAILGAT|VIOLATION)/.test(text);
-  let accessMethod = "MANUAL_OVERRIDE";
-  if (text.includes("TAILGAT")) accessMethod = "TAILGATING";
-  else if (/(JUMP|CLIMB)/.test(text)) accessMethod = "GATE_JUMPING";
-  else if (text.includes("RFID")) accessMethod = "RFID";
-  else if (text.includes("FACE")) accessMethod = "FACE_ID";
-  return { status: violation ? "VIOLATION" : "ONLINE", accessMethod };
+async function resolveClassification(input) {
+  let classification = classifyDeviceEvent(input);
+  if (classification.decision !== "VERIFY_RFID") return classification;
+
+  const rfidUid = normalizeRfidUid(input.rfidUid);
+  const candidates = await prisma.user.findMany({
+    where: { rfidUid: { not: null } },
+    select: { id: true, fullName: true, rfidUid: true }
+  });
+  const user = candidates.find(candidate => normalizeRfidUid(candidate.rfidUid) === rfidUid);
+  return finalizeRfidDecision(classification, user, rfidUid);
 }
 
 export async function ingestDeviceEvent(input) {
@@ -22,7 +26,14 @@ export async function ingestDeviceEvent(input) {
   const existing = await prisma.deviceEvent.findUnique({ where: { deviceId_eventId: { deviceId: input.deviceId, eventId } } });
   if (existing) return { duplicate: true, event: existing, log: null };
 
-  const classification = classifyEvent(input);
+  const classification = await resolveClassification(input);
+  const metadata = {
+    eventId,
+    eventType: input.eventType,
+    accessDecision: classification.decision
+  };
+  if (input.recognizedId !== undefined) metadata.recognizedId = input.recognizedId;
+  if (input.rfidUid !== undefined) metadata.rfidUid = input.rfidUid;
   let result;
   try {
     result = await prisma.$transaction(async tx => {
@@ -32,20 +43,29 @@ export async function ingestDeviceEvent(input) {
         update: { gateId, online: true, lastSeenAt: new Date(), lastError: classification.status === "VIOLATION" ? input.message : null }
       });
       const event = await tx.deviceEvent.create({
-        data: { deviceId: input.deviceId, eventId, eventType: input.eventType, message: input.message, confidence: input.confidence, occurredAt: input.occurredAt ? new Date(input.occurredAt) : null, payload: input }
-      });
-      const log = await tx.auditLog.create({
         data: {
-          subjectName: input.message || input.eventType,
+          deviceId: input.deviceId,
+          eventId,
+          eventType: input.eventType,
+          message: input.message,
+          confidence: input.confidence,
+          occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+          payload: { ...input, accessDecision: classification.decision }
+        }
+      });
+      const log = classification.shouldAudit ? await tx.auditLog.create({
+        data: {
+          subjectName: classification.subjectName,
+          subjectId: classification.subjectId,
           accessMethod: classification.accessMethod,
           gateId,
           status: classification.status,
-          confidence: input.confidence === undefined ? "N/A" : `${Math.round(input.confidence * 100)}%`,
+          confidence: classification.confidence,
           source: input.source,
           deviceId: input.deviceId,
-          metadata: { eventId, eventType: input.eventType }
+          metadata
         }
-      });
+      }) : null;
       return { device, event, log };
     });
   } catch (error) {
@@ -57,9 +77,27 @@ export async function ingestDeviceEvent(input) {
 
   publish("device.event", { ...input, eventId, gateId, receivedAt: result.event.receivedAt.toISOString() });
   if (/ONLINE/.test(input.eventType)) publish("device.online", result.device);
-  const log = serializeAuditLog(result.log);
-  publish("audit.log", log);
-  return { duplicate: false, event: result.event, log };
+  const log = result.log ? serializeAuditLog(result.log) : null;
+  if (log) publish("audit.log", log);
+
+  let hardware = null;
+  try {
+    hardware = await applyAccessDecision({
+      decision: classification.decision,
+      gateId,
+      subjectName: classification.subjectName
+    });
+  } catch (error) {
+    console.error("Failed to queue automatic access decision", error);
+  }
+
+  return {
+    duplicate: false,
+    event: result.event,
+    log,
+    accessDecision: classification.decision,
+    hardware
+  };
 }
 
 export async function getDevice(id) {

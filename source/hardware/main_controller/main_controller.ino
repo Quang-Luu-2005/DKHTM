@@ -1,69 +1,31 @@
 #include <Arduino.h>
-#include <ESP32Servo.h>
-#include <WiFi.h>
+#include <ArduinoJson.h>
 #include <WebServer.h>
+#include <WiFi.h>
 
-// Set these to the same network used by the Sentinel backend.
-constexpr char kWifiSsid[] = "PhĂ­chhh";
-constexpr char kWifiPass[] = "canhacungvui";
-constexpr int kWifiMaxRetries = 30;
+#include "backend_client.h"
+#include "config.h"
+#include "gate_actuator.h"
+#include "rfid_reader.h"
+#include "safety_button.h"
+#include "status_indicators.h"
+#include "ultrasonic_sensor.h"
+
+using namespace ControllerConfig;
+
 WebServer webServer(80);
+GateActuator gate(kServoPin, kLockedAngle, kUnlockedAngle);
+StatusIndicators indicators(kRedLedPin, kGreenLedPin, kBuzzerPin);
+RfidReader rfid(kRfidSsPin, kRfidRstPin);
+UltrasonicSensor ultrasonic(kUltrasonicTrigPin, kUltrasonicEchoPin);
+SafetyButton safetyButton(kButtonPin);
+ControllerBackendClient backend(kBackendBaseUrl, kDeviceSecret, kDeviceId, kGateId);
 
-constexpr uint8_t kGrantedLedPin = 21;
-constexpr uint8_t kDeniedLedPin = 19;
-constexpr uint8_t kServoPin = 22;
-
-constexpr int kLockAngle = 0;
-constexpr int kUnlockAngle = 90;
-constexpr unsigned long kUnlockDurationMs = 3000UL;
-
-Servo gateServo;
-String serialBuffer;
-bool gateLocked = true;
-bool buzzerActive = false;
-String ledState = "RED / RESTRICTED";
-
-void setIdleLed() {
-  digitalWrite(kGrantedLedPin, LOW);
-  digitalWrite(kDeniedLedPin, LOW);
-}
-
-void lockGate() {
-  gateServo.write(kLockAngle);
-  setIdleLed();
-  gateLocked = true;
-  buzzerActive = false;
-  ledState = "RED / RESTRICTED";
-  Serial.println("Gate locked.");
-}
-
-void unlockGate() {
-  digitalWrite(kGrantedLedPin, HIGH);
-  digitalWrite(kDeniedLedPin, LOW);
-  gateServo.write(kUnlockAngle);
-  gateLocked = false;
-  buzzerActive = false;
-  ledState = "GREEN / ACCESS ALLOWED";
-  Serial.println("Gate unlocked.");
-}
-
-void unlockGateDemo() {
-  unlockGate();
-  delay(kUnlockDurationMs);
-  lockGate();
-}
-
-void signalDenied() {
-  digitalWrite(kGrantedLedPin, LOW);
-  digitalWrite(kDeniedLedPin, HIGH);
-  gateLocked = true;
-  buzzerActive = true;
-  ledState = "RED / RESTRICTED";
-  Serial.println("Access denied indicator on.");
-  delay(500);
-  setIdleLed();
-  buzzerActive = false;
-}
+unsigned long lastSensorPollAt = 0;
+unsigned long lastViolationAt = 0;
+unsigned long lastHeartbeatAt = 0;
+unsigned long lastWifiAttemptAt = 0;
+bool serverRoutesRegistered = false;
 
 void sendCors() {
   webServer.sendHeader("Access-Control-Allow-Origin", "*");
@@ -71,192 +33,222 @@ void sendCors() {
   webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
-String jsonStringField(const String& json, const String& key) {
-  const String marker = "\"" + key + "\"";
-  int keyIndex = json.indexOf(marker);
-  if (keyIndex < 0) return "";
-  int colonIndex = json.indexOf(':', keyIndex + marker.length());
-  int startQuote = json.indexOf('"', colonIndex + 1);
-  int endQuote = json.indexOf('"', startQuote + 1);
-  if (colonIndex < 0 || startQuote < 0 || endQuote < 0) return "";
-  return json.substring(startQuote + 1, endQuote);
-}
+bool connectWifi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    return true;
+  }
 
-bool jsonBoolField(const String& json, const String& key, bool fallback) {
-  const String marker = "\"" + key + "\"";
-  int keyIndex = json.indexOf(marker);
-  if (keyIndex < 0) return fallback;
-  int colonIndex = json.indexOf(':', keyIndex + marker.length());
-  if (colonIndex < 0) return fallback;
-  String value = json.substring(colonIndex + 1, colonIndex + 8);
-  value.trim();
-  if (value.startsWith("true")) return true;
-  if (value.startsWith("false")) return false;
-  return fallback;
-}
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(kWifiSsid, kWifiPass);
+  Serial.print("Connecting WiFi");
+  for (int retry = 0; retry < kWifiMaxRetries && WiFi.status() != WL_CONNECTED; retry++) {
+    delay(kWifiRetryDelayMs);
+    Serial.print(".");
+  }
+  Serial.println();
 
-void applyDesiredState(const String& body) {
-  gateLocked = jsonBoolField(body, "servoLocked", gateLocked);
-  String requestedBuzzer = jsonStringField(body, "systemBuzzer");
-  if (!requestedBuzzer.isEmpty()) buzzerActive = requestedBuzzer == "ACTIVE";
-  String requestedLed = jsonStringField(body, "indicatorLed");
-  if (!requestedLed.isEmpty()) ledState = requestedLed;
-
-  gateServo.write(gateLocked ? kLockAngle : kUnlockAngle);
-  const bool green = ledState.indexOf("GREEN") >= 0;
-  digitalWrite(kGrantedLedPin, green ? HIGH : LOW);
-  digitalWrite(kDeniedLedPin, green ? LOW : HIGH);
-  Serial.println(gateLocked ? "Desired state applied: locked." : "Desired state applied: unlocked.");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("Controller IP: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  }
+  Serial.println("WiFi unavailable; local safety functions remain active.");
+  return false;
 }
 
 void sendControllerStatus(const String& commandId = "") {
+  JsonDocument document;
+  document["ok"] = true;
+  if (!commandId.isEmpty()) {
+    document["commandId"] = commandId;
+  }
+  document["online"] = true;
+  document["servoLocked"] = gate.isLocked();
+  document["servoArm"] = gate.armState();
+  document["indicatorLed"] = indicators.ledState();
+  document["systemBuzzer"] = indicators.buzzerActive() ? "ACTIVE" : "MUTED";
+
+  JsonObject hardware = document["hardware"].to<JsonObject>();
+  hardware["servoLocked"] = gate.isLocked();
+  hardware["servoArm"] = gate.armState();
+  hardware["indicatorLed"] = indicators.ledState();
+  hardware["systemBuzzer"] = indicators.buzzerActive() ? "ACTIVE" : "MUTED";
+  hardware["rfidReady"] = true;
+  hardware["ultrasonicReady"] = true;
+
+  String body;
+  serializeJson(document, body);
   sendCors();
-  String body = "{\"ok\":true";
-  if (!commandId.isEmpty()) body += ",\"commandId\":\"" + commandId + "\"";
-  body += ",\"online\":true,\"servoLocked\":";
-  body += gateLocked ? "true" : "false";
-  body += ",\"servoArm\":\"";
-  body += gateLocked ? "SECURED / CLOSED" : "OPENED / UNSECURED";
-  body += "\",\"indicatorLed\":\"" + ledState + "\",\"systemBuzzer\":\"";
-  body += buzzerActive ? "ACTIVE" : "MUTED";
-  body += "\",\"hardware\":{\"servoLocked\":";
-  body += gateLocked ? "true" : "false";
-  body += ",\"servoArm\":\"";
-  body += gateLocked ? "SECURED / CLOSED" : "OPENED / UNSECURED";
-  body += "\",\"indicatorLed\":\"" + ledState + "\",\"systemBuzzer\":\"";
-  body += buzzerActive ? "ACTIVE" : "MUTED";
-  body += "\"}}";
   webServer.send(200, "application/json", body);
 }
 
-void handleControllerStatus() {
-  sendControllerStatus();
+void applyDesiredState(JsonObjectConst desiredState) {
+  const bool locked = desiredState["servoLocked"] | gate.isLocked();
+  if (locked) {
+    gate.lock();
+  } else {
+    gate.unlock(kUnlockDurationMs);
+  }
+
+  const String ledState = desiredState["indicatorLed"] | "";
+  if (ledState.indexOf("GREEN") >= 0 && !locked) {
+    indicators.granted();
+  } else {
+    indicators.restricted();
+  }
+
+  const String buzzerState = desiredState["systemBuzzer"] | "";
+  if (buzzerState == "ACTIVE") {
+    indicators.signalDenied(kDeniedSignalDurationMs);
+  }
 }
 
 void handleControllerCommand() {
-  String body = webServer.arg("plain");
-  const String commandId = jsonStringField(body, "commandId");
-  String command = jsonStringField(body, "command");
-  command.toLowerCase();
-  sendCors();
-  if (command == "set_state") applyDesiredState(body);
-  else if (command == "grant") unlockGate();
-  else if (command == "deny") signalDenied();
-  else if (command == "idle") { setIdleLed(); buzzerActive = false; }
-  else if (command == "lock") lockGate();
-  else { webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown command\"}"); return; }
+  JsonDocument document;
+  const DeserializationError error = deserializeJson(document, webServer.arg("plain"));
+  if (error) {
+    sendCors();
+    webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  const String commandId = document["commandId"] | "";
+  String command = document["command"] | "";
+  command.toUpperCase();
+
+  if (command == "SET_STATE") {
+    applyDesiredState(document["desiredState"].as<JsonObjectConst>());
+  } else if (command == "GRANT") {
+    gate.unlock(kUnlockDurationMs);
+    indicators.granted();
+  } else if (command == "DENY") {
+    gate.lock();
+    indicators.signalDenied(kDeniedSignalDurationMs);
+  } else if (command == "LOCK") {
+    gate.lock();
+    indicators.restricted();
+  } else if (command == "IDLE") {
+    indicators.idle();
+  } else {
+    sendCors();
+    webServer.send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown command\"}");
+    return;
+  }
+
   sendControllerStatus(commandId);
 }
 
 void startControllerServer() {
-  webServer.on("/api/hardware/status", HTTP_GET, handleControllerStatus);
-  webServer.on("/api/hardware/command", HTTP_POST, handleControllerCommand);
-  webServer.on("/api/hardware/status", HTTP_OPTIONS, []() { sendCors(); webServer.send(204); });
-  webServer.on("/api/hardware/command", HTTP_OPTIONS, []() { sendCors(); webServer.send(204); });
+  if (!serverRoutesRegistered) {
+    webServer.on("/api/hardware/status", HTTP_GET, []() { sendControllerStatus(); });
+    webServer.on("/api/hardware/command", HTTP_POST, handleControllerCommand);
+    webServer.on("/api/hardware/status", HTTP_OPTIONS, []() {
+      sendCors();
+      webServer.send(204);
+    });
+    webServer.on("/api/hardware/command", HTTP_OPTIONS, []() {
+      sendCors();
+      webServer.send(204);
+    });
+    serverRoutesRegistered = true;
+  }
   webServer.begin();
   Serial.print("Controller HTTP API: http://");
   Serial.println(WiFi.localIP());
 }
 
-bool connectWifi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(kWifiSsid, kWifiPass);
-  for (int retry = 0; retry < kWifiMaxRetries && WiFi.status() != WL_CONNECTED; retry++) delay(500);
-  return WiFi.status() == WL_CONNECTED;
+void processRfid() {
+  String uid;
+  if (!rfid.poll(uid)) {
+    return;
+  }
+
+  Serial.println("RFID scanned: " + uid);
+  backend.sendEvent(
+    "RFID_SCANNED",
+    "Đã quét thẻ RFID " + uid,
+    "\"rfidUid\":\"" + uid + "\""
+  );
 }
 
-void printHelp() {
-  Serial.println();
-  Serial.println("=== ESP32 main controller demo ===");
-  Serial.println("Commands via Serial Monitor:");
-  Serial.println("  grant | 1 | d  -> open servo + granted LED");
-  Serial.println("  deny  | 0 | s  -> blink denied LED");
-  Serial.println("  lock           -> force lock position");
-  Serial.println("  idle           -> turn both LEDs off");
-  Serial.println("  help           -> show this message");
-  Serial.println();
+void processUltrasonic() {
+  const unsigned long now = millis();
+  if (!gate.isLocked() || now - lastSensorPollAt < kSensorPollIntervalMs) {
+    return;
+  }
+  lastSensorPollAt = now;
+
+  const int distance = ultrasonic.distanceCm();
+  if (distance <= 0 || distance > kViolationDistanceCm) {
+    return;
+  }
+  if (lastViolationAt != 0 && now - lastViolationAt < kViolationCooldownMs) {
+    return;
+  }
+  lastViolationAt = now;
+
+  indicators.signalDenied(kDeniedSignalDurationMs);
+  backend.sendEvent(
+    "INTRUSION_DETECTED",
+    "Phát hiện vật cản khi cửa đang khóa",
+    "\"distanceCm\":" + String(distance)
+  );
 }
 
-void handleCommand(String command) {
-  command.trim();
-  command.toLowerCase();
-
-  if (command.isEmpty()) {
+void processHeartbeat() {
+  const unsigned long now = millis();
+  if (now - lastHeartbeatAt < kHeartbeatIntervalMs) {
     return;
   }
-
-  if (command == "grant" || command == "1" || command == "d") {
-    unlockGateDemo();
-    return;
-  }
-
-  if (command == "deny" || command == "0" || command == "s") {
-    signalDenied();
-    return;
-  }
-
-  if (command == "lock") {
-    lockGate();
-    return;
-  }
-
-  if (command == "idle") {
-    setIdleLed();
-    Serial.println("Indicators set to idle.");
-    return;
-  }
-
-  if (command == "help") {
-    printHelp();
-    return;
-  }
-
-  Serial.print("Unknown command: ");
-  Serial.println(command);
-  printHelp();
+  lastHeartbeatAt = now;
+  backend.sendEvent("CONTROLLER_HEARTBEAT", "Bộ điều khiển hoạt động bình thường");
 }
 
-void pollSerialCommands() {
-  while (Serial.available() > 0) {
-    char ch = static_cast<char>(Serial.read());
-
-    if (ch == '\r') {
-      continue;
-    }
-
-    if (ch == '\n') {
-      handleCommand(serialBuffer);
-      serialBuffer = "";
-      continue;
-    }
-
-    serialBuffer += ch;
-
-    if (serialBuffer.length() > 64) {
-      serialBuffer.remove(0, serialBuffer.length() - 64);
-    }
+void maintainWifi() {
+  const unsigned long now = millis();
+  if (WiFi.status() == WL_CONNECTED || now - lastWifiAttemptAt < 10000UL) {
+    return;
+  }
+  lastWifiAttemptAt = now;
+  if (connectWifi()) {
+    startControllerServer();
+    backend.sendEvent("CONTROLLER_ONLINE", "Bộ điều khiển đã kết nối lại");
   }
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
-  pinMode(kGrantedLedPin, OUTPUT);
-  pinMode(kDeniedLedPin, OUTPUT);
+  gate.begin();
+  indicators.begin();
+  rfid.begin(kRfidSckPin, kRfidMisoPin, kRfidMosiPin);
+  ultrasonic.begin();
+  safetyButton.begin();
 
-  ESP32PWM::allocateTimer(0);
-  gateServo.setPeriodHertz(50);
-  gateServo.attach(kServoPin, 500, 2400);
-
-  lockGate();
-  printHelp();
-  if (connectWifi()) startControllerServer();
-  else Serial.println("WiFi unavailable; serial control remains active.");
+  if (connectWifi()) {
+    startControllerServer();
+    backend.sendEvent("CONTROLLER_ONLINE", "Bộ điều khiển cổng đã sẵn sàng");
+  }
 }
 
 void loop() {
-  pollSerialCommands();
+  maintainWifi();
   webServer.handleClient();
-  delay(20);
+
+  processRfid();
+  processUltrasonic();
+  processHeartbeat();
+
+  if (gate.update()) {
+    indicators.restricted();
+  }
+  indicators.update();
+
+  if (safetyButton.pressed()) {
+    indicators.restricted();
+    Serial.println("Safety alarm cleared by button.");
+  }
+
+  delay(10);
 }

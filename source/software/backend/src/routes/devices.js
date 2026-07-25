@@ -8,7 +8,12 @@ import { findSnapshot, latestSnapshot, saveSnapshot } from "../services/snapshot
 export const devicesRouter = Router();
 devicesRouter.post("/events", requireDevice, validate(deviceEventSchema), asyncHandler(async (req, res) => {
   const result = await ingestDeviceEvent(req.validated.body);
-  res.status(result.duplicate ? 200 : 201).json({ ok: true, duplicate: result.duplicate });
+  res.status(result.duplicate ? 200 : 201).json({
+    ok: true,
+    duplicate: result.duplicate,
+    accessDecision: result.accessDecision || null,
+    commandId: result.hardware?.commandId || null
+  });
 }));
 devicesRouter.post("/camera/snapshot", requireDevice, express.raw({ type: "image/jpeg", limit: "8mb" }), validate(snapshotQuerySchema, "query"), asyncHandler(async (req, res) => {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "JPEG body is required" });

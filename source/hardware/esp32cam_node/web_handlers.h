@@ -7,6 +7,7 @@
 #include "config.h"
 #include "camera_service.h"
 #include "face_engine.h"
+#include "backend_client.h"
 #include "json_utils.h"
 #include "web_server.h"
 
@@ -286,6 +287,9 @@ static void handleCapture() {
   }
 
   updateLastFaceResult(buildFaceResultJson(options.action, outcome));
+  if (recognize) {
+    publishRecognitionOutcome(outcome);
+  }
   sendJpegResponse(outcome.jpegBuffer, outcome.jpegLength);
   if (outcome.jpegBuffer != nullptr) {
     free(outcome.jpegBuffer);
@@ -335,21 +339,37 @@ static void handleStream() {
     size_t jpegLength = 0;
     bool freeBuffer = false;
 
-    const bool shouldDetectThisFrame = detect && (((frameIndex - 1) % static_cast<unsigned long>(detectEvery)) == 0UL);
+    const bool requestedDetectionDue =
+      detect && (((frameIndex - 1) % static_cast<unsigned long>(detectEvery)) == 0UL);
+    const bool automaticRecognition = automaticRecognitionDue();
+    const bool shouldDetectThisFrame = requestedDetectionDue || automaticRecognition;
 
     if (shouldDetectThisFrame) {
+      bool faceLockAcquired = false;
+      if (automaticRecognition) {
+        faceLockAcquired = acquireFaceLock();
+      }
+
       FaceProcessingOptions options;
       options.detect = true;
+      options.recognize = faceLockAcquired;
       options.drawBoxes = true;
-      options.action = "stream-detect";
+      options.action = faceLockAcquired ? "stream-recognition" : "stream-detect";
 
       FaceProcessingOutcome outcome;
       if (!processFrameForFace(frame, options, outcome, static_cast<uint8_t>(streamJpegQuality))) {
         updateLastFaceResult(buildSimpleFaceResultJson(false, options.action, outcome.error));
+        if (faceLockAcquired) {
+          releaseFaceLock();
+        }
         break;
       }
 
       updateLastFaceResult(buildFaceResultJson(options.action, outcome));
+      if (faceLockAcquired) {
+        publishRecognitionOutcome(outcome);
+        releaseFaceLock();
+      }
       jpegBuffer = outcome.jpegBuffer;
       jpegLength = outcome.jpegLength;
       freeBuffer = true;
@@ -372,6 +392,7 @@ static void handleStream() {
       esp_camera_fb_return(frame);
     }
 
+    processCameraHeartbeatTask();
     delay(streamDelayMs);
   }
 }

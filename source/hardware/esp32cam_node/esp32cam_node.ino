@@ -35,7 +35,8 @@ void loop() {
   }
 
   webServer.handleClient();
-  processBackendSnapshotTask();
+  processAutomaticRecognitionTask();
+  processCameraHeartbeatTask();
 
   delay(10);
 }

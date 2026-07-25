@@ -12,8 +12,9 @@ Các phần cần phân biệt:
 
 - **Snapshot upload**: ESP32-CAM chụp một ảnh JPEG rồi POST lên backend để lưu.
 - **Live stream**: trình duyệt kết nối trực tiếp tới endpoint MJPEG của ESP32-CAM.
-- **Face detection/recognition**: xử lý AI trên frame; hiện đang tạm tắt vì bản
-  Arduino-ESP32 đang dùng không có các ESP-DL model header tương thích.
+- **Face detection/recognition**: xử lý AI trên frame. Firmware hiện link model
+  ESP-DL từ Arduino-ESP32 và chạy nhận diện định kỳ, kể cả khi dashboard đang giữ
+  kết nối live stream.
 
 ## 2. Kiến trúc luồng dữ liệu hiện tại
 
@@ -297,12 +298,13 @@ Cải tiến nên thực hiện:
 - đặt timeout cho client;
 - bảo đảm trả frame buffer trong mọi nhánh lỗi.
 
-### 6.3. Stream đang chặn tác vụ snapshot định kỳ
+### 6.3. Stream giữ vòng lặp web server
 
 Trong `esp32cam_node.ino`, `webServer.handleClient()` và
-`processBackendSnapshotTask()` chạy nối tiếp trong cùng `loop()`. Khi
-`handleStream()` giữ kết nối lâu, vòng lặp chưa quay lại tác vụ snapshot. Do đó
-live stream mượt hiện tại có thể làm snapshot định kỳ và event backend tạm dừng.
+`processAutomaticRecognitionTask()` chạy nối tiếp trong cùng `loop()`. Khi
+`handleStream()` giữ kết nối lâu, vòng lặp chính chưa quay lại. Firmware đã xử lý
+trường hợp này bằng cách chạy nhận diện định kỳ và heartbeat ngay trong vòng
+stream, dùng chung khóa `faceBusy`.
 
 Nếu cần vừa stream vừa upload snapshot ổn định, nên:
 
@@ -349,5 +351,7 @@ Thứ tự ưu tiên đề xuất:
 - URL nhận diện cũ được giữ dưới dạng comment để phục hồi sau.
 - Bộ lọc đen trắng của frontend đã được bỏ.
 - `npm run build` của frontend hoàn tất thành công.
-- Nhận diện khuôn mặt vẫn chưa khả dụng cho tới khi firmware có ESP-DL model
-  header tương thích.
+- Nhận diện tự động phát `FACE_RECOGNIZED`/`FACE_DENIED`, gửi snapshot gắn
+  `eventId`, và backend chuyển quyết định thành lệnh mở/khóa cửa.
+- Binary PlatformIO đã được xác nhận có symbol `HumanFaceDetectMSR01`,
+  `HumanFaceDetectMNP01` và `FaceRecognition112V1S8`.

@@ -1,11 +1,12 @@
 import { prisma } from "../prisma.js";
 import { roleToDb, serializeUser } from "../domain.js";
+import { normalizeRfidUid } from "./access-policy.js";
 
 function userData(input) {
   return {
     fullName: input.fullName,
     role: roleToDb[input.role],
-    rfidUid: input.rfidUid,
+    rfidUid: input.rfidUid === "NOT LINKED" ? input.rfidUid : normalizeRfidUid(input.rfidUid),
     faceIdStatus: input.faceIdStatus,
     avatarUrl: input.avatarUrl
   };

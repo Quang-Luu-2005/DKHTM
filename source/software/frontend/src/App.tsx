@@ -387,6 +387,7 @@ export default function App() {
                 {currentTab === "registration" && (
                   <RegistrationView
                     users={users}
+                    logs={logs}
                     onSaveUser={handleSaveUser}
                     onDeleteUser={handleDeleteUser}
                   />

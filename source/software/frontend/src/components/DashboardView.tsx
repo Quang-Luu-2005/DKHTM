@@ -45,6 +45,7 @@ export default function DashboardView({
   // Active status totals
   const totalToday = logs.filter(l => l.status === "ONLINE").length * 15 + 420;
   const violationCount = logs.filter(l => l.status === "VIOLATION").length;
+  const latestFaceLog = logs.find(log => log.accessMethod === "Face ID");
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -197,8 +198,14 @@ export default function DashboardView({
 
               {/* Middle wireframe bounds */}
               <div className="absolute top-[30%] left-[35%] w-[30%] h-[40%] border border-dashed border-[#94A3B8]/30 rounded-xl flex items-center justify-center">
-                <span className="font-mono text-[8px] text-[#94A3B8] tracking-widest bg-black/75 px-2.5 py-1 rounded border border-[#1E293B] uppercase">
-                  Phân tích Trắc sinh học
+                <span className={`font-mono text-[8px] tracking-widest bg-black/75 px-2.5 py-1 rounded border uppercase ${
+                  latestFaceLog?.status === "VIOLATION"
+                    ? "text-rose-400 border-rose-500/30"
+                    : "text-[#94A3B8] border-[#1E293B]"
+                }`}>
+                  {latestFaceLog
+                    ? `${latestFaceLog.status === "ONLINE" ? "ĐÃ NHẬN DIỆN" : "TỪ CHỐI"} · ${latestFaceLog.subjectName}`
+                    : "ĐANG CHỜ NHẬN DIỆN"}
                 </span>
               </div>
 
@@ -209,7 +216,7 @@ export default function DashboardView({
                     Phát hiện sự hiện diện
                   </div>
                   <div className="bg-black/75 border border-[#1E293B] text-[#94A3B8] text-[8px] font-mono font-medium px-2 py-1 rounded tracking-widest uppercase">
-                    Đang quét nơ-ron
+                    {latestFaceLog ? `Độ tin cậy ${latestFaceLog.confidence}` : "Đang quét nơ-ron"}
                   </div>
                 </div>
                 <button className="bg-black/75 hover:bg-[#1A1A1C] p-2 rounded-lg border border-[#1E293B] text-[#94A3B8] pointer-events-auto active:scale-90 transition-transform">
@@ -502,7 +509,7 @@ export default function DashboardView({
                       {isViolation ? "XÁC THỰC BỊ TỪ CHỐI: KHÔNG KHỚP" : `${log.subjectName}`}
                     </div>
                     <div className="mt-1 text-[9px] font-mono text-[#64748B] flex items-center justify-between">
-                      <span>GT-NORTH-01</span>
+                      <span>{log.gateId}</span>
                       <span>ĐỘ CHÍNH XÁC: {log.confidence}</span>
                     </div>
                   </div>
