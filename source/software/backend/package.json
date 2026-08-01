@@ -8,7 +8,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "test": "node --test"
+    "test": "node --test",
+    "test:integration": "node scripts/run-integration-tests.js",
+    "test:all": "npm test && npm run test:integration"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

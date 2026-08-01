@@ -445,8 +445,12 @@ export default function DashboardView({
           <div className="bg-[#111113] p-6 rounded-2xl border border-[#1E293B]">
             <h3 className="font-serif text-sm font-light text-[#F8FAFC] mb-6 tracking-wider flex items-center gap-2">
               <Activity className="w-4 h-4 text-[#94A3B8]" />
-              Trạng thái thiết bị phần cứng
+              Trạng thái điều khiển phần cứng
             </h3>
+
+            <p className="-mt-4 mb-5 text-[9px] font-mono text-[#64748B] leading-relaxed">
+              Phản hồi gần nhất từ ESP32 controller. Trạng thái cửa vật lý cần thêm cảm biến hành trình.
+            </p>
 
             <div className="space-y-4">
               {/* Servo Arm indicator and controller */}
@@ -469,7 +473,7 @@ export default function DashboardView({
                       )}
                     </div>
                     <div>
-                      <div className="font-mono text-[8px] text-[#64748B] uppercase tracking-wider">Trạng thái Thanh chắn (Servo)</div>
+                      <div className="font-mono text-[8px] text-[#64748B] uppercase tracking-wider">Trạng thái lệnh Servo</div>
                       <div className="text-xs font-semibold text-[#F8FAFC] mt-0.5 uppercase tracking-wide">
                         {servoLoading ? "ĐANG CẤU HÌNH LẠI..." : translateServo(hardware.servoArm)}
                       </div>

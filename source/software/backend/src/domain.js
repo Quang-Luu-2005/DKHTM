@@ -55,10 +55,13 @@ export function serializeAuditLog(log) {
 
 export function hardwareResponse(record, command = null) {
   const desired = record?.desiredState || initialHardwareState;
+  const reported = record?.reportedState || initialHardwareState;
   return {
-    ...desired,
+    // The top-level fields drive the dashboard and must describe the latest
+    // controller report. desiredState remains available for command progress.
+    ...reported,
     desiredState: desired,
-    reportedState: record?.reportedState || initialHardwareState,
+    reportedState: reported,
     connectionStatus: record?.connectionStatus || "UNKNOWN",
     lastReportedAt: record?.lastReportedAt?.toISOString() || null,
     commandId: command?.commandId || record?.lastCommandId || null,

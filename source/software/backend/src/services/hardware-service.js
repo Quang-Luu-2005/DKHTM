@@ -35,6 +35,48 @@ export async function getHardwareState(gateId = config.DEFAULT_GATE_ID) {
   return hardwareResponse(record, command);
 }
 
+async function publishHardwareRecord(record) {
+  const command = record.lastCommandId
+    ? await prisma.hardwareCommand.findUnique({ where: { commandId: record.lastCommandId } })
+    : null;
+  const response = hardwareResponse(record, command);
+  publish("hardware.state", response);
+  return response;
+}
+
+export async function reportHardwareTelemetry(gateId, reportedState) {
+  const record = await prisma.gateHardwareState.upsert({
+    where: { gateId },
+    create: {
+      gateId,
+      desiredState: initialHardwareState,
+      reportedState,
+      connectionStatus: "ONLINE",
+      lastReportedAt: new Date()
+    },
+    update: {
+      reportedState,
+      connectionStatus: "ONLINE",
+      lastReportedAt: new Date()
+    }
+  });
+  return publishHardwareRecord(record);
+}
+
+export async function markHardwareOffline(gateId) {
+  const record = await prisma.gateHardwareState.upsert({
+    where: { gateId },
+    create: {
+      gateId,
+      desiredState: initialHardwareState,
+      reportedState: initialHardwareState,
+      connectionStatus: "OFFLINE"
+    },
+    update: { connectionStatus: "OFFLINE" }
+  });
+  return publishHardwareRecord(record);
+}
+
 export async function queueHardwareUpdate(desiredState, options = {}) {
   const gateId = options.gateId || config.DEFAULT_GATE_ID;
   const commandId = `cmd_${randomUUID()}`;

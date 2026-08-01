@@ -4,9 +4,25 @@ import { config } from "../config.js";
 import { serializeAuditLog } from "../domain.js";
 import { publish } from "../events/sse.js";
 import { prisma } from "../prisma.js";
+import { hardwareStateSchema } from "../schemas.js";
 import { applyAccessDecision } from "./access-service.js";
 import { classifyDeviceEvent, finalizeRfidDecision, normalizeRfidUid } from "./access-policy.js";
 import { finalizeFaceDecision, openPresenceWindow, resolveFaceEmbedding } from "./face-service.js";
+import { markHardwareOffline, reportHardwareTelemetry } from "./hardware-service.js";
+
+function controllerHardwareState(input) {
+  if (!String(input.source || "").toUpperCase().includes("CONTROLLER") || !input.hardware) {
+    return null;
+  }
+  const candidate = {
+    servoArm: input.hardware.servoArm,
+    servoLocked: input.hardware.servoLocked,
+    indicatorLed: input.hardware.indicatorLed,
+    systemBuzzer: input.hardware.systemBuzzer
+  };
+  const parsed = hardwareStateSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
 
 async function resolveClassification(input, gateId) {
   const eventType = input.eventType.toUpperCase();
@@ -120,6 +136,11 @@ export async function ingestDeviceEvent(input) {
   const log = result.log ? serializeAuditLog(result.log) : null;
   if (log) publish("audit.log", log);
 
+  const reportedState = controllerHardwareState(input);
+  if (reportedState) {
+    await reportHardwareTelemetry(gateId, reportedState);
+  }
+
   let hardware = null;
   try {
     hardware = await applyAccessDecision({
@@ -154,6 +175,9 @@ export function startDeviceOfflineMonitor() {
       for (const device of offline) {
         await prisma.device.update({ where: { id: device.id }, data: { online: false } });
         publish("device.offline", { ...device, online: false });
+        if (device.type === "CONTROLLER") {
+          await markHardwareOffline(device.gateId);
+        }
       }
     } catch (error) {
       console.error("Device offline monitor failed", error);

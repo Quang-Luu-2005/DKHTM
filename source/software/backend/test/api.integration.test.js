@@ -10,6 +10,16 @@ function listen(server) {
   return new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
 }
 
+function close(server) {
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.close(error => error ? reject(error) : resolve());
+    // Undici keeps HTTP/1.1 sockets alive. Force test-only mock connections to
+    // close so shutdown cannot hang while waiting for an idle pooled socket.
+    server.closeAllConnections?.();
+  });
+}
+
 async function waitFor(check, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -20,7 +30,18 @@ async function waitFor(check, timeoutMs = 3000) {
   throw new Error("Timed out waiting for integration state");
 }
 
+function readStream(reader, timeoutMs = 3000) {
+  return Promise.race([
+    reader.read(),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error("Timed out waiting for SSE frame")),
+      timeoutMs
+    ))
+  ]);
+}
+
 test("PostgreSQL API, device deduplication, snapshot, SSE and command acknowledgement", { skip: !enabled }, async () => {
+  process.env.DATABASE_URL ||= "postgresql://sentinel:sentinel@localhost:5432/sentinel?schema=public";
   const controller = http.createServer((req, res) => {
     let raw = "";
     req.on("data", chunk => { raw += chunk; });
@@ -64,6 +85,33 @@ test("PostgreSQL API, device deduplication, snapshot, SSE and command acknowledg
     assert.equal(await prisma.deviceEvent.count(), 1);
     assert.equal(await prisma.auditLog.count(), 1);
 
+    const controllerTelemetry = {
+      eventId: "controller-heartbeat-1",
+      deviceId: config.CONTROLLER_DEVICE_ID,
+      gateId: "GATE_01",
+      source: "ESP32_CONTROLLER",
+      eventType: "CONTROLLER_HEARTBEAT",
+      message: "Controller healthy",
+      hardware: {
+        servoArm: "SECURED / CLOSED",
+        servoLocked: true,
+        indicatorLed: "RED / RESTRICTED",
+        systemBuzzer: "MUTED",
+        rfidReady: true,
+        ultrasonicReady: true
+      }
+    };
+    assert.equal((await fetch(`${baseUrl}/api/device/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-device-secret": "integration-secret" },
+      body: JSON.stringify(controllerTelemetry)
+    })).status, 201);
+    const telemetryState = await (await fetch(`${baseUrl}/api/hardware`)).json();
+    assert.equal(telemetryState.connectionStatus, "ONLINE");
+    assert.equal(telemetryState.reportedState.servoLocked, true);
+    assert.equal(telemetryState.servoLocked, true, "Top-level dashboard state must use controller telemetry");
+    assert.ok(telemetryState.lastReportedAt);
+
     const snapshot = await fetch(`${baseUrl}/api/device/camera/snapshot?deviceId=ESP32CAM_TEST&gateId=GATE_01`, {
       method: "POST", headers: { "content-type": "image/jpeg", "x-device-secret": "integration-secret" }, body: Buffer.from([0xff, 0xd8, 0xff, 0xd9])
     });
@@ -73,7 +121,7 @@ test("PostgreSQL API, device deduplication, snapshot, SSE and command acknowledg
     const streamAbort = new AbortController();
     const stream = await fetch(`${baseUrl}/api/events`, { signal: streamAbort.signal });
     const streamReader = stream.body.getReader();
-    const firstFrame = await streamReader.read();
+    const firstFrame = await readStream(streamReader);
     assert.match(Buffer.from(firstFrame.value).toString(), /event: connected/);
     const logResponse = await fetch(`${baseUrl}/api/logs`, {
       method: "POST", headers: { "content-type": "application/json" },
@@ -82,13 +130,14 @@ test("PostgreSQL API, device deduplication, snapshot, SSE and command acknowledg
     assert.equal(logResponse.status, 201);
     let sseFrames = "";
     await waitFor(async () => {
-      const nextFrame = await streamReader.read();
+      const nextFrame = await readStream(streamReader);
       if (nextFrame.done) return false;
       sseFrames += Buffer.from(nextFrame.value).toString();
       return /event: audit\.log/.test(sseFrames);
     });
     assert.match(sseFrames, /event: audit\.log/);
     streamAbort.abort();
+    await streamReader.cancel().catch(() => undefined);
 
     const desired = { servoArm: "OPENED / UNSECURED", servoLocked: false, indicatorLed: "GREEN / ACCESS ALLOWED", systemBuzzer: "MUTED" };
     const queued = await (await fetch(`${baseUrl}/api/hardware`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(desired) })).json();
@@ -96,13 +145,13 @@ test("PostgreSQL API, device deduplication, snapshot, SSE and command acknowledg
     const acked = await waitFor(() => prisma.hardwareCommand.findUnique({ where: { commandId: queued.commandId } }).then(command => command?.status === "ACKED" ? command : null));
     assert.equal(acked.retryCount, 1);
 
-    await new Promise(resolve => controller.close(resolve));
+    await close(controller);
     const timeoutQueued = await (await fetch(`${baseUrl}/api/hardware`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...desired, servoArm: "SECURED / CLOSED", servoLocked: true }) })).json();
     const timedOut = await waitFor(() => prisma.hardwareCommand.findUnique({ where: { commandId: timeoutQueued.commandId } }).then(command => command?.status === "TIMEOUT" ? command : null));
     assert.equal(timedOut.retryCount, 2);
   } finally {
-    if (controller.listening) await new Promise(resolve => controller.close(resolve));
-    await new Promise(resolve => apiServer.close(resolve));
+    await close(controller);
+    await close(apiServer);
     await prisma.snapshot.deleteMany();
     await prisma.deviceEvent.deleteMany();
     await prisma.auditLog.deleteMany();

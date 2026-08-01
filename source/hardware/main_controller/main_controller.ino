@@ -28,6 +28,20 @@ unsigned long lastHeartbeatAt = 0;
 unsigned long lastWifiAttemptAt = 0;
 bool serverRoutesRegistered = false;
 
+String controllerHardwareEventJson() {
+  String payload;
+  payload.reserve(220);
+  payload += "\"hardware\":{";
+  payload += "\"servoLocked\":";
+  payload += gate.isLocked() ? "true" : "false";
+  payload += ",\"servoArm\":\"" + String(gate.armState()) + "\"";
+  payload += ",\"indicatorLed\":\"" + String(indicators.ledState()) + "\"";
+  payload += ",\"systemBuzzer\":\"";
+  payload += indicators.buzzerActive() ? "ACTIVE" : "MUTED";
+  payload += "\",\"rfidReady\":true,\"ultrasonicReady\":true}";
+  return payload;
+}
+
 void sendCors() {
   webServer.sendHeader("Access-Control-Allow-Origin", "*");
   webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type, x-device-secret");
@@ -243,7 +257,11 @@ void processHeartbeat() {
     return;
   }
   lastHeartbeatAt = now;
-  backend.sendEvent("CONTROLLER_HEARTBEAT", "Bộ điều khiển hoạt động bình thường");
+  backend.sendEvent(
+    "CONTROLLER_HEARTBEAT",
+    "Bộ điều khiển hoạt động bình thường",
+    controllerHardwareEventJson()
+  );
 }
 
 void maintainWifi() {
@@ -254,7 +272,11 @@ void maintainWifi() {
   lastWifiAttemptAt = now;
   if (connectWifi()) {
     startControllerServer();
-    backend.sendEvent("CONTROLLER_ONLINE", "Bộ điều khiển đã kết nối lại");
+    backend.sendEvent(
+      "CONTROLLER_ONLINE",
+      "Bộ điều khiển đã kết nối lại",
+      controllerHardwareEventJson()
+    );
   }
 }
 
@@ -270,7 +292,11 @@ void setup() {
 
   if (connectWifi()) {
     startControllerServer();
-    backend.sendEvent("CONTROLLER_ONLINE", "Bộ điều khiển cổng đã sẵn sàng");
+    backend.sendEvent(
+      "CONTROLLER_ONLINE",
+      "Bộ điều khiển cổng đã sẵn sàng",
+      controllerHardwareEventJson()
+    );
   }
 }
 
@@ -288,7 +314,16 @@ void loop() {
   indicators.update();
 
   if (safetyButton.pressed()) {
-    indicators.restricted();
+    if (gate.isLocked()) {
+      indicators.restricted();
+    } else {
+      indicators.granted();
+    }
+    backend.sendEvent(
+      "SAFETY_BUTTON_PRESSED",
+      "Đã xóa cảnh báo bằng nút tại chỗ",
+      controllerHardwareEventJson()
+    );
     Serial.println("Safety alarm cleared by button.");
   }
 
