@@ -26,10 +26,25 @@ void Buzzer::low_pitch(int duration) {
   ledcWriteTone(BUZZER_CH, 0);
 }
 
+void Buzzer::reject_three_beeps() {
+  if (!g_config.buzzer) return;
+  ledcAttachPin(pin, BUZZER_CH);
+  for (int beep = 0; beep < 3; beep++) {
+    ledcWriteTone(BUZZER_CH, 2000);
+    delay(120);
+    ledcWriteTone(BUZZER_CH, 0);
+    if (beep < 2) delay(100);
+  }
+}
+
+void Buzzer::alarm_on() {
+  if (!g_config.buzzer) return;
+  ledcAttachPin(pin, BUZZER_CH);
+  ledcWriteTone(BUZZER_CH, 2000);
+}
+
 
 void Buzzer::no_sound() {
-  if (!g_config.buzzer) return;
   ledcAttachPin(pin, BUZZER_CH);
   ledcWriteTone(BUZZER_CH, 0);
 }
-

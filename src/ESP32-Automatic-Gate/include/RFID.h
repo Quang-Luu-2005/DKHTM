@@ -8,7 +8,8 @@ struct Card {
   uint8_t id[10];
   uint8_t id_size;
 
-  void print_id();
+  void print_id() const;
+  String to_string() const;
 };
 
 struct RFID {
@@ -27,4 +28,3 @@ struct RFID {
 };
 
 #endif
-

@@ -17,7 +17,7 @@ int Ultrasonic::get_distance() {
   delayMicroseconds(10);
   digitalWrite(trig_pin, LOW);
 
-  long duration = pulseIn(echo_pin, HIGH);
+  long duration = pulseIn(echo_pin, HIGH, 30000);
 
   int distance = duration * 0.034 / 2;
   return distance;

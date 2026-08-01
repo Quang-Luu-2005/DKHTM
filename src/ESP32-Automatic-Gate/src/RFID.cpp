@@ -17,6 +17,8 @@ Card RFID::get_ID() {
 
   new_card.id_size = mfrc522.uid.size;
   memcpy(new_card.id, mfrc522.uid.uidByte, new_card.id_size);
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
 
   return new_card;
 }

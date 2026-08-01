@@ -11,11 +11,13 @@ void Led::init() {
 
 void Led::light_red() {
   if (!g_config.led) return;
+  digitalWrite(green_pin, LOW);
   digitalWrite(red_pin, HIGH);
 } 
 
 void Led::light_green() {
   if (!g_config.led) return;
+  digitalWrite(red_pin, LOW);
   digitalWrite(green_pin, HIGH);
 } 
 
