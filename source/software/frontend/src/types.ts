@@ -1,0 +1,56 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+export interface User {
+  id: string;
+  fullName: string;
+  role: "Administrator" | "Security Officer" | "Technician" | "General Staff";
+  rfidUid: string; // "NOT LINKED" or a hex sequence like "E2:00:15:B4:77"
+  faceIdStatus: "ENROLLED" | "PENDING";
+  avatarUrl?: string;
+}
+
+export interface UserSaveRequest {
+  user: User;
+  portrait?: File;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  subjectName: string;
+  subjectId?: string;
+  accessMethod: "Face ID" | "RFID" | "Manual Override" | "Gate Jumping / Climbing detected" | "Tailgating detected";
+  gateId: string;
+  status: "ONLINE" | "VIOLATION" | "EXPIRED";
+  confidence: string; // "99.8%" or "N/A"
+  avatarUrl?: string;
+  source?: string;
+  deviceId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type HardwareCommandStatus = "PENDING" | "SENT" | "ACKED" | "FAILED" | "TIMEOUT";
+export type HardwareDirectCommand = "lock" | "grant" | "deny" | "idle";
+
+export interface HardwareState {
+  servoArm: "SECURED / CLOSED" | "OPENED / UNSECURED";
+  servoLocked: boolean;
+  indicatorLed: "RED / RESTRICTED" | "GREEN / ACCESS ALLOWED";
+  systemBuzzer: "MUTED" | "ACTIVE";
+  desiredState?: HardwareState;
+  reportedState?: HardwareState;
+  connectionStatus?: "UNKNOWN" | "ONLINE" | "OFFLINE";
+  lastReportedAt?: string | null;
+  commandId?: string | null;
+  commandStatus?: HardwareCommandStatus | null;
+}
+
+export interface SseEnvelope<T = unknown> {
+  id: string;
+  type: string;
+  occurredAt: string;
+  data: T;
+}

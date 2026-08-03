@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - sentinel-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./software/backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://sentinel:sentinel@postgres:5432/sentinel?schema=public
+      DEVICE_SECRET: ${DEVICE_SECRET:-demo-secret}
+      CAMERA_URL: ${CAMERA_URL:-}
+      CAMERA_TIMEOUT_MS: ${CAMERA_TIMEOUT_MS:-15000}
+      CONTROLLER_URL: ${CONTROLLER_URL:-}
+      CONTROLLER_DEVICE_ID: ${CONTROLLER_DEVICE_ID:-MAIN_CONTROLLER_001}
+      DEFAULT_GATE_ID: ${DEFAULT_GATE_ID:-GATE_01}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      COMMAND_TIMEOUT_MS: ${COMMAND_TIMEOUT_MS:-5000}
+      COMMAND_MAX_ATTEMPTS: ${COMMAND_MAX_ATTEMPTS:-3}
+      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.55}
+      FACE_PRESENCE_WINDOW_MS: ${FACE_PRESENCE_WINDOW_MS:-5000}
+      FACE_UPLOAD_MAX_BYTES: ${FACE_UPLOAD_MAX_BYTES:-8388608}
+      ACCESS_UNLOCK_DURATION_MS: ${ACCESS_UNLOCK_DURATION_MS:-5000}
+      DENIED_SIGNAL_DURATION_MS: ${DENIED_SIGNAL_DURATION_MS:-1000}
+      DEVICE_OFFLINE_AFTER_MS: ${DEVICE_OFFLINE_AFTER_MS:-45000}
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "3001:3001"
+    volumes:
+      - sentinel-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  sentinel-postgres:
+  sentinel-uploads:
