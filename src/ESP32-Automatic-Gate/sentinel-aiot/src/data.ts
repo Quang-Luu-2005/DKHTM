@@ -181,6 +181,11 @@ export function saveUser(user: User): User[] {
   return users;
 }
 
+export function replaceUsers(users: User[]): User[] {
+  localStorage.setItem("sentinel_users", JSON.stringify(users));
+  return users;
+}
+
 export function deleteUser(id: string): User[] {
   const users = getUsers();
   const filtered = users.filter(u => u.id !== id);

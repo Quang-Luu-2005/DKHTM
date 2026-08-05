@@ -8,7 +8,9 @@ namespace {
 const uint8_t BROADCAST_ADDRESS[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 portMUX_TYPE receiveMux = portMUX_INITIALIZER_UNLOCKED;
 sentinel_now::Message receivedResult = {};
+sentinel_now::Message receivedPresence = {};
 volatile bool resultAvailable = false;
+volatile bool presenceAvailable = false;
 bool transportReady = false;
 uint32_t nextSequence = 1;
 
@@ -22,16 +24,20 @@ void onDataReceived(const uint8_t *, const uint8_t *data, int length) {
   if (!data || length != static_cast<int>(sizeof(sentinel_now::Message))) return;
   sentinel_now::Message message = {};
   memcpy(&message, data, sizeof(message));
-  if (!sentinel_now::isValid(message) ||
-      (message.type != sentinel_now::MessageType::SCAN_RESULT &&
-       message.type != sentinel_now::MessageType::ENROLL_PROGRESS &&
-       message.type != sentinel_now::MessageType::ENROLL_RESULT)) {
+  if (!sentinel_now::isValid(message)) {
     return;
   }
 
   portENTER_CRITICAL_ISR(&receiveMux);
-  receivedResult = message;
-  resultAvailable = true;
+  if (message.type == sentinel_now::MessageType::FACE_PRESENCE) {
+    receivedPresence = message;
+    presenceAvailable = true;
+  } else if (message.type == sentinel_now::MessageType::SCAN_RESULT ||
+             message.type == sentinel_now::MessageType::ENROLL_PROGRESS ||
+             message.type == sentinel_now::MessageType::ENROLL_RESULT) {
+    receivedResult = message;
+    resultAvailable = true;
+  }
   portEXIT_CRITICAL_ISR(&receiveMux);
 }
 
@@ -133,11 +139,24 @@ bool esp_now_face_take_result(sentinel_now::Message &resultOut) {
   return available;
 }
 
+bool esp_now_face_take_presence(sentinel_now::Message &presenceOut) {
+  bool available = false;
+  portENTER_CRITICAL(&receiveMux);
+  if (presenceAvailable) {
+    presenceOut = receivedPresence;
+    presenceAvailable = false;
+    available = true;
+  }
+  portEXIT_CRITICAL(&receiveMux);
+  return available;
+}
+
 bool esp_now_face_ready() {
   if (transportReady && WiFi.status() != WL_CONNECTED) {
     esp_now_deinit();
     transportReady = false;
     resultAvailable = false;
+    presenceAvailable = false;
     Serial.println("ESP-NOW paused until WiFi channel is restored");
   }
   return transportReady;

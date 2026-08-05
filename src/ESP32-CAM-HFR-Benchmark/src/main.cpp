@@ -9,7 +9,7 @@
 #include "img_converters.h"
 #include <cstring>
 #include "EspNowFaceProtocol.h"
-#include "MQTT_secrets.h"
+#include "env_config.generated.h"
 #include "face_recognition_112_v1_s16.hpp"
 #include "face_recognition_112_v1_s8.hpp"
 #include "human_face_detect_mnp01.hpp"
@@ -66,6 +66,7 @@ uint8_t pendingRequestSender[6] = {};
 uint8_t lastResultDestination[6] = {};
 volatile bool pendingRequestAvailable = false;
 bool espNowReady = false;
+bool espNowUsesChannelFallback = false;
 unsigned long lastWiFiRetryAt = 0;
 
 struct FaceStoreHeader {
@@ -169,9 +170,38 @@ static bool addEspNowBroadcastPeer() {
   return esp_now_add_peer(&peer) == ESP_OK;
 }
 
+static bool selectEspNowChannelFromAccessPoint(uint8_t &primaryChannel) {
+  WiFi.disconnect(false, false);
+  delay(100);
+  Serial.println("ESP-NOW camera scanning for configured WiFi channel");
+  const int networkCount = WiFi.scanNetworks(false, true);
+  int targetRssi = -127;
+  for (int index = 0; index < networkCount; ++index) {
+    if (WiFi.SSID(index) != WIFI_SSID) continue;
+    primaryChannel = static_cast<uint8_t>(WiFi.channel(index));
+    targetRssi = WiFi.RSSI(index);
+    break;
+  }
+  WiFi.scanDelete();
+
+  if (primaryChannel == 0) {
+    Serial.printf("ESP-NOW camera setup failed: configured WiFi not visible|networks=%d\n",
+                  networkCount);
+    return false;
+  }
+  if (esp_wifi_set_channel(primaryChannel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
+    Serial.println("ESP-NOW camera setup failed: cannot select scanned WiFi channel");
+    return false;
+  }
+  Serial.printf("ESP-NOW camera channel fallback|channel=%u|rssi=%d\n",
+                primaryChannel, targetRssi);
+  return true;
+}
+
 static bool setupEspNowTransport() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   const unsigned long startedAt = millis();
   Serial.print("ESP-NOW camera connecting to WiFi");
@@ -181,16 +211,19 @@ static bool setupEspNowTransport() {
     Serial.print('.');
   }
   Serial.println();
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("ESP-NOW camera setup failed: WiFi timeout");
-    return false;
-  }
 
   uint8_t primaryChannel = 0;
   wifi_second_chan_t secondaryChannel = WIFI_SECOND_CHAN_NONE;
-  if (esp_wifi_get_channel(&primaryChannel, &secondaryChannel) != ESP_OK) {
-    Serial.println("ESP-NOW camera setup failed: cannot read WiFi channel");
-    return false;
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (wifiConnected) {
+    if (esp_wifi_get_channel(&primaryChannel, &secondaryChannel) != ESP_OK) {
+      Serial.println("ESP-NOW camera setup failed: cannot read WiFi channel");
+      return false;
+    }
+  } else {
+    Serial.printf("ESP-NOW camera WiFi timeout|status=%d\n",
+                  static_cast<int>(WiFi.status()));
+    if (!selectEspNowChannelFromAccessPoint(primaryChannel)) return false;
   }
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW camera setup failed: esp_now_init");
@@ -205,9 +238,11 @@ static bool setupEspNowTransport() {
   }
 
   espNowReady = true;
-  Serial.printf("ESP-NOW camera ready|mac=%s|ip=%s|channel=%u\n",
+  espNowUsesChannelFallback = !wifiConnected;
+  Serial.printf("ESP-NOW camera ready|mac=%s|ip=%s|channel=%u|transport=%s\n",
                 WiFi.macAddress().c_str(), WiFi.localIP().toString().c_str(),
-                primaryChannel);
+                primaryChannel,
+                espNowUsesChannelFallback ? "channel_fallback" : "wifi_associated");
   return true;
 }
 
@@ -779,9 +814,10 @@ static void processCommand(String command) {
     Serial.printf("CLEAR_RESULT|%s\n",
                   clearStoredEmbeddings() ? "SUCCESS" : "FAILED");
   } else if (command == "STATUS") {
-    Serial.printf("STATUS|model=%s|enrolled=%d|persisted=%d\n",
+    Serial.printf("STATUS|model=%s|enrolled=%d|persisted=%d|esp_now=%s|transport=%s\n",
                   MODEL_NAME, recognizer->get_enrolled_id_num(),
-                  readStoredEmbeddingCount());
+                  readStoredEmbeddingCount(), espNowReady ? "ready" : "offline",
+                  espNowUsesChannelFallback ? "channel_fallback" : "wifi_associated");
     printMemory("status");
   } else if (!command.isEmpty()) {
     Serial.println("ERROR|UNKNOWN_COMMAND|use=STATUS,SCAN,ENROLL|employeeId,CLEAR");
@@ -830,15 +866,17 @@ void setup() {
       recognizer->get_thresh());
   printMemory("ready");
   setupEspNowTransport();
+  lastWiFiRetryAt = millis();
   printMemory("after_esp_now");
   Serial.println("HFR_BENCHMARK|COMMANDS|STATUS,SCAN,ENROLL|employeeId,CLEAR");
 }
 
 void loop() {
   if (!espNowReady && millis() - lastWiFiRetryAt >= WIFI_RETRY_INTERVAL_MS) {
-    lastWiFiRetryAt = millis();
     setupEspNowTransport();
-  } else if (espNowReady && WiFi.status() != WL_CONNECTED &&
+    lastWiFiRetryAt = millis();
+  } else if (espNowReady && !espNowUsesChannelFallback &&
+             WiFi.status() != WL_CONNECTED &&
              millis() - lastWiFiRetryAt >= WIFI_RETRY_INTERVAL_MS) {
     lastWiFiRetryAt = millis();
     Serial.println("ESP-NOW camera WiFi reconnect requested");

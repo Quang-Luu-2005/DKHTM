@@ -44,3 +44,5 @@ source/.vscode/ipch/
 # 4. Local firmware secrets
 # =========================================================================
 source/include/config/secrets.h
+src/.env
+**/include/env_config.generated.h

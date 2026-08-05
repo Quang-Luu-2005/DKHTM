@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, UserPlus, History, LifeBuoy, Settings2 } from "lucide-react";
+import { Camera, LayoutDashboard, UserPlus, History, LifeBuoy, Settings2 } from "lucide-react";
 
 interface SidebarProps {
   currentTab: string;
@@ -10,6 +10,16 @@ export default function Sidebar({
   currentTab,
   setCurrentTab,
 }: SidebarProps) {
+  const [previewFrame, setPreviewFrame] = React.useState(() => Date.now());
+  const [previewOnline, setPreviewOnline] = React.useState(true);
+
+  React.useEffect(() => {
+    if (currentTab === "dashboard") return;
+    setPreviewFrame(Date.now());
+    const timer = window.setInterval(() => setPreviewFrame(Date.now()), 750);
+    return () => window.clearInterval(timer);
+  }, [currentTab]);
+
   const menuItems = [
     { id: "dashboard", label: "Tổng quan hệ thống", icon: LayoutDashboard },
     { id: "registration", label: "Quản lý nhân viên", icon: UserPlus },
@@ -48,6 +58,37 @@ export default function Sidebar({
               </button>
             );
           })}
+
+          {currentTab !== "dashboard" && (
+            <section className="mt-2 overflow-hidden rounded-xl border border-[#1E293B] bg-[#0A0A0B] shadow-lg">
+              <div className="flex items-center justify-between border-b border-[#1E293B] px-3 py-2">
+                <div className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-widest text-[#94A3B8]">
+                  <Camera className="h-3.5 w-3.5 text-sky-300" />
+                  Camera COM10
+                </div>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    previewOnline ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]" : "bg-amber-400"
+                  }`}
+                  aria-label={previewOnline ? "Camera đang trực tuyến" : "Camera mất tín hiệu"}
+                />
+              </div>
+              <div className="relative aspect-video bg-black">
+                <img
+                  src={`/api/camera/capture?sidebar=${previewFrame}`}
+                  alt="Camera stream thu nhỏ ESP32-CAM"
+                  className={`h-full w-full object-cover transition-opacity ${previewOnline ? "opacity-100" : "opacity-25"}`}
+                  onLoad={() => setPreviewOnline(true)}
+                  onError={() => setPreviewOnline(false)}
+                />
+                {!previewOnline && (
+                  <div className="absolute inset-0 flex items-center justify-center px-3 text-center font-mono text-[8px] uppercase tracking-wider text-amber-300">
+                    Mất tín hiệu camera
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
         </nav>
 
         {/* Footer / Emergency Trigger section */}

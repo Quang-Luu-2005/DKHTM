@@ -19,6 +19,7 @@ enum class MessageType : uint8_t {
   ENROLL_REQUEST = 4,
   ENROLL_PROGRESS = 5,
   ENROLL_RESULT = 6,
+  FACE_PRESENCE = 7,
 };
 
 enum class FaceResult : uint8_t {

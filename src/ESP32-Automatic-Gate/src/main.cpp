@@ -33,6 +33,7 @@ constexpr unsigned long FACE_SCAN_TIMEOUT_MS = 9000;
 constexpr unsigned long FACE_RETRY_DELAY_MS = 750;
 constexpr unsigned long FACE_ENROLLMENT_TIMEOUT_MS = 70000;
 constexpr unsigned long ESP_NOW_RETRY_INTERVAL_MS = 2000;
+constexpr unsigned long FACE_PRESENCE_TIMEOUT_MS = 3500;
 constexpr unsigned long PRESENCE_SAMPLE_INTERVAL_MS = 100;
 constexpr uint8_t PRESENCE_REQUIRED_SAMPLES = 3;
 constexpr uint8_t ABSENCE_REQUIRED_SAMPLES = 5;
@@ -48,11 +49,12 @@ String lastProcessedFaceRequestId;
 
 bool authenticationSessionActive = false;
 bool authenticationAlertSent = false;
-bool forcedLockPresenceAlertSent = false;
+bool gateViolationAlertSent = false;
 uint8_t failedAuthenticationAttempts = 0;
 uint8_t presenceSamples = 0;
 uint8_t absenceSamples = 0;
 unsigned long lastPresenceSampleAt = 0;
+unsigned long lastFacePresenceAt = 0;
 AuthenticationMethod failedMethod = AuthenticationMethod::NONE;
 uint32_t authenticationSessionId = 0;
 uint32_t nextAuthenticationSessionId = 0;
@@ -103,11 +105,11 @@ void reset_authentication_session() {
   authenticationSessionActive = false;
   authenticationSessionId = 0;
   authenticationAlertSent = false;
-  forcedLockPresenceAlertSent = false;
   failedAuthenticationAttempts = 0;
   failedMethod = AuthenticationMethod::NONE;
   presenceSamples = 0;
   absenceSamples = 0;
+  lastFacePresenceAt = 0;
 }
 
 const char *method_name(AuthenticationMethod method) {
@@ -123,6 +125,22 @@ void clear_failed_attempts() {
   failedAuthenticationAttempts = 0;
   failedMethod = AuthenticationMethod::NONE;
   authenticationAlertSent = false;
+}
+
+void start_authentication_session(bool requestFaceScan, const char *trigger) {
+  if (authenticationSessionActive) return;
+  authenticationSessionActive = true;
+  if (++nextAuthenticationSessionId == 0) ++nextAuthenticationSessionId;
+  authenticationSessionId = nextAuthenticationSessionId;
+  failedAuthenticationAttempts = 0;
+  failedMethod = AuthenticationMethod::NONE;
+  authenticationAlertSent = false;
+  faceScanAttempt = 0;
+  lastFacePresenceAt = millis();
+  Serial.printf("Authentication session started|session=%lu|trigger=%s\n",
+                static_cast<unsigned long>(authenticationSessionId), trigger);
+  mqtt_upload_status("authentication_session_started");
+  if (requestFaceScan) schedule_face_scan(0);
 }
 
 const char *face_retry_reason(sentinel_now::FaceResult result) {
@@ -173,71 +191,63 @@ bool is_countable_face_failure(const String &reason) {
   return reason == "face_not_matched" || reason == "unknown_face";
 }
 
-void update_presence_state() {
-  if (faceEnrollmentPending) {
-    presenceSamples = 0;
-    absenceSamples = 0;
+void process_stream_face_presence() {
+  sentinel_now::Message presence = {};
+  if (!esp_now_face_take_presence(presence)) return;
+  if (faceEnrollmentPending ||
+      g_config.system_state != state_normal || gate.state != GATE_CLOSED) {
     return;
   }
-  if (g_config.system_state != state_normal &&
-      g_config.system_state != state_always_close) return;
+
+  lastFacePresenceAt = millis();
+  if (!authenticationSessionActive) {
+    start_authentication_session(true, "stream_face_detector");
+  } else if (!authenticationAlertSent && !faceScanPending &&
+             !faceScanScheduled && !rfidAuthorizationPending) {
+    schedule_face_scan(0);
+  }
+}
+
+void update_authentication_session_timeout() {
+  if (!authenticationSessionActive || lastFacePresenceAt == 0) return;
+  if (millis() - lastFacePresenceAt < FACE_PRESENCE_TIMEOUT_MS) return;
+  Serial.println("Authentication session ended|reason=face_presence_timeout");
+  reset_authentication_session();
+  mqtt_upload_status("authentication_session_ended");
+}
+
+void update_gate_violation_detection() {
+  if (gate.state == GATE_OPEN || g_config.system_state == state_always_open) {
+    presenceSamples = 0;
+    absenceSamples = 0;
+    gateViolationAlertSent = false;
+    return;
+  }
   if (millis() - lastPresenceSampleAt < PRESENCE_SAMPLE_INTERVAL_MS) return;
   lastPresenceSampleAt = millis();
 
-  if (ultra.is_present()) {
+  const int distanceCm = ultra.get_distance();
+  const bool violationSignal = distanceCm > 0 && distanceCm <= 50;
+  if (violationSignal) {
     absenceSamples = 0;
     if (presenceSamples < PRESENCE_REQUIRED_SAMPLES) presenceSamples++;
-
-    if (g_config.system_state == state_always_close) {
-      if (!forcedLockPresenceAlertSent &&
-          presenceSamples >= PRESENCE_REQUIRED_SAMPLES) {
-        forcedLockPresenceAlertSent = true;
-        statistic.authenticationAlerts++;
-        gate.close();
-        gate.state = GATE_CLOSED;
-        led.light_red();
-        buzzer.no_sound();
-        mqtt_upload_forced_lock_presence_alert();
-        Serial.println("Forced-lock presence alert sent; waiting for area to clear");
-      }
-      return;
-    }
-
-    if (!authenticationSessionActive && presenceSamples >= PRESENCE_REQUIRED_SAMPLES) {
-      authenticationSessionActive = true;
-      if (++nextAuthenticationSessionId == 0) ++nextAuthenticationSessionId;
-      authenticationSessionId = nextAuthenticationSessionId;
-      failedAuthenticationAttempts = 0;
-      failedMethod = AuthenticationMethod::NONE;
-      authenticationAlertSent = false;
-      faceScanAttempt = 0;
-      Serial.printf("Authentication session started|session=%lu\n",
-                    static_cast<unsigned long>(authenticationSessionId));
-      mqtt_upload_status("authentication_session_started");
-      schedule_face_scan(0);
+    if (!gateViolationAlertSent &&
+        presenceSamples >= PRESENCE_REQUIRED_SAMPLES) {
+      gateViolationAlertSent = true;
+      statistic.authenticationAlerts++;
+      mqtt_upload_gate_climb_violation(distanceCm);
+      Serial.printf("Gate climb violation published|distance_cm=%d\n", distanceCm);
     }
     return;
   }
 
   presenceSamples = 0;
-
-  if (g_config.system_state == state_always_close) {
-    if (!forcedLockPresenceAlertSent) return;
-    if (absenceSamples < ABSENCE_REQUIRED_SAMPLES) absenceSamples++;
-    if (absenceSamples >= ABSENCE_REQUIRED_SAMPLES) {
-      forcedLockPresenceAlertSent = false;
-      absenceSamples = 0;
-      Serial.println("Forced-lock detection area cleared; alert rearmed");
-    }
-    return;
-  }
-
-  if (!authenticationSessionActive) return;
+  if (!gateViolationAlertSent) return;
   if (absenceSamples < ABSENCE_REQUIRED_SAMPLES) absenceSamples++;
   if (absenceSamples >= ABSENCE_REQUIRED_SAMPLES) {
-    Serial.println("Authentication session ended");
-    reset_authentication_session();
-    mqtt_upload_status("authentication_session_ended");
+    gateViolationAlertSent = false;
+    absenceSamples = 0;
+    Serial.println("Gate violation sensor cleared; alert rearmed");
   }
 }
 
@@ -583,7 +593,9 @@ void loop() {
   mqtt_loop(!authenticationSessionActive);
   maintain_esp_now_transport();
   process_mqtt_command();
-  update_presence_state();
+  process_stream_face_presence();
+  update_authentication_session_timeout();
+  update_gate_violation_detection();
   process_esp_now_face_result();
   update_face_scan();
 
@@ -613,9 +625,12 @@ void loop() {
 
   switch (g_config.system_state) {
   case state_normal:
-    if (gate.state == GATE_CLOSED && authenticationSessionActive &&
-        !authenticationAlertSent && !rfidAuthorizationPending &&
-        rfid.is_read()) {
+    if (gate.state == GATE_CLOSED && !authenticationAlertSent &&
+        !rfidAuthorizationPending && rfid.is_read()) {
+      if (!authenticationSessionActive) {
+        start_authentication_session(false, "rfid");
+      }
+      lastFacePresenceAt = millis();
       const Card card = rfid.get_ID();
       card.print_id();
       const String scannedUid = card.to_string();

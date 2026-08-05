@@ -18,7 +18,7 @@ export interface AuditLog {
   timestamp: string;
   subjectName: string;
   subjectId?: string;
-  accessMethod: "Face ID" | "RFID" | "Manual Override";
+  accessMethod: "Face ID" | "RFID" | "Manual Override" | "HC-SR04";
   gateId: string;
   status: "ONLINE" | "AUTH_FAILURE" | "AUTH_ALERT" | "EXPIRED";
   confidence: string; // "99.8%" or "N/A"
@@ -36,7 +36,7 @@ export interface AuthenticationAlert {
   id: string;
   timestamp: string;
   gateId: string;
-  alertType: "REPEATED_AUTH_FAILURE" | "REPEATED_UNKNOWN_FACE" | "REPEATED_INVALID_RFID" | "PRESENCE_DETECTED_DURING_FORCED_LOCK";
+  alertType: "REPEATED_AUTH_FAILURE" | "REPEATED_UNKNOWN_FACE" | "REPEATED_INVALID_RFID" | "PRESENCE_DETECTED_DURING_FORCED_LOCK" | "CLIMB_DETECTED_WHILE_GATE_CLOSED";
   authMethod: "FACE" | "RFID" | "MIXED" | "NONE";
   failedAttempts: number;
   decision: "DENIED";

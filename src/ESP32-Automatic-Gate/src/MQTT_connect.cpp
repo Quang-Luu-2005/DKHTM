@@ -1,5 +1,5 @@
 #include "MQTT_connect.h"
-#include "MQTT_secrets.h"
+#include "env_config.generated.h"
 #include "RfidRegistry.h"
 #include "Statistic.h"
 #include "SystemConfig.h"
@@ -22,13 +22,12 @@ float mqttFaceConfidence = 0;
 char mqttFaceEnrollmentEmployeeId[32] = "";
 
 namespace {
-constexpr int MQTT_PORT = 8883;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long MQTT_RETRY_INTERVAL_MS = 5000;
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASSWORD;
-const char *uploadTopic = "/board/upload/data";
-const char *commandTopic = "/board/get/data";
+const char *uploadTopic = MQTT_UPLOAD_TOPIC;
+const char *commandTopic = MQTT_COMMAND_TOPIC;
 const char *mqttServer = MQTT_SERVER;
 const char *username = MQTT_USERNAME;
 const char *mqttPassword = MQTT_PASSWORD;
@@ -326,22 +325,23 @@ void mqtt_upload_authentication_alert(const char *alertType,
                "MQTT AUTHENTICATION_ALERT publish failed");
 }
 
-void mqtt_upload_forced_lock_presence_alert() {
+void mqtt_upload_gate_climb_violation(int distanceCm) {
   JsonDocument doc;
   char buffer[384];
-  doc["event"] = "forced_lock_alert";
-  doc["eventType"] = "FORCED_LOCK_PRESENCE_ALERT";
-  doc["alertType"] = "PRESENCE_DETECTED_DURING_FORCED_LOCK";
+  doc["event"] = "gate_violation";
+  doc["eventType"] = "GATE_CLIMB_VIOLATION";
+  doc["alertType"] = "CLIMB_DETECTED_WHILE_GATE_CLOSED";
   doc["authMethod"] = "NONE";
   doc["decision"] = "DENIED";
   doc["gateState"] = "LOCKED";
   doc["gate"] = "closed";
   doc["led"] = "red";
   doc["buzzer"] = "muted";
+  doc["distance_cm"] = distanceCm;
   doc["authenticationAlerts"] = statistic.authenticationAlerts;
   publish_json(doc, buffer, sizeof(buffer),
-               "MQTT FORCED_LOCK_PRESENCE_ALERT published",
-               "MQTT FORCED_LOCK_PRESENCE_ALERT publish failed");
+               "MQTT GATE_CLIMB_VIOLATION published",
+               "MQTT GATE_CLIMB_VIOLATION publish failed");
 }
 
 void mqtt_upload_status(const char *result) {

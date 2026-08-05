@@ -22,6 +22,8 @@ export default function AuthenticationAlertModal({
   onClose,
 }: AuthenticationAlertModalProps) {
   const isForcedLockPresence = alert.alertType === "PRESENCE_DETECTED_DURING_FORCED_LOCK";
+  const isGateClimbViolation = alert.alertType === "CLIMB_DETECTED_WHILE_GATE_CLOSED";
+  const isPhysicalAlert = isForcedLockPresence || isGateClimbViolation;
   return (
     <AnimatePresence>
       {isOpen && (
@@ -43,7 +45,9 @@ export default function AuthenticationAlertModal({
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 animate-pulse text-amber-400" />
                 <span className="font-serif text-sm uppercase tracking-wider text-[#F8FAFC]">
-                  {isForcedLockPresence ? "Cảnh báo vùng khóa cưỡng bức" : "Cảnh báo xác thực"}
+                  {isGateClimbViolation
+                    ? "Cảnh báo vi phạm trèo cổng"
+                    : isForcedLockPresence ? "Cảnh báo vùng khóa cưỡng bức" : "Cảnh báo xác thực"}
                 </span>
               </div>
               <span className="rounded border border-[#334155] px-2.5 py-1 font-mono text-[9px] text-[#94A3B8]">
@@ -65,8 +69,8 @@ export default function AuthenticationAlertModal({
 
               <div className="space-y-3 rounded-xl border border-[#1E293B] bg-[#161618]/50 p-4 text-xs text-[#CBD5E1]">
                 <div className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-amber-400" />Nguồn phát hiện: {methodLabels[alert.authMethod]}</div>
-                {isForcedLockPresence ? (
-                  <div className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-amber-400" />Có người hoặc vật thể trong vùng cảm biến</div>
+                {isPhysicalAlert ? (
+                  <div className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-amber-400" />{isGateClimbViolation ? "Có tín hiệu trong vùng trèo cổng khi cổng chưa mở" : "Có người hoặc vật thể trong vùng cảm biến"}</div>
                 ) : (
                   <div className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-amber-400" />Số lần thất bại: {alert.failedAttempts}</div>
                 )}
@@ -74,8 +78,10 @@ export default function AuthenticationAlertModal({
               </div>
 
               <p className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-xs leading-relaxed text-[#94A3B8]">
-                {isForcedLockPresence
-                  ? "Cổng vẫn được giữ khóa. Cảnh báo sẽ được kích hoạt lại sau khi vùng cảm biến trống rồi có người tới gần lần nữa."
+                {isPhysicalAlert
+                  ? isGateClimbViolation
+                    ? "Cổng vẫn đóng. Dashboard chỉ nhận lại cảnh báo sau khi vùng cảm biến trống rồi phát hiện tín hiệu mới."
+                    : "Cổng vẫn được giữ khóa. Cảnh báo sẽ được kích hoạt lại sau khi vùng cảm biến trống rồi có người tới gần lần nữa."
                   : "Đây là cảnh báo xác thực bất thường, không phải xác nhận có hành vi vượt cổng."}
               </p>
 

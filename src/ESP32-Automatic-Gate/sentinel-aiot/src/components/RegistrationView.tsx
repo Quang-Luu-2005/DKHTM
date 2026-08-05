@@ -16,8 +16,8 @@ import { User as UserType } from "../types";
 
 interface RegistrationViewProps {
   users: UserType[];
-  onSaveUser: (user: UserType) => void;
-  onDeleteUser: (id: string) => void;
+  onSaveUser: (user: UserType) => Promise<void>;
+  onDeleteUser: (id: string) => Promise<void>;
   latestRfidScan: { rfidUid: string; receivedAt: string } | null;
   onStartRfidScan: () => Promise<void>;
   faceEnrollment: {
@@ -54,7 +54,7 @@ export default function RegistrationView({
   // Search and Directory state
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const usersPerPage = 4;
+  const usersPerPage = 10;
   const faceEnrollmentActive = Boolean(
     faceEnrollment &&
     ["REQUESTING", "STARTED", "PROGRESS"].includes(faceEnrollment.status),
@@ -139,7 +139,7 @@ export default function RegistrationView({
     return "Đang ghi dữ liệu khuôn mặt vào flash camera...";
   })();
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) {
       alert("Vui lòng nhập họ và tên hợp lệ.");
@@ -163,7 +163,12 @@ export default function RegistrationView({
       faceIdStatus,
     };
 
-    onSaveUser(newUser);
+    try {
+      await onSaveUser(newUser);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Không thể lưu nhân viên");
+      return;
+    }
 
     // Clear form & reset ID
     setFullName("");
@@ -516,9 +521,13 @@ export default function RegistrationView({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   if (confirm(`Xóa ${user.fullName} khỏi danh mục nhân sự?`)) {
-                                    onDeleteUser(user.id);
+                                    try {
+                                      await onDeleteUser(user.id);
+                                    } catch (error) {
+                                      alert(error instanceof Error ? error.message : "Không thể xóa nhân viên");
+                                    }
                                   }
                                 }}
                                 title="Xóa người dùng"

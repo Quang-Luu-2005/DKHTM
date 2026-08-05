@@ -1,8 +1,11 @@
 import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
 import express, { type Response } from "express";
 import mqtt from "mqtt";
 import nodemailer from "nodemailer";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { get as httpGet } from "node:http";
+import { get as httpsGet } from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,14 +14,17 @@ const currentDir = path.dirname(currentFile);
 
 dotenv.config({ path: path.join(currentDir, ".env.local") });
 dotenv.config({ path: path.join(currentDir, ".env") });
+dotenv.config({ path: path.resolve(currentDir, "..", "..", ".env") });
 
-const requiredEnvironment = [
-  "MQTT_URL",
-  "MQTT_USERNAME",
-  "MQTT_PASSWORD",
-] as const;
+const mqttUrl = process.env.MQTT_URL || (process.env.MQTT_SERVER
+  ? `mqtts://${process.env.MQTT_SERVER}:${process.env.MQTT_PORT || "8883"}`
+  : "");
 
-const missingEnvironment = requiredEnvironment.filter((name) => !process.env[name]);
+const missingEnvironment = [
+  ["MQTT_URL or MQTT_SERVER", mqttUrl],
+  ["MQTT_USERNAME", process.env.MQTT_USERNAME],
+  ["MQTT_PASSWORD", process.env.MQTT_PASSWORD],
+].filter(([, value]) => !value).map(([name]) => name);
 if (missingEnvironment.length > 0) {
   throw new Error(
     `Missing MQTT environment variables: ${missingEnvironment.join(", ")}. ` +
@@ -26,9 +32,11 @@ if (missingEnvironment.length > 0) {
   );
 }
 
-const mqttUrl = process.env.MQTT_URL!;
 const mqttUploadTopic = process.env.MQTT_UPLOAD_TOPIC || "/board/upload/data";
 const mqttCommandTopic = process.env.MQTT_COMMAND_TOPIC || "/board/get/data";
+// Prefer an explicit LAN URL because Windows mDNS may not resolve .local hosts.
+const cameraStreamUrl = process.env.CAMERA_STREAM_URL ||
+  `http://${process.env.CAMERA_HOSTNAME || "sentinel-stream-cam"}.local:${process.env.STREAM_PORT || "81"}/stream`;
 const serverPort = Number(process.env.SERVER_PORT || 3001);
 const enrollmentWindowMs = 30_000;
 const maxLocalRfidRecords = 20;
@@ -42,6 +50,16 @@ const smtpEnabled = Boolean(
     process.env.SMTP_PASSWORD &&
     process.env.SMTP_FROM,
 );
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const supabase = supabaseUrl && supabaseSecretKey
+  ? createClient(supabaseUrl, supabaseSecretKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  : null;
+const snapshotBucketName = "security-snapshots";
+let supabaseHealthy = false;
 
 interface RegisteredUser {
   id: string;
@@ -50,6 +68,15 @@ interface RegisteredUser {
   role: string;
   rfidUid: string;
   faceIdStatus: "ENROLLED" | "PENDING";
+}
+
+interface EmployeeRow {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  rfid_uid: string | null;
+  face_id_status: "ENROLLED" | "PENDING";
 }
 
 const databaseDirectory = path.join(currentDir, ".sentinel-data");
@@ -93,10 +120,109 @@ function persistRegisteredUsers(users: RegisteredUser[]) {
   renameSync(temporaryPath, usersDatabasePath);
 }
 
+function employeeToRow(user: RegisteredUser): EmployeeRow {
+  return {
+    id: user.id,
+    full_name: user.fullName,
+    email: user.email || "",
+    role: user.role,
+    rfid_uid: user.rfidUid === "NOT LINKED" ? null : normalizeRfidUid(user.rfidUid),
+    face_id_status: user.faceIdStatus,
+  };
+}
+
+function rowToEmployee(row: EmployeeRow): RegisteredUser {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    role: row.role,
+    rfidUid: row.rfid_uid || "NOT LINKED",
+    faceIdStatus: row.face_id_status,
+  };
+}
+
+async function syncEmployeesToSupabase(users: RegisteredUser[]) {
+  if (!supabase) return false;
+
+  const { data: existingRows, error: selectError } = await supabase
+    .from("employees")
+    .select("id");
+  if (selectError) throw selectError;
+
+  if (users.length > 0) {
+    const { error: upsertError } = await supabase
+      .from("employees")
+      .upsert(users.map(employeeToRow), { onConflict: "id" });
+    if (upsertError) throw upsertError;
+  }
+
+  const currentIds = new Set(users.map((user) => user.id));
+  const staleIds = (existingRows || [])
+    .map((row) => String(row.id))
+    .filter((id) => !currentIds.has(id));
+  if (staleIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from("employees")
+      .delete()
+      .in("id", staleIds);
+    if (deleteError) throw deleteError;
+  }
+
+  supabaseHealthy = true;
+  return true;
+}
+
 let registeredUsers = loadRegisteredUsers();
 let enrollmentExpiresAt = 0;
 let activeFaceEnrollment: { employeeId: string; expiresAt: number } | null = null;
 let rfidRegistryVersion = Math.floor(Date.now() / 1000) >>> 0;
+
+async function initializeSupabase() {
+  if (!supabase) {
+    console.log("[SUPABASE] Disabled; SUPABASE_URL/secret key are not configured");
+    return;
+  }
+
+  try {
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    if (bucketsError) throw bucketsError;
+    if (!buckets.some((bucket) => bucket.id === snapshotBucketName)) {
+      const { error: createBucketError } = await supabase.storage.createBucket(
+        snapshotBucketName,
+        {
+          public: false,
+          fileSizeLimit: 5 * 1024 * 1024,
+          allowedMimeTypes: ["image/jpeg"],
+        },
+      );
+      if (createBucketError) throw createBucketError;
+      console.log(`[SUPABASE] Created private ${snapshotBucketName} bucket`);
+    }
+
+    const { data, error } = await supabase
+      .from("employees")
+      .select("id,full_name,email,role,rfid_uid,face_id_status")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    if ((data || []).length === 0 && registeredUsers.length > 0) {
+      await syncEmployeesToSupabase(registeredUsers);
+      console.log(`[SUPABASE] Migrated ${registeredUsers.length} local employees`);
+    } else {
+      registeredUsers = (data || []).map((row) => rowToEmployee(row as EmployeeRow));
+      persistRegisteredUsers(registeredUsers);
+      supabaseHealthy = true;
+      console.log(`[SUPABASE] Loaded ${registeredUsers.length} employees`);
+    }
+
+    if (mqttClient.connected && registeredUsers.length > 0) publishRfidRegistry();
+  } catch (error) {
+    supabaseHealthy = false;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[SUPABASE] Initialization failed; using local cache: ${message}`);
+  }
+}
 
 const mailTransporter = smtpEnabled
   ? nodemailer.createTransport({
@@ -283,7 +409,113 @@ async function notifyGateEvent(payload: Record<string, unknown>) {
     );
   }
 
+  if (eventType === "GATE_CLIMB_VIOLATION") {
+    const recipients = securityNotificationRecipients();
+    if (recipients.length === 0) {
+      console.warn("[EMAIL] Gate-climb violation has no Administrator or Security Officer recipient");
+    }
+    return sendNotification(
+      recipients,
+      "[Sentinel] CẢNH BÁO VI PHẠM TRÈO QUA CỔNG",
+      [
+        "HC-SR04 phát hiện vật thể trong vùng giám sát khi cổng chưa mở.",
+        `Thời gian: ${eventTime}`,
+        `Cổng: ${gateId}`,
+        `Khoảng cách: ${String(payload.distance_cm ?? "không xác định")} cm`,
+        "Trạng thái cổng: Đang đóng.",
+        "Cảnh báo chỉ được gửi lại sau khi vùng cảm biến trống.",
+      ].join("\n"),
+    );
+  }
+
   return 0;
+}
+
+function optionalString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function optionalNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function persistBoardEvent(
+  payload: Record<string, unknown>,
+  receivedAt: string,
+) {
+  if (!supabase) return;
+
+  const eventName = optionalString(payload.event) || "unknown";
+  const persistedEvents = new Set([
+    "gate_event",
+    "authentication_alert",
+    "forced_lock_alert",
+    "gate_violation",
+  ]);
+  if (!persistedEvents.has(eventName)) return;
+
+  const employeeId = optionalString(payload.employee_id);
+  const linkedEmployeeId = employeeId && registeredUsers.some((user) => user.id === employeeId)
+    ? employeeId
+    : null;
+  const rawRfidUid = optionalString(payload.rfid_uid);
+  const requestedSourceDevice = optionalString(payload.source_device_id);
+  const sourceDevice = requestedSourceDevice &&
+    ["gate-main", "camera-stream", "camera-hfr"].includes(requestedSourceDevice)
+    ? requestedSourceDevice
+    : "gate-main";
+  const occurredAt = optionalString(payload.timestamp) || receivedAt;
+  const eventType = optionalString(payload.eventType) ||
+    optionalString(payload.event_type) || eventName.toUpperCase();
+  const authMethod = optionalString(payload.authMethod) ||
+    optionalString(payload.auth_method) || optionalString(payload.access_method);
+
+  const { data: accessEvent, error: accessError } = await supabase
+    .from("access_events")
+    .insert({
+      occurred_at: occurredAt,
+      event_type: eventType,
+      result: optionalString(payload.result),
+      auth_method: authMethod?.toUpperCase() || null,
+      employee_id: linkedEmployeeId,
+      employee_name: optionalString(payload.employee_name),
+      rfid_uid: rawRfidUid ? normalizeRfidUid(rawRfidUid) : null,
+      confidence: optionalNumber(payload.confidence),
+      reason: optionalString(payload.reason),
+      gate_id: optionalString(payload.gate_id) || "GT-NORTH-01",
+      source_device_id: sourceDevice,
+      payload,
+    })
+    .select("id")
+    .single();
+  if (accessError) throw accessError;
+
+  const isAlert = eventName === "authentication_alert" ||
+    eventName === "forced_lock_alert" || eventName === "gate_violation" ||
+    eventType.includes("ALERT") || eventType.includes("VIOLATION");
+  if (isAlert) {
+    const { error: alertError } = await supabase
+      .from("security_alerts")
+      .insert({
+        access_event_id: accessEvent.id,
+        occurred_at: occurredAt,
+        alert_type: optionalString(payload.alertType) || eventType,
+        gate_id: optionalString(payload.gate_id) || "GT-NORTH-01",
+        distance_cm: optionalNumber(payload.distance_cm),
+        auth_method: authMethod?.toUpperCase() || null,
+        failed_attempts: optionalNumber(payload.failedAttempts) || 0,
+        payload,
+      });
+    if (alertError) throw alertError;
+  }
+
+  const { error: deviceError } = await supabase
+    .from("devices")
+    .update({ status: "ONLINE", last_seen_at: receivedAt })
+    .eq("id", sourceDevice);
+  if (deviceError) throw deviceError;
+  supabaseHealthy = true;
 }
 
 const mqttClient = mqtt.connect(mqttUrl, {
@@ -294,6 +526,8 @@ const mqttClient = mqtt.connect(mqttUrl, {
   reconnectPeriod: 5000,
   connectTimeout: 15000,
 });
+
+void initializeSupabase();
 
 mqttClient.on("connect", () => {
   console.log(`[MQTT] Connected to ${new URL(mqttUrl).hostname}`);
@@ -344,7 +578,12 @@ mqttClient.on("message", (topic, payloadBuffer) => {
     }
     broadcast("board-event", { topic, payload, receivedAt });
 
-    if (payload.event === "gate_event" || payload.event === "authentication_alert" || payload.event === "forced_lock_alert") {
+    void persistBoardEvent(payload, receivedAt).catch((error: Error) => {
+      supabaseHealthy = false;
+      console.error(`[SUPABASE] Event persistence failed: ${error.message}`);
+    });
+
+    if (payload.event === "gate_event" || payload.event === "authentication_alert" || payload.event === "forced_lock_alert" || payload.event === "gate_violation") {
       void notifyGateEvent(payload).catch((error: Error) => {
         console.error(`[EMAIL] Notification error: ${error.message}`);
       });
@@ -360,6 +599,10 @@ mqttClient.on("message", (topic, payloadBuffer) => {
           user.id === employeeId ? { ...user, faceIdStatus: "ENROLLED" } : user,
         );
         persistRegisteredUsers(registeredUsers);
+        void syncEmployeesToSupabase(registeredUsers).catch((error: Error) => {
+          supabaseHealthy = false;
+          console.error(`[SUPABASE] Face status sync failed: ${error.message}`);
+        });
       }
       if (status === "SUCCESS" || status === "FAILED") {
         activeFaceEnrollment = null;
@@ -435,10 +678,110 @@ app.get("/api/status", (_request, response) => {
     commandTopic: mqttCommandTopic,
     registeredUsers: registeredUsers.length,
     emailNotificationsEnabled: smtpEnabled,
+    supabaseConfigured: Boolean(supabase),
+    supabaseHealthy,
   });
 });
 
-app.put("/api/users", (request, response) => {
+app.get("/api/users", (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json({ users: registeredUsers });
+});
+
+app.get("/api/camera/status", async (_request, response) => {
+  try {
+    const statusUrl = new URL(cameraStreamUrl);
+    statusUrl.port = "80";
+    statusUrl.pathname = "/status";
+    statusUrl.search = "";
+    const upstreamResponse = await fetch(statusUrl, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!upstreamResponse.ok) {
+      response.status(502).json({ online: false, error: `Camera returned HTTP ${upstreamResponse.status}` });
+      return;
+    }
+    response.status(200).json(await upstreamResponse.json());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Camera status unavailable";
+    console.warn(`[CAMERA] Status error: ${message}`);
+    response.status(502).json({ online: false, error: "Camera status unavailable" });
+  }
+});
+
+app.get("/api/camera/capture", async (_request, response) => {
+  try {
+    const captureUrl = new URL(cameraStreamUrl);
+    captureUrl.port = "80";
+    captureUrl.pathname = "/capture";
+    captureUrl.search = "";
+    const upstreamResponse = await fetch(captureUrl, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!upstreamResponse.ok) {
+      response.status(502).json({ error: `Camera returned HTTP ${upstreamResponse.status}` });
+      return;
+    }
+    const jpeg = Buffer.from(await upstreamResponse.arrayBuffer());
+    response.status(200);
+    response.setHeader("Content-Type", "image/jpeg");
+    response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    response.send(jpeg);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Camera capture unavailable";
+    console.warn(`[CAMERA] Capture error: ${message}`);
+    response.status(502).json({ error: "Camera capture unavailable" });
+  }
+});
+
+app.get("/api/camera/stream", (_request, response) => {
+  let upstreamUrl: URL;
+  try {
+    upstreamUrl = new URL(cameraStreamUrl);
+  } catch {
+    response.status(500).json({ error: "Camera stream URL is invalid" });
+    return;
+  }
+
+  if (upstreamUrl.protocol !== "http:" && upstreamUrl.protocol !== "https:") {
+    response.status(500).json({ error: "Camera stream protocol is not supported" });
+    return;
+  }
+
+  const openStream = upstreamUrl.protocol === "https:" ? httpsGet : httpGet;
+  const upstreamRequest = openStream(upstreamUrl, (upstreamResponse) => {
+    if (upstreamResponse.statusCode !== 200) {
+      upstreamResponse.resume();
+      response.status(502).json({ error: `Camera returned HTTP ${upstreamResponse.statusCode || 0}` });
+      return;
+    }
+
+    response.status(200);
+    response.setHeader(
+      "Content-Type",
+      upstreamResponse.headers["content-type"] || "multipart/x-mixed-replace",
+    );
+    response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    response.setHeader("Connection", "keep-alive");
+    upstreamResponse.pipe(response);
+    response.on("close", () => upstreamResponse.destroy());
+  });
+
+  upstreamRequest.setTimeout(8_000, () => {
+    upstreamRequest.destroy(new Error("Camera stream timeout"));
+  });
+  upstreamRequest.on("error", (error) => {
+    if (response.destroyed) return;
+    console.warn(`[CAMERA] Stream proxy error: ${error.message}`);
+    if (!response.headersSent) {
+      response.status(502).json({ error: "Camera stream unavailable" });
+    } else {
+      response.end();
+    }
+  });
+});
+
+app.put("/api/users", async (request, response) => {
   const users = request.body?.users;
   if (!Array.isArray(users) || !users.every(isRegisteredUser)) {
     response.status(400).json({ error: "Invalid users database" });
@@ -488,6 +831,18 @@ app.put("/api/users", (request, response) => {
     return;
   }
 
+  try {
+    await syncEmployeesToSupabase(normalizedUsers);
+  } catch (error) {
+    supabaseHealthy = false;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[SUPABASE] Employee sync failed: ${message}`);
+    response.status(502).json({
+      error: "Supabase sync failed; employee data was not changed",
+      savedLocal: false,
+    });
+    return;
+  }
   registeredUsers = normalizedUsers;
   persistRegisteredUsers(registeredUsers);
   rfidRegistryVersion = (rfidRegistryVersion + 1) >>> 0;

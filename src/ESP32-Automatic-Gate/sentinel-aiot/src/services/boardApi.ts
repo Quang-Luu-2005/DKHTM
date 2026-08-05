@@ -3,8 +3,8 @@ import type { User } from "../types";
 export interface BoardPayload {
   event?: string;
   status?: string;
-  eventType?: "AUTH_SUCCESS" | "AUTH_FAILURE" | "AUTH_RETRY" | "AUTHENTICATION_ALERT" | "FORCED_LOCK_PRESENCE_ALERT";
-  alertType?: "REPEATED_AUTH_FAILURE" | "REPEATED_UNKNOWN_FACE" | "REPEATED_INVALID_RFID" | "PRESENCE_DETECTED_DURING_FORCED_LOCK";
+  eventType?: "AUTH_SUCCESS" | "AUTH_FAILURE" | "AUTH_RETRY" | "AUTHENTICATION_ALERT" | "FORCED_LOCK_PRESENCE_ALERT" | "GATE_CLIMB_VIOLATION";
+  alertType?: "REPEATED_AUTH_FAILURE" | "REPEATED_UNKNOWN_FACE" | "REPEATED_INVALID_RFID" | "PRESENCE_DETECTED_DURING_FORCED_LOCK" | "CLIMB_DETECTED_WHILE_GATE_CLOSED";
   authMethod?: "FACE" | "RFID" | "MIXED" | "NONE";
   failedAttempts?: number;
   decision?: "GRANTED" | "DENIED";
@@ -69,6 +69,20 @@ export function connectBoardEvents({
   eventSource.onerror = () => onBrokerStatus(false);
 
   return () => eventSource.close();
+}
+
+export async function fetchUsersDatabase(): Promise<User[]> {
+  const response = await fetch("/api/users", { cache: "no-store" });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `User fetch failed with HTTP ${response.status}`);
+  }
+
+  const body = (await response.json()) as { users?: User[] };
+  if (!Array.isArray(body.users)) {
+    throw new Error("User database response is invalid");
+  }
+  return body.users;
 }
 
 export async function syncUsersDatabase(users: User[]) {

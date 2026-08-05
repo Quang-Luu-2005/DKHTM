@@ -7,8 +7,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   getUsers,
-  saveUser,
-  deleteUser,
+  replaceUsers,
   getAuditLogs,
   addAuditLog,
   saveAuditLogs,
@@ -25,6 +24,7 @@ import RegistrationView from "./components/RegistrationView";
 import LogsView from "./components/LogsView";
 import {
   connectBoardEvents,
+  fetchUsersDatabase,
   startFaceEnrollment,
   startRfidEnrollment,
   syncUsersDatabase,
@@ -63,7 +63,6 @@ export default function App() {
 
   // Domain states
   const [users, setUsers] = useState<User[]>([]);
-  const [usersInitialized, setUsersInitialized] = useState(false);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [hardware, setHardware] = useState<HardwareState>({
     servoArm: "SECURED / CLOSED",
@@ -103,18 +102,21 @@ export default function App() {
         : log;
     });
     setUsers(storedUsers);
-    setUsersInitialized(true);
     setLogs(saveAuditLogs(resolvedLogs));
     setHardware(getHardwareState());
-  }, []);
 
-  // Keep the server-side RFID authorization database synchronized with the UI.
-  useEffect(() => {
-    if (!usersInitialized) return;
-    void syncUsersDatabase(users).catch((error) => {
-      console.error("Không thể đồng bộ cơ sở dữ liệu nhân viên:", error);
-    });
-  }, [users, usersInitialized, mqttConnected]);
+    let cancelled = false;
+    void fetchUsersDatabase()
+      .then((serverUsers) => {
+        if (!cancelled) setUsers(replaceUsers(serverUsers));
+      })
+      .catch((error) => {
+        console.error("Không thể tải cơ sở dữ liệu nhân viên từ server:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Receive real hardware telemetry from the local MQTT bridge.
   useEffect(() => {
@@ -140,9 +142,14 @@ export default function App() {
                 const enrolledUser = currentUsers.find(
                   (user) => user.id === payload.employee_id,
                 );
-                return enrolledUser
-                  ? saveUser({ ...enrolledUser, faceIdStatus: "ENROLLED" })
-                  : currentUsers;
+                if (!enrolledUser) return currentUsers;
+                const updatedUsers = currentUsers.map((user) =>
+                  user.id === payload.employee_id
+                    ? { ...user, faceIdStatus: "ENROLLED" as const }
+                    : user,
+                );
+                replaceUsers(updatedUsers);
+                return updatedUsers;
               });
             }
           }
@@ -157,14 +164,14 @@ export default function App() {
           if (gate === "open" || result === "granted" || result === "opened") {
             next.servoArm = "OPENED / UNSECURED";
             next.servoLocked = false;
-          } else if (gate === "closed" || result === "closed" || eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT") {
+          } else if (gate === "closed" || result === "closed" || eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT" || eventType === "GATE_CLIMB_VIOLATION") {
             next.servoArm = "SECURED / CLOSED";
             next.servoLocked = true;
           }
 
           if (led === "green" || result === "led_green" || result === "granted") {
             next.indicatorLed = "GREEN / ACCESS ALLOWED";
-          } else if (led === "red" || result === "led_red" || eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT") {
+          } else if (led === "red" || result === "led_red" || eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT" || eventType === "GATE_CLIMB_VIOLATION") {
             next.indicatorLed = "RED / RESTRICTED";
           }
 
@@ -200,8 +207,10 @@ export default function App() {
             status: "AUTH_FAILURE",
             confidence: "N/A",
           }));
-        } else if (eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT") {
+        } else if (eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT" || eventType === "GATE_CLIMB_VIOLATION") {
           const isForcedLockPresence = eventType === "FORCED_LOCK_PRESENCE_ALERT";
+          const isGateClimbViolation = eventType === "GATE_CLIMB_VIOLATION";
+          const isPhysicalAlert = isForcedLockPresence || isGateClimbViolation;
           const authMethod = payload.authMethod === "RFID"
             ? "RFID"
             : payload.authMethod === "MIXED" ? "MIXED"
@@ -213,20 +222,22 @@ export default function App() {
             id: `AUTH-${Date.now()}`,
             timestamp,
             gateId: "GT-NORTH-01",
-            alertType: payload.alertType || (isForcedLockPresence
-              ? "PRESENCE_DETECTED_DURING_FORCED_LOCK"
+            alertType: payload.alertType || (isPhysicalAlert
+              ? isGateClimbViolation ? "CLIMB_DETECTED_WHILE_GATE_CLOSED" : "PRESENCE_DETECTED_DURING_FORCED_LOCK"
               : "REPEATED_AUTH_FAILURE"),
             authMethod,
-            failedAttempts: isForcedLockPresence ? 0 : (payload.failedAttempts ?? 3),
+            failedAttempts: isPhysicalAlert ? 0 : (payload.failedAttempts ?? 3),
             decision: "DENIED",
             gateState: "LOCKED",
           });
           setLogs(addAuditLog({
-            subjectName: isForcedLockPresence
-              ? "Phát hiện người tại vùng cổng đang khóa cưỡng bức"
+            subjectName: isPhysicalAlert
+              ? isGateClimbViolation
+                ? `Phát hiện vi phạm trèo cổng (${payload.distance_cm ?? "?"} cm)`
+                : "Phát hiện người tại vùng cổng đang khóa cưỡng bức"
               : `Cảnh báo xác thực thất bại ${payload.failedAttempts ?? 3} lần`,
-            accessMethod: isForcedLockPresence
-              ? "Manual Override"
+            accessMethod: isPhysicalAlert
+              ? isGateClimbViolation ? "HC-SR04" : "Manual Override"
               : authMethod === "RFID" ? "RFID" : "Face ID",
             gateId: "GT-NORTH-01",
             status: "AUTH_ALERT",
@@ -239,7 +250,7 @@ export default function App() {
   }, []);
 
   // Handle saving new user
-  const handleSaveUser = (user: User) => {
+  const handleSaveUser = async (user: User) => {
     const normalizedUid = user.rfidUid.trim().toUpperCase();
     const duplicate = users.find(
       (existingUser) =>
@@ -248,12 +259,15 @@ export default function App() {
         existingUser.rfidUid.trim().toUpperCase() === normalizedUid,
     );
     if (duplicate) {
-      alert(`Thẻ này đã được liên kết với ${duplicate.fullName}.`);
-      return;
+      throw new Error(`Thẻ này đã được liên kết với ${duplicate.fullName}.`);
     }
 
-    const updatedUsers = saveUser(user);
-    setUsers(updatedUsers);
+    const exists = users.some((existingUser) => existingUser.id === user.id);
+    const updatedUsers = exists
+      ? users.map((existingUser) => existingUser.id === user.id ? user : existingUser)
+      : [user, ...users];
+    await syncUsersDatabase(updatedUsers);
+    setUsers(replaceUsers(updatedUsers));
 
     // Automatically log this as an enrollment action
     const updatedLogs = addAuditLog({
@@ -267,9 +281,10 @@ export default function App() {
   };
 
   // Handle deleting a user
-  const handleDeleteUser = (id: string) => {
-    const updatedUsers = deleteUser(id);
-    setUsers(updatedUsers);
+  const handleDeleteUser = async (id: string) => {
+    const updatedUsers = users.filter((user) => user.id !== id);
+    await syncUsersDatabase(updatedUsers);
+    setUsers(replaceUsers(updatedUsers));
   };
 
   const handleStartRfidEnrollment = async () => {

@@ -49,7 +49,7 @@ void mqtt_upload_face_enrollment(const char* status, const char* employeeId,
                                  const char* view, uint8_t completedViews,
                                  const char* reason);
 void mqtt_upload_authentication_alert(const char* alertType, const char* authMethod, uint8_t failedAttempts);
-void mqtt_upload_forced_lock_presence_alert();
+void mqtt_upload_gate_climb_violation(int distanceCm);
 void mqtt_upload_status(const char* result);
 
 void mqtt_loop(bool allowReconnect = true);

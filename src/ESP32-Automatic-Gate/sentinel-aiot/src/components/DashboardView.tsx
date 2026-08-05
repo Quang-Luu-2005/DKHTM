@@ -2,10 +2,12 @@ import React from "react";
 import {
   Activity,
   BrainCircuit,
+  Camera,
   CheckCircle2,
   DoorClosed,
   DoorOpen,
   Radio,
+  RefreshCw,
   ShieldAlert,
   WifiOff,
 } from "lucide-react";
@@ -30,6 +32,39 @@ export default function DashboardView({
 }: DashboardViewProps) {
   const gateOpen = !hardware.servoLocked;
   const recentLogs = logs.slice(0, 6);
+  const [streamVersion, setStreamVersion] = React.useState(0);
+  const [frameVersion, setFrameVersion] = React.useState(() => Date.now());
+  const [streamState, setStreamState] = React.useState<"connecting" | "online" | "offline">("connecting");
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setStreamState("connecting");
+    fetch("/api/camera/status", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Camera status unavailable");
+        return response.json();
+      })
+      .then(() => {
+        setStreamState("online");
+        setFrameVersion(Date.now());
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStreamState("offline");
+      });
+    return () => controller.abort();
+  }, [streamVersion]);
+
+  React.useEffect(() => {
+    if (streamState !== "online") return;
+    const frameTimer = window.setInterval(() => setFrameVersion(Date.now()), 500);
+    return () => window.clearInterval(frameTimer);
+  }, [streamState, streamVersion]);
+
+  const reconnectStream = () => {
+    setStreamState("connecting");
+    setStreamVersion((version) => version + 1);
+  };
 
   return (
     <div className="space-y-6">
@@ -58,10 +93,69 @@ export default function DashboardView({
               Nhận diện khuôn mặt chạy trực tiếp trên ESP32-CAM
             </h3>
             <p className="mt-2 max-w-4xl text-xs leading-6 text-[#94A3B8]">
-              Camera chỉ gửi kết quả VERIFIED, UNKNOWN hoặc lỗi chất lượng ảnh về ESP32 chính qua ESP-NOW.
-              Hình ảnh, video và embedding không được truyền lên dashboard.
+              Camera HFR chỉ gửi kết quả VERIFIED, UNKNOWN hoặc lỗi chất lượng ảnh về ESP32 chính qua ESP-NOW.
+              Camera stream riêng cung cấp MJPEG trực tiếp bên dưới; embedding không được truyền lên dashboard.
             </p>
           </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-xl overflow-hidden rounded-2xl border border-[#1E293B] bg-[#111113] shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1E293B] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300">
+              <Camera className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="font-serif text-lg font-light tracking-wide text-[#F8FAFC]">
+                Camera stream trực tiếp
+              </h3>
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
+                ESP-DL Face Detect • Live JPEG nội bộ
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-lg border px-2.5 py-1 font-mono text-[9px] uppercase ${
+              streamState === "online"
+                ? statusStyle.online
+                : streamState === "offline" ? statusStyle.warning : statusStyle.neutral
+            }`}>
+              {streamState === "online" ? "Đang phát" : streamState === "offline" ? "Mất tín hiệu" : "Đang kết nối"}
+            </span>
+            <button
+              type="button"
+              onClick={reconnectStream}
+              className="rounded-lg border border-[#334155] p-2 text-[#94A3B8] transition-colors hover:border-sky-500/40 hover:text-sky-300"
+              aria-label="Kết nối lại camera stream"
+              title="Kết nối lại camera stream"
+            >
+              <RefreshCw className={`h-4 w-4 ${streamState === "connecting" ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative aspect-video min-h-[240px] bg-black">
+          <img
+            key={streamVersion}
+            src={`/api/camera/capture?v=${streamVersion}-${frameVersion}`}
+            alt="Luồng trực tiếp từ camera ESP32-CAM"
+            className={`h-full w-full object-contain transition-opacity duration-300 ${streamState === "offline" ? "opacity-0" : "opacity-100"}`}
+            onLoad={() => setStreamState("online")}
+            onError={() => setStreamState("offline")}
+          />
+          {streamState !== "online" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
+              {streamState === "connecting" ? (
+                <RefreshCw className="h-7 w-7 animate-spin text-sky-300" />
+              ) : (
+                <WifiOff className="h-7 w-7 text-amber-300" />
+              )}
+              <p className="font-mono text-[10px] uppercase tracking-widest text-[#64748B]">
+                {streamState === "connecting" ? "Đang nhận khung hình đầu tiên" : "Không kết nối được camera stream"}
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
