@@ -1,0 +1,290 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\useinnertheme{circles}
+\usecolortheme{default}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+
+\hypersetup{
+  pdftitle={He thong kiem soat ra vao thong minh - AIoT},
+  pdfauthor={Nhom: Quang, Nhan, Van, Phu},
+  pdfsubject={Smart Access Control with Camera, RFID, MQTT and Web Sentinel},
+}
+
+\title[Kiểm soát ra vào AIoT]{Hệ thống kiểm soát ra vào thông minh}
+\subtitle{Báo cáo tiến độ \& Danh mục chức năng (Sprint 6)}
+\author[Nhóm thực hiện]{Lưu Huy Minh Quang -- 23127016 \and Hoàng Nhân -- 23127094 \and Trần Cao Vân -- 23127141 \and Nguyễn Trần Thiên Phú -- 23127246}
+\institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
+\date{Tháng 6, 2026}
+
+\AtBeginSection[]{
+  \begin{frame}[plain]
+    \vfill
+    \centering
+      {\Large Phần \insertsectionnumber}\par\vspace{0.6em}
+      {\LARGE\bfseries \insertsectionhead}\par
+    \vfill
+  \end{frame}
+}
+
+\begin{document}
+
+%------- TITLE -------
+\begin{frame}
+  \begin{center}
+    \vspace{0.4em}
+    {\usebeamerfont{title}\Large\bfseries\inserttitle\par}
+    \vspace{0.3em}
+    {\usebeamerfont{subtitle}\insertsubtitle\par}
+
+    \vspace{1.2em}
+    {\large\bfseries Nhóm thực hiện}\\[0.6em]
+    \begin{tabular}{ll}
+      Lưu Huy Minh Quang & 23127016 \\
+      Hoàng Nhân & 23127094 \\
+      Trần Cao Vân & 23127141 \\
+      Nguyễn Trần Thiên Phú & 23127246 \\
+    \end{tabular}\\[0.8em]
+    \textit{Khoa CNTT -- ĐH Khoa học Tự nhiên, ĐHQG TP.HCM}\\
+    \textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}
+
+    \vspace{0.8em}
+    {\large \insertdate}
+  \end{center}
+\end{frame}
+
+%------- MỤC LỤC -------
+\begin{frame}{Nội dung trình bày}
+  \vspace{0.4em}
+  \begin{enumerate}
+    \item Tóm tắt hiện trạng hệ thống
+    \item Chức năng đã hoàn thành \& hoạt động ổn định
+    \item Các chức năng chưa ổn định (Cần hoàn thiện)
+    \item Đề xuất hoàn thiện trong Sprint 6
+    \item Kiến trúc \& Luồng vận hành thực tế
+  \end{enumerate}
+\end{frame}
+
+%============================
+\section{Tóm tắt hiện trạng hệ thống}
+%============================
+
+\begin{frame}{Hiện trạng tổng quan}
+  \textbf{Trạng thái chung của project:}
+  \vspace{0.6em}
+  \begin{itemize}
+    \item \textbf{Phần lõi ổn định:} Hệ thống RFID, giao thức MQTT (HiveMQ) và Web Sentinel đã hoàn thành và hoạt động tương đối ổn định.
+    \item \textbf{Đang hoàn thiện:} Camera ESP32-CAM, nhận diện khuôn mặt và module phát hiện vi phạm qua cảm biến siêu âm đang ở giai đoạn hoàn thiện & kiểm thử.
+    \item \textbf{Mã nguồn chính:} Đã được đồng bộ và lưu trữ tại nhánh \texttt{main} trên GitHub.
+  \end{itemize}
+\end{frame}
+
+%============================
+\section{Chức năng đã hoàn thành \& hoạt động ổn định}
+%============================
+
+\begin{frame}{List chức năng đã hoàn thành (1/2)}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Điều khiển cổng \& Servo}
+      \begin{itemize}
+        \item \textbf{Điều khiển cổng:} Chế độ bình thường, mở cưỡng bức, khóa cưỡng bức (Đã lập trình).
+        \item \textbf{Servo:} Tự động mở cổng khi có quyền và tự đóng (Đã lập trình).
+      \end{itemize}
+      \vspace{0.4em}
+      \textbf{Định danh RFID / NFC}
+      \begin{itemize}
+        \item \textbf{RFID đọc UID:} Gửi lên Server đối chiếu Database (Đã hoạt động).
+        \item \textbf{RFID hợp lệ:} Mở cổng, LED xanh, buzzer báo, ghi log (Đã hoạt động).
+        \item \textbf{RFID không hợp lệ:} Đóng cổng, LED đỏ, buzzer kêu 3 lần (Đã lập trình).
+        \item \textbf{Liên kết thẻ:} Quét và gán thẻ cho nhân viên (Đã hoạt động).
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Hạ tầng Kết nối \& Web Sentinel}
+      \begin{itemize}
+        \item \textbf{ESP32--HiveMQ:} Wi-Fi, TLS MQTT, gửi/nhận lệnh (Đã hoạt động).
+        \item \textbf{Web Sentinel:} Giao diện điều khiển & nhận trạng thái qua MQTT bridge (Đã hoạt động).
+        \item \textbf{Nhật ký (Log):} Ghi nhận lượt RFID, khuôn mặt, từ chối & vi phạm (Đã lập trình).
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{List chức năng đã hoàn thành (2/2)}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Quản lý \& Thông báo Email}
+      \begin{itemize}
+        \item \textbf{Quản lý nhân viên:} Thêm/sửa nhân viên, vai trò (role), email, UID RFID và ảnh khuôn mặt (Đã lập trình).
+        \item \textbf{Email cơ bản:} Tự động gửi email xác nhận cho nhân viên khi lượt ra vào được chấp nhận (Đã hoạt động).
+        \item \textbf{Email vi phạm:} Bộ lọc tự động gửi email cảnh báo chỉ tới \textit{Administrator} và \textit{Security Officer} (Đã lập trình).
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Xử lý vi phạm \& Camera}
+      \begin{itemize}
+        \item \textbf{Xử lý vi phạm:} Khóa cổng, LED đỏ, buzzer kêu liên tục & đẩy sự kiện lên Web (Đã lập trình).
+        \item \textbf{Reset vi phạm:} Mở khóa từ Web Sentinel hoặc nút bấm cứng trên mạch (Đã lập trình).
+        \item \textbf{ESP32-CAM:} Capture snapshot, MJPEG stream, bật/tắt đèn trợ sáng (Đã lập trình).
+        \item \textbf{Nhận diện khuôn mặt:} Giữ mặt 2s, so khớp ảnh, gửi kết quả về cổng (Đã lập trình).
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Minh chứng chức năng hoạt động ổn định}
+  \begin{itemize}
+    \item \textbf{Hệ thống Web \& API:} Web Sentinel & Node API chạy tại port 3000 và 3001, kết nối thành công với HiveMQ Cloud.
+    \item \textbf{Giao tiếp Real-time:} Gửi/nhận dữ liệu ổn định qua 2 topic: \texttt{/board/upload/data} và \texttt{/board/get/data}.
+    \item \textbf{Xác thực \& Lưu trữ:} Khởi động ESP32 tự kết nối Wi-Fi/MQTT, RFID hợp lệ mở cổng & ghi log, Database tự lưu và phục hồi dữ liệu nhân viên sau khi restart server.
+    \item \textbf{Firmware \& Cấu hình:} Đã build và upload firmware thành công cho cả ESP32 Cổng và ESP32-CAM.
+  \end{itemize}
+\end{frame}
+
+%============================
+\section{Các chức năng chưa ổn định}
+%============================
+
+\begin{frame}{Chức năng cần hoàn thiện \& Hạn chế kỹ thuật}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Chức năng chưa ổn định}
+      \begin{itemize}
+        \item \textbf{Stream ESP32-CAM:} Thỉnh thoảng bị đen hình, rò rỉ kết nối MJPEG.
+        \item \textbf{Nhận diện khuôn mặt:} Chưa kiểm thử đa dạng góc mặt và điều kiện ánh sáng.
+        \item \textbf{Phát hiện vi phạm:} Mới nạp firmware, chưa kiểm thử vật lý end-to-end với HC-SR04.
+        \item \textbf{Phân quyền Email:} Database chưa cập nhật đủ email của Admin/Security Officer.
+      \end{itemize}
+
+    \column{0.48\textwidth}
+      \textbf{Rủi ro phần cứng \& Vận hành}
+      \begin{itemize}
+        \item \textbf{Buzzer \& Nguồn:} Âm lượng buzzer chưa đồng đều do phụ thuộc nguồn điện.
+        \item \textbf{Tự đóng cổng:} Dùng thời gian cố định (\textit{fixed delay}), chưa có cảm biến nhận biết người đã đi qua hoàn toàn.
+        \item \textbf{Mạng \& Kết nối:} Chưa hỗ trợ stream khi MacBook và ESP32-CAM khác subnet; chưa kiểm thử mất kết nối Wi-Fi/MQTT dài hạn.
+      \end{itemize}
+  \end{columns}
+\end{frame}
+
+%============================
+\section{Đề xuất hoàn thiện trong Sprint 6}
+%============================
+
+\begin{frame}{Kế hoạch hành động Sprint 6 (1/2)}
+  \begin{enumerate}
+    \item \textbf{Ổn định luồng Camera:}
+      \begin{itemize}
+        \item Tự động kết nối lại khi ESP32-CAM reset; triệt tiêu kết nối MJPEG trùng lặp.
+        \item Đảm bảo stream chạy liên tục 30--60 phút không đen hình; hiển thị rõ trạng thái mất kết nối.
+      \end{itemize}
+    \vspace{0.3em}
+    \item \textbf{Hoàn thiện Nhận diện khuôn mặt:}
+      \begin{itemize}
+        \item Kiểm thử nhiều nhân viên, ánh sáng khác nhau; thiết lập ngưỡng tin cậy (\textit{confidence threshold}) tối ưu.
+        \item Mặt hợp lệ $\rightarrow$ Mở cổng; Mặt không hợp lệ $\rightarrow$ Báo lỗi 3 tiếng; Chống gửi lặp kết quả.
+      \end{itemize}
+    \vspace{0.3em}
+    \item \textbf{Hoàn thiện Phát hiện vi phạm (HC-SR04):}
+      \begin{itemize}
+        \item Hiệu chỉnh khoảng cách và số lần xác nhận; tránh báo nhầm người vừa được cấp quyền ra vào.
+        \item Vi phạm $\rightarrow$ Khóa cổng, bật buzzer liên tục, ghi log và gửi email tức thì.
+      \end{itemize}
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Kế hoạch hành động Sprint 6 (2/2)}
+  \begin{enumerate}
+    \setcounter{enumi}{3}
+    \item \textbf{Hoàn thiện Phân quyền Thông báo Email:}
+      \begin{itemize}
+        \item Cập nhật đầy đủ email Role Admin \& Security Officer.
+        \item Phân luồng: Cảnh báo vi phạm chỉ gửi cho Admin/An ninh; Nhân viên chỉ nhận log ra vào cá nhân.
+      \end{itemize}
+    \vspace{0.3em}
+    \item \textbf{Cải thiện State Machine của Cổng:}
+      \begin{itemize}
+        \item Loại bỏ hàm \texttt{delay()} gây nghẽn chương trình; chỉ đóng cổng khi người đã qua hoặc hết timeout an toàn.
+        \item Tự khôi phục trạng thái chuẩn xác sau sự cố mất điện / mất mạng Wi-Fi / MQTT.
+      \end{itemize}
+    \vspace{0.3em}
+    \item \textbf{Nhật ký \& Kiểm thử End-to-End:}
+      \begin{itemize}
+        \item Lưu log phía Server tránh mất data khi reload; lập bảng kết quả Pass/Fail và quay video demo.
+      \end{itemize}
+  \end{enumerate}
+\end{frame}
+
+%============================
+\section{Kiến trúc \& Luồng vận hành thực tế}
+%============================
+
+\begin{frame}{Kiến trúc tổng thể hệ thống IoT}
+  \begin{center}
+  \begin{tikzpicture}[
+    layerbox/.style={rectangle, rounded corners=4pt, text width=3.2cm,
+      align=center, minimum height=1.3cm, font=\small\bfseries, inner sep=5pt},
+    inputbox/.style={layerbox, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
+    actbox/.style={layerbox, draw=green!55!black, fill=green!9},
+    webbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
+  ]
+    \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + Cảm biến HC-SR04}};
+    \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối điều khiển\\{\scriptsize ESP32 Main + ESP32-CAM}};
+    \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED + Buzzer}};
+    \node[webbox, above=1.2cm of ctrl] (web) {Web Sentinel Dashboard\\{\scriptsize HiveMQ MQTT + Node API + DB}};
+
+    \draw[arr] (input) -- (ctrl);
+    \draw[arr] (ctrl) -- (act);
+    \draw[arr] (ctrl) -- (web);
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.4em}
+  \small\textbf{Luồng vận hành:} Cảm biến/RFID gửi tín hiệu $\rightarrow$ ESP32 xử lý $\rightarrow$ Điều khiển Servo/Buzzer $\rightarrow$ Đẩy nhật ký real-time lên Web Sentinel qua MQTT HiveMQ.
+\end{frame}
+
+\begin{frame}{Sơ đồ liên kết phần cứng \& Phần mềm}
+  \begin{center}
+  \begin{tikzpicture}[
+    block/.style={rectangle, rounded corners=4pt, text width=2.55cm,
+      align=center, minimum height=1.0cm, font=\small, inner sep=4pt},
+    inputbox/.style={block, draw=blue!70, fill=blue!8},
+    ctrlbox/.style={block, draw=violet!70!black, fill=violet!10},
+    actbox/.style={block, draw=green!55!black, fill=green!9},
+    webbox/.style={block, draw=orange!80!black, fill=orange!10},
+    dbbox/.style={block, draw=gray!70!black, fill=gray!10},
+    arr/.style={-{Stealth[length=2mm]}, thick, blue!70},
+    dataarr/.style={<->, >=Stealth, thick, orange!80!black}
+  ]
+    \node[inputbox] (input) {Đầu vào\\{\scriptsize RFID RC522\\ESP32-CAM\\HC-SR04}};
+    \node[ctrlbox, right=0.8cm of input] (ctrl) {Bộ xử lý trung tâm\\{\scriptsize ESP32 Cổng\\(State Machine)}};
+    \node[actbox, right=0.8cm of ctrl] (act) {Chấp hành\\{\scriptsize SG90 Servo\\LED / Buzzer}};
+    \node[webbox, below=0.9cm of ctrl] (web) {Web Sentinel\\{\scriptsize Node API (3001)\\React Web (3000)}};
+    \node[dbbox, right=0.8cm of web] (db) {Database\\{\scriptsize Nhân viên, RFID\\Nhật ký, Role}};
+
+    \draw[arr] (input) -- node[above, font=\scriptsize]{Dữ liệu} (ctrl);
+    \draw[arr] (ctrl) -- node[above, font=\scriptsize]{Lệnh} (act);
+    \draw[arr] (ctrl) -- node[left, font=\scriptsize]{MQTT} (web);
+    \draw[dataarr] (web) -- node[above, font=\scriptsize]{Sync} (db);
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+%------- CLOSING -------
+\begin{frame}[plain]
+  \begin{center}
+    \vspace{2.5cm}
+    {\Huge \textbf{Cảm ơn thầy và các bạn!}}\\[0.8em]
+    {\Large Q\&A -- Phản hồi \& Thảo luận}
+  \end{center}
+\end{frame}
+
+\end{document}
