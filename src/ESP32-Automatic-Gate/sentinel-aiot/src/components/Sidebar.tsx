@@ -1,20 +1,14 @@
 import React from "react";
-import { LayoutDashboard, UserPlus, History, LifeBuoy, Settings2, Lock, Unlock } from "lucide-react";
+import { LayoutDashboard, UserPlus, History, LifeBuoy, Settings2 } from "lucide-react";
 
 interface SidebarProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
-  isEmergencyLocked: boolean;
-  onToggleEmergencyLock: () => void;
-  isAutomatedLockActive?: boolean;
 }
 
 export default function Sidebar({
   currentTab,
   setCurrentTab,
-  isEmergencyLocked,
-  onToggleEmergencyLock,
-  isAutomatedLockActive = false
 }: SidebarProps) {
   const menuItems = [
     { id: "dashboard", label: "Tổng quan hệ thống", icon: LayoutDashboard },
@@ -73,20 +67,9 @@ export default function Sidebar({
             Cài đặt
           </button>
 
-          {/* Emergency Lock Trigger Button */}
-          <button
-            onClick={onToggleEmergencyLock}
-            className={`w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-mono text-[9px] font-bold uppercase tracking-widest transition-all duration-300 active:scale-95 cursor-pointer border ${
-              isAutomatedLockActive
-                ? "bg-red-600 hover:bg-red-700 border-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-[pulse_0.5s_infinite_alternate]"
-                : isEmergencyLocked
-                ? "bg-rose-950/40 border-rose-500/50 text-rose-200 shadow-[0_0_15px_rgba(239,68,68,0.1)] animate-pulse"
-                : "bg-[#1A1A1C] border-[#1E293B] hover:border-[#334155] text-[#94A3B8] hover:text-[#F8FAFC]"
-            }`}
-          >
-            {isEmergencyLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-            {isAutomatedLockActive ? "Mở khóa tự động" : isEmergencyLocked ? "Giải phóng phong tỏa" : "Khóa hệ thống"}
-          </button>
+          <div className="rounded-xl border border-[#1E293B] bg-[#161618] px-4 py-3 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
+            Dashboard chỉ giám sát
+          </div>
         </div>
       </aside>
 

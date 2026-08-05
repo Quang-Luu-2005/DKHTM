@@ -1,5 +1,5 @@
 struct Statistic{
-  int violator;
+  int authenticationAlerts;
   int normal;
   Statistic();
 };

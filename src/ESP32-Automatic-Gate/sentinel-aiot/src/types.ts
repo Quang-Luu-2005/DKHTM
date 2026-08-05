@@ -18,9 +18,9 @@ export interface AuditLog {
   timestamp: string;
   subjectName: string;
   subjectId?: string;
-  accessMethod: "Face ID" | "RFID" | "Manual Override" | "Gate Jumping / Climbing detected" | "Tailgating detected";
+  accessMethod: "Face ID" | "RFID" | "Manual Override";
   gateId: string;
-  status: "ONLINE" | "VIOLATION" | "EXPIRED";
+  status: "ONLINE" | "AUTH_FAILURE" | "AUTH_ALERT" | "EXPIRED";
   confidence: string; // "99.8%" or "N/A"
   avatarUrl?: string;
 }
@@ -32,13 +32,14 @@ export interface HardwareState {
   systemBuzzer: "MUTED" | "ACTIVE";
 }
 
-export interface SecurityIncident {
+export interface AuthenticationAlert {
   id: string;
   timestamp: string;
   gateId: string;
-  violationDetails: string;
-  servoLocked: boolean;
-  buzzerActive: boolean;
-  policeNotified: "PENDING" | "NOTIFIED" | "RESOLVED";
-  captureImageUrl: string;
+  alertType: "REPEATED_AUTH_FAILURE" | "REPEATED_UNKNOWN_FACE" | "REPEATED_INVALID_RFID" | "PRESENCE_DETECTED_DURING_FORCED_LOCK";
+  authMethod: "FACE" | "RFID" | "MIXED" | "NONE";
+  failedAttempts: number;
+  decision: "DENIED";
+  gateState: "LOCKED";
+  captureImageUrl?: string;
 }

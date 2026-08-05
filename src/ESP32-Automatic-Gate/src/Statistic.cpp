@@ -1,3 +1,3 @@
 #include "Statistic.h"
 
-Statistic::Statistic(): violator(0), normal(0) {}
+Statistic::Statistic(): authenticationAlerts(0), normal(0) {}

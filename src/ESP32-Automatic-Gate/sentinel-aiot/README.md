@@ -1,40 +1,22 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Sentinel AIoT admin dashboard
 
-# Run and deploy your AI Studio app
+Dashboard giám sát cổng ESP32 qua HiveMQ Cloud. Model HFR S16 chạy trực tiếp
+trên ESP32-CAM; web không nhận video, hình ảnh, model hoặc embedding.
 
-This contains everything you need to run your app locally.
+Luồng dữ liệu:
 
-View your app in AI Studio: https://ai.studio/apps/ddc3f725-e87e-4e58-bfc3-ffd847c45280
+`ESP32 -> HiveMQ Cloud -> server.ts -> /api/events -> React`
 
-## Run Locally
+Server chỉ publish các lệnh quản trị cần thiết để đồng bộ registry RFID,
+liên kết thẻ và bắt đầu enrollment khuôn mặt trên ESP32-CAM. Web
+không có API mở/khóa cổng, điều khiển LED/buzzer, stream camera,
+nhận model hoặc nhận embedding.
 
-**Prerequisites:**  Node.js
+## Chạy local
 
+1. Sao chép `.env.example` thành `.env.local` và điền HiveMQ/SMTP.
+2. Chạy `npm install`.
+3. Chạy `npm run dev`.
+4. Mở `http://localhost:3000`.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
-
-## ESP32 and HiveMQ bridge
-
-Sentinel keeps HiveMQ credentials in the Node/Express process instead of the
-browser. The data flow is:
-
-`ESP32 <-> HiveMQ Cloud <-> server.ts <-> /api/events <-> React`
-
-1. Copy `.env.example` to `.env.local` and set the MQTT connection values.
-2. Make sure the HiveMQ user can subscribe to `/board/upload/data` and publish
-   to `/board/get/data`.
-3. Run `npm install`.
-4. Run `npm run dev` to start the API on port 3001 and Vite on port 3000.
-
-If Vite is already running, restart it so the `/api` proxy in `vite.config.ts`
-is loaded. You can run only the API with `npm run dev:server` while debugging.
-
-The web dashboard receives live board events over Server-Sent Events and sends
-the following MQTT actions: `open`, `close`, `normal`, `led_green`, `led_red`,
-`buzzer_on`, `buzzer_off`, and `reset_violation`.
+API chạy tại cổng `3001`; Vite proxy `/api` sang API trong chế độ phát triển.

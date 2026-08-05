@@ -19,6 +19,12 @@
 # =========================================================================
 source/.pio/
 source/build/
+**/.pio/
+
+# macOS and local export artifacts
+.DS_Store
+**/.DS_Store
+/sentinel-aiot.zip
 
 # =========================================================================
 # 3. VS Code Configuration & PlatformIO Local Files

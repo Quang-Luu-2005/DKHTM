@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   getUsers,
@@ -11,42 +11,29 @@ import {
   deleteUser,
   getAuditLogs,
   addAuditLog,
+  saveAuditLogs,
   getHardwareState,
   saveHardwareState,
-  INITIAL_INCIDENT
+  INITIAL_AUTHENTICATION_ALERT
 } from "./data";
-import { User, AuditLog, HardwareState, SecurityIncident } from "./types";
+import { User, AuditLog, HardwareState, AuthenticationAlert } from "./types";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
-import IncidentModal from "./components/IncidentModal";
+import AuthenticationAlertModal from "./components/AuthenticationAlertModal";
 import DashboardView from "./components/DashboardView";
-import PersistentCameraWidget from "./components/PersistentCameraWidget";
 import RegistrationView from "./components/RegistrationView";
 import LogsView from "./components/LogsView";
 import {
   connectBoardEvents,
-  reportViolationNotification,
-  sendBoardCommand,
-  sendFaceRecognitionResult,
+  startFaceEnrollment,
   startRfidEnrollment,
   syncUsersDatabase,
-  type BoardAction,
 } from "./services/boardApi";
 import {
-  detectClearFaceInCurrentCameraFrame,
-  recognizeCurrentCameraFace,
-} from "./services/faceRecognition";
-import {
-  ShieldAlert,
   HeartHandshake,
   Wrench,
   Database,
-  Terminal,
   Cpu,
-  LayoutDashboard,
-  UserPlus,
-  History,
-  Settings,
   CheckCircle2
 } from "lucide-react";
 
@@ -89,187 +76,36 @@ export default function App() {
     rfidUid: string;
     receivedAt: string;
   } | null>(null);
-  const usersRef = useRef<User[]>([]);
-  const faceScanInProgressRef = useRef(false);
-  const facePresencePollInProgressRef = useRef(false);
-  const facePresenceStartedAtRef = useRef<number | null>(null);
-  const faceAbsentStartedAtRef = useRef<number | null>(null);
-  const facePresenceArmedRef = useRef(true);
-  const [faceScanState, setFaceScanState] = useState<
-    "idle" | "loading" | "scanning" | "granted" | "denied" | "error"
-  >("idle");
-  const [faceScanMessage, setFaceScanMessage] = useState("Đưa khuôn mặt rõ vào khung hình");
-
-  // Emergency lockdown trigger state
-  const [isEmergencyLocked, setIsEmergencyLocked] = useState(false);
-
-  // Automated Security Behavior state
-  const [isAutomatedLockActive, setIsAutomatedLockActive] = useState(false);
-
-  // Biometric Threat Modal state
-  const [isViolationOpen, setIsViolationOpen] = useState(false);
-  const [activeIncident, setActiveIncident] = useState<SecurityIncident>(INITIAL_INCIDENT);
+  const [faceEnrollment, setFaceEnrollment] = useState<{
+    employeeId: string;
+    status: "REQUESTING" | "STARTED" | "PROGRESS" | "SUCCESS" | "FAILED";
+    view?: string;
+    completedViews: number;
+    reason?: string;
+  } | null>(null);
+  const [isAuthenticationAlertOpen, setIsAuthenticationAlertOpen] = useState(false);
+  const [activeAuthenticationAlert, setActiveAuthenticationAlert] =
+    useState<AuthenticationAlert>(INITIAL_AUTHENTICATION_ALERT);
 
   // Support & Settings customized form states
   const [supportMessage, setSupportMessage] = useState("");
   const [isSupportSubmitted, setIsSupportSubmitted] = useState(false);
-  const [facialThreshold, setFacialThreshold] = useState(98.5);
-
-  // Automated Security Behavior Listener
-  useEffect(() => {
-    if (logs.length === 0) return;
-    const latestLog = logs[0];
-
-    const isJumpingOrClimbing =
-      (latestLog.subjectName || "").toLowerCase().includes("jumping") ||
-      (latestLog.subjectName || "").toLowerCase().includes("climbing") ||
-      (latestLog.accessMethod || "").toLowerCase().includes("jumping") ||
-      (latestLog.accessMethod || "").toLowerCase().includes("climbing");
-
-    const isTailgating =
-      (latestLog.subjectName || "").toLowerCase().includes("tailgating") ||
-      (latestLog.accessMethod || "").toLowerCase().includes("tailgating");
-
-    if (latestLog.status === "VIOLATION" && (isJumpingOrClimbing || isTailgating)) {
-      // Trigger the automated macro instantly
-      setIsEmergencyLocked(true);
-      setIsAutomatedLockActive(true);
-
-      // Force instant lockdown hardware state
-      const automatedLockdownState: HardwareState = {
-        servoArm: "SECURED / CLOSED",
-        servoLocked: true,
-        indicatorLed: "RED / RESTRICTED",
-        systemBuzzer: "ACTIVE"
-      };
-      setHardware(automatedLockdownState);
-      saveHardwareState(automatedLockdownState);
-    }
-  }, [logs]);
 
   // Initialize data on mount
   useEffect(() => {
-    setUsers(getUsers());
+    const storedUsers = getUsers();
+    const storedLogs = getAuditLogs();
+    const resolvedLogs = storedLogs.map((log) => {
+      const employeeId = log.subjectId || log.subjectName;
+      const employee = storedUsers.find((user) => user.id === employeeId);
+      return employee && (log.subjectName === employee.id || !log.subjectName)
+        ? { ...log, subjectName: employee.fullName, subjectId: employee.id }
+        : log;
+    });
+    setUsers(storedUsers);
     setUsersInitialized(true);
-    setLogs(getAuditLogs());
+    setLogs(saveAuditLogs(resolvedLogs));
     setHardware(getHardwareState());
-  }, []);
-
-  useEffect(() => {
-    usersRef.current = users;
-  }, [users]);
-
-  const processFaceScanRequest = async (requestId: string) => {
-    if (faceScanInProgressRef.current) return;
-    faceScanInProgressRef.current = true;
-    setFaceScanState("loading");
-    setFaceScanMessage("Đang tải mô hình và lấy ảnh từ ESP32-CAM...");
-
-    try {
-      setFaceScanState("scanning");
-      const recognition = await recognizeCurrentCameraFace(usersRef.current);
-      await sendFaceRecognitionResult({ requestId, ...recognition });
-
-      if (recognition.authorized) {
-        setFaceScanState("granted");
-        setFaceScanMessage(
-          `${recognition.employeeName} • độ tương đồng ${recognition.confidence}%`,
-        );
-      } else {
-        setFaceScanState("denied");
-        const messages: Record<string, string> = {
-          no_face_detected: "Không thấy khuôn mặt rõ ràng — sẽ quét lại",
-          no_face_database: "Database chưa có ảnh khuôn mặt hợp lệ",
-          face_not_matched: `Khuôn mặt không khớp • ${recognition.confidence}%`,
-        };
-        setFaceScanMessage(messages[recognition.reason] || "Khuôn mặt không hợp lệ");
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Không nhận diện được khuôn mặt";
-      setFaceScanState("error");
-      setFaceScanMessage(message);
-      try {
-        await sendFaceRecognitionResult({
-          requestId,
-          authorized: false,
-          confidence: 0,
-          reason: "camera_or_model_error",
-        });
-      } catch (sendError) {
-        console.error("Không trả được lỗi nhận diện về ESP32:", sendError);
-      }
-    } finally {
-      faceScanInProgressRef.current = false;
-    }
-  };
-
-  // The camera initiates recognition only after one clear face remains visible
-  // continuously for two seconds. A new scan is armed after the face leaves.
-  useEffect(() => {
-    const FACE_HOLD_DURATION_MS = 2000;
-    const FACE_REARM_ABSENCE_MS = 1500;
-    const FACE_PRESENCE_POLL_MS = 500;
-    let disposed = false;
-
-    const pollFacePresence = async () => {
-      if (disposed || facePresencePollInProgressRef.current || faceScanInProgressRef.current) return;
-      facePresencePollInProgressRef.current = true;
-
-      try {
-        const hasClearFace = await detectClearFaceInCurrentCameraFrame();
-        if (disposed) return;
-        const now = Date.now();
-
-        if (!hasClearFace) {
-          facePresenceStartedAtRef.current = null;
-          if (!facePresenceArmedRef.current) {
-            faceAbsentStartedAtRef.current ??= now;
-            if (now - faceAbsentStartedAtRef.current >= FACE_REARM_ABSENCE_MS) {
-              facePresenceArmedRef.current = true;
-              faceAbsentStartedAtRef.current = null;
-              setFaceScanState("idle");
-              setFaceScanMessage("Đưa khuôn mặt rõ vào khung hình");
-            }
-          } else {
-            setFaceScanState("idle");
-            setFaceScanMessage("Đưa khuôn mặt rõ vào khung hình");
-          }
-          return;
-        }
-
-        faceAbsentStartedAtRef.current = null;
-        if (!facePresenceArmedRef.current) return;
-
-        facePresenceStartedAtRef.current ??= now;
-        const visibleDuration = now - facePresenceStartedAtRef.current;
-        if (visibleDuration < FACE_HOLD_DURATION_MS) {
-          const secondsRemaining = Math.max(1, Math.ceil((FACE_HOLD_DURATION_MS - visibleDuration) / 1000));
-          setFaceScanState("scanning");
-          setFaceScanMessage(`Giữ khuôn mặt rõ thêm ${secondsRemaining} giây`);
-          return;
-        }
-
-        facePresenceArmedRef.current = false;
-        facePresenceStartedAtRef.current = null;
-        const requestId = `cam-${now.toString(36)}`;
-        await processFaceScanRequest(requestId);
-      } catch (error) {
-        if (disposed) return;
-        facePresenceStartedAtRef.current = null;
-        const message = error instanceof Error ? error.message : "Không đọc được camera";
-        setFaceScanState("error");
-        setFaceScanMessage(message);
-      } finally {
-        facePresencePollInProgressRef.current = false;
-      }
-    };
-
-    void pollFacePresence();
-    const interval = window.setInterval(() => void pollFacePresence(), FACE_PRESENCE_POLL_MS);
-    return () => {
-      disposed = true;
-      window.clearInterval(interval);
-    };
   }, []);
 
   // Keep the server-side RFID authorization database synchronized with the UI.
@@ -287,6 +123,30 @@ export default function App() {
       onEnrollmentScan: setLatestRfidEnrollment,
       onBoardEvent: ({ payload }) => {
         const result = payload.result?.toLowerCase();
+        const eventType = payload.eventType;
+
+        if (payload.event === "face_enrollment" && payload.employee_id && payload.status) {
+          const status = payload.status.toUpperCase();
+          if (["STARTED", "PROGRESS", "SUCCESS", "FAILED"].includes(status)) {
+            setFaceEnrollment({
+              employeeId: payload.employee_id,
+              status: status as "STARTED" | "PROGRESS" | "SUCCESS" | "FAILED",
+              view: payload.view,
+              completedViews: payload.completedViews ?? 0,
+              reason: payload.reason,
+            });
+            if (status === "SUCCESS") {
+              setUsers((currentUsers) => {
+                const enrolledUser = currentUsers.find(
+                  (user) => user.id === payload.employee_id,
+                );
+                return enrolledUser
+                  ? saveUser({ ...enrolledUser, faceIdStatus: "ENROLLED" })
+                  : currentUsers;
+              });
+            }
+          }
+        }
 
         setHardware((current) => {
           const next = { ...current };
@@ -297,18 +157,18 @@ export default function App() {
           if (gate === "open" || result === "granted" || result === "opened") {
             next.servoArm = "OPENED / UNSECURED";
             next.servoLocked = false;
-          } else if (gate === "closed" || result === "closed" || result === "violated") {
+          } else if (gate === "closed" || result === "closed" || eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT") {
             next.servoArm = "SECURED / CLOSED";
             next.servoLocked = true;
           }
 
           if (led === "green" || result === "led_green" || result === "granted") {
             next.indicatorLed = "GREEN / ACCESS ALLOWED";
-          } else if (led === "red" || result === "led_red" || result === "violated") {
+          } else if (led === "red" || result === "led_red" || eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT") {
             next.indicatorLed = "RED / RESTRICTED";
           }
 
-          if (buzzer === "active" || result === "buzzer_active" || result === "violated") {
+          if (buzzer === "active" || result === "buzzer_active") {
             next.systemBuzzer = "ACTIVE";
           } else if (buzzer === "muted" || result === "buzzer_muted") {
             next.systemBuzzer = "MUTED";
@@ -318,7 +178,7 @@ export default function App() {
           return next;
         });
 
-        if (result === "granted") {
+        if (eventType === "AUTH_SUCCESS" || result === "granted") {
           const isFaceAccess = payload.access_method === "face";
           const rfidUid = payload.rfid_uid || "Không xác định";
           setLogs(addAuditLog({
@@ -329,7 +189,7 @@ export default function App() {
             status: "ONLINE",
             confidence: payload.confidence !== undefined ? `${payload.confidence}%` : "100%",
           }));
-        } else if (result === "denied") {
+        } else if (eventType === "AUTH_FAILURE" || result === "denied") {
           const isFaceAccess = payload.access_method === "face";
           const rfidUid = payload.rfid_uid || "Không xác định";
           setLogs(addAuditLog({
@@ -337,24 +197,42 @@ export default function App() {
             subjectId: isFaceAccess ? undefined : rfidUid,
             accessMethod: isFaceAccess ? "Face ID" : "RFID",
             gateId: "GT-NORTH-01",
-            status: "VIOLATION",
+            status: "AUTH_FAILURE",
             confidence: "N/A",
           }));
-        } else if (result === "violated") {
-          setLogs(addAuditLog({
-            subjectName: "Phát hiện vi phạm tại cổng",
-            accessMethod: "Gate Jumping / Climbing detected",
+        } else if (eventType === "AUTHENTICATION_ALERT" || eventType === "FORCED_LOCK_PRESENCE_ALERT") {
+          const isForcedLockPresence = eventType === "FORCED_LOCK_PRESENCE_ALERT";
+          const authMethod = payload.authMethod === "RFID"
+            ? "RFID"
+            : payload.authMethod === "MIXED" ? "MIXED"
+              : payload.authMethod === "NONE" ? "NONE" : "FACE";
+          const timestamp = payload.timestamp
+            ? new Date(payload.timestamp).toLocaleTimeString("vi-VN")
+            : new Date().toLocaleTimeString("vi-VN");
+          setActiveAuthenticationAlert({
+            id: `AUTH-${Date.now()}`,
+            timestamp,
             gateId: "GT-NORTH-01",
-            status: "VIOLATION",
+            alertType: payload.alertType || (isForcedLockPresence
+              ? "PRESENCE_DETECTED_DURING_FORCED_LOCK"
+              : "REPEATED_AUTH_FAILURE"),
+            authMethod,
+            failedAttempts: isForcedLockPresence ? 0 : (payload.failedAttempts ?? 3),
+            decision: "DENIED",
+            gateState: "LOCKED",
+          });
+          setLogs(addAuditLog({
+            subjectName: isForcedLockPresence
+              ? "Phát hiện người tại vùng cổng đang khóa cưỡng bức"
+              : `Cảnh báo xác thực thất bại ${payload.failedAttempts ?? 3} lần`,
+            accessMethod: isForcedLockPresence
+              ? "Manual Override"
+              : authMethod === "RFID" ? "RFID" : "Face ID",
+            gateId: "GT-NORTH-01",
+            status: "AUTH_ALERT",
             confidence: "N/A",
           }));
-          setIsViolationOpen(true);
-          setIsEmergencyLocked(true);
-          setIsAutomatedLockActive(true);
-        } else if (result === "opened" || result === "normal") {
-          setIsViolationOpen(false);
-          setIsEmergencyLocked(false);
-          setIsAutomatedLockActive(false);
+          setIsAuthenticationAlertOpen(true);
         }
       },
     });
@@ -380,7 +258,7 @@ export default function App() {
     // Automatically log this as an enrollment action
     const updatedLogs = addAuditLog({
       subjectName: user.fullName,
-      accessMethod: "Face ID",
+      accessMethod: "Manual Override",
       gateId: "GT-NORTH-01",
       status: "ONLINE",
       confidence: "100%"
@@ -394,144 +272,32 @@ export default function App() {
     setUsers(updatedUsers);
   };
 
-  // Callback to insert manual logs
-  const handleAddLog = (log: Omit<AuditLog, "id" | "timestamp">) => {
-    const updatedLogs = addAuditLog(log);
-    setLogs(updatedLogs);
-  };
-
-  // Synchronize hardware changes
-  const handleUpdateHardware = (hw: HardwareState) => {
-    setHardware(hw);
-    saveHardwareState(hw);
-  };
-
-  const handleBoardCommand = async (action: BoardAction) => {
-    await sendBoardCommand(action);
-    if (action === "open" || action === "normal") {
-      setIsViolationOpen(false);
-      setIsEmergencyLocked(false);
-      setIsAutomatedLockActive(false);
-    }
-  };
-
   const handleStartRfidEnrollment = async () => {
     setLatestRfidEnrollment(null);
     await startRfidEnrollment();
   };
 
-  // Trigger Emergency system lockdown
-  const handleToggleEmergencyLock = () => {
-    const nextLocked = !isEmergencyLocked;
-    setIsEmergencyLocked(nextLocked);
-
-    if (!nextLocked) {
-      setIsAutomatedLockActive(false);
-    }
-
-    if (nextLocked) {
-      void handleBoardCommand("close").catch(console.error);
-      // Set hardware to lockdown state
-      const lockedState: HardwareState = {
-        servoArm: "SECURED / CLOSED",
-        servoLocked: true,
-        indicatorLed: "RED / RESTRICTED",
-        systemBuzzer: "ACTIVE"
-      };
-      handleUpdateHardware(lockedState);
-
-      // Add audit log entry
-      const updatedLogs = addAuditLog({
-        subjectName: "Emergency Override",
-        accessMethod: "Manual Override",
-        gateId: "SYS-CORE-01",
-        status: "VIOLATION",
-        confidence: "N/A"
+  const handleStartFaceEnrollment = async (employeeId: string) => {
+    setFaceEnrollment({
+      employeeId,
+      status: "REQUESTING",
+      completedViews: 0,
+    });
+    try {
+      await startFaceEnrollment(employeeId);
+    } catch (error) {
+      setFaceEnrollment({
+        employeeId,
+        status: "FAILED",
+        completedViews: 0,
+        reason: error instanceof Error ? error.message : "Không thể bắt đầu đăng ký",
       });
-      setLogs(updatedLogs);
-    } else {
-      void handleBoardCommand("normal").catch(console.error);
-      // Release hardware
-      const normalState: HardwareState = {
-        servoArm: "SECURED / CLOSED",
-        servoLocked: true,
-        indicatorLed: "RED / RESTRICTED",
-        systemBuzzer: "MUTED"
-      };
-      handleUpdateHardware(normalState);
-
-      const updatedLogs = addAuditLog({
-        subjectName: "Lock Release",
-        accessMethod: "Manual Override",
-        gateId: "SYS-CORE-01",
-        status: "ONLINE",
-        confidence: "N/A"
-      });
-      setLogs(updatedLogs);
+      throw error;
     }
   };
 
-  // Simulate intruder event with customizable threat scenario
-  const handleSimulateViolation = (type?: "FACE_MISMATCH" | "GATE_JUMPING" | "TAILGATING") => {
-    // Generate an incident structure
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-
-    let id = "EVT_ID: #404-ERR";
-    let violationDetails = "A face recognition mismatch occurred at primary gate Node ESP32_SEC_01. The neural model failed to correlate the scanned biometrics with any verified account index. Silent alarm buzzer triggered.";
-    let subjectName = "Intruder Detected";
-    let accessMethod: "Face ID" | "RFID" | "Manual Override" | "Gate Jumping / Climbing detected" | "Tailgating detected" = "Face ID";
-
-    if (type === "GATE_JUMPING") {
-      id = "EVT_ID: #JUMP-911";
-      subjectName = "Intruder: Gate Jumping";
-      accessMethod = "Gate Jumping / Climbing detected";
-      violationDetails = "CRITICAL METRIC: LiDAR / Microwave perimeter beam disruption detected at primary North Gate Node. Dynamic spatial model confirms a subject scaled and jumped physical fence barrier. System automatic containment triggered.";
-    } else if (type === "TAILGATING") {
-      id = "EVT_ID: #TAIL-402";
-      subjectName = "Intruder: Tailgating";
-      accessMethod = "Tailgating detected";
-      violationDetails = "CRITICAL METRIC: High-dimensional stereoscopic density scanning reports a tailgating anomaly behind Marcus Thorne at Gate 01. Multiple physical silhouettes detected on single token scan. System automatic containment triggered.";
-    }
-
-    const simulatedIncident: SecurityIncident = {
-      id: id,
-      timestamp: timeStr,
-      gateId: "GT-SOUTH-04",
-      violationDetails: violationDetails,
-      servoLocked: true,
-      buzzerActive: true,
-      policeNotified: "PENDING",
-      captureImageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuA1-U-sOKlVXo3ex17StlU2Z4m1fVHX66Fvwho1CR515JP6SQ0SawYOTugf5fuVrj6TMOgIPMh5wrqZIQw_SSEq8QBepOibM4pAbPMA6iNfZw6MR2rzhWFUq_H0YeFsZFCVa5Q4U4vBQ9NMCgwnmVQhmspHltenF2teCete7C1-piRveTdU64xBEgcs8YopnOz8KtH5Yc4iHU89VqdIyWzGbyv_m3XtVqYwKXq_CgPmRZ5ICJvhxuVRDopo6HxnSVgBRXZ2mm5Hyho"
-    };
-
-    setActiveIncident(simulatedIncident);
-    setIsViolationOpen(true);
-    void reportViolationNotification(simulatedIncident.gateId, simulatedIncident.violationDetails)
-      .catch((error) => console.error("Không thể gửi email cảnh báo:", error));
-
-    // Set hardware indicators to high-alarm lockdown
-    handleUpdateHardware({
-      servoArm: "SECURED / CLOSED",
-      servoLocked: true,
-      indicatorLed: "RED / RESTRICTED",
-      systemBuzzer: "ACTIVE"
-    });
-
-    // Write a violation directly to logs
-    const updatedLogs = addAuditLog({
-      subjectName: subjectName,
-      accessMethod: accessMethod,
-      gateId: "GT-NORTH-01",
-      status: "VIOLATION",
-      confidence: "N/A"
-    });
-    setLogs(updatedLogs);
-  };
-
-  // Dismiss threat modal
-  const handleCloseViolation = () => {
-    setIsViolationOpen(false);
+  const handleCloseAuthenticationAlert = () => {
+    setIsAuthenticationAlertOpen(false);
   };
 
   // Handle support ticket submission
@@ -551,7 +317,6 @@ export default function App() {
       <Header
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
-        onSimulateViolation={handleSimulateViolation}
         theme={theme}
         onToggleTheme={handleToggleTheme}
       />
@@ -563,45 +328,10 @@ export default function App() {
         <Sidebar
           currentTab={currentTab}
           setCurrentTab={setCurrentTab}
-          isEmergencyLocked={isEmergencyLocked}
-          onToggleEmergencyLock={handleToggleEmergencyLock}
-          isAutomatedLockActive={isAutomatedLockActive}
         />
 
         {/* Primary View Area (padded for top bar and left side sidebar) */}
         <main className="flex-1 lg:ml-64 p-6 lg:p-8 min-h-[calc(100vh-4rem)]">
-
-          {/* Persistent Automated System Lock Banner */}
-          {isAutomatedLockActive ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mb-6 bg-red-600 border border-red-500 text-white p-5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_0_20px_rgba(220,38,38,0.3)] animate-pulse"
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-3 h-3 bg-white rounded-full animate-ping shrink-0" />
-                <span className="font-mono text-xs font-bold tracking-widest uppercase">
-                  AUTOMATED SYSTEM LOCK ENGAGED - Intruder Detected Jumping Physical Gate
-                </span>
-              </div>
-              <button
-                onClick={handleToggleEmergencyLock}
-                className="px-3.5 py-1.5 bg-white text-red-600 rounded-lg font-sans text-[10px] font-bold uppercase tracking-wider hover:bg-red-50 active:scale-95 transition-all shadow-md cursor-pointer shrink-0"
-              >
-                Reset System
-              </button>
-            </motion.div>
-          ) : isEmergencyLocked ? (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-rose-500/10 border border-rose-500/50 p-4 rounded-xl flex items-center gap-3 text-rose-400 font-mono text-xs"
-            >
-              <span className="w-2 h-2 bg-rose-500 rounded-full animate-ping shrink-0" />
-              <strong className="uppercase">SYSTEM QUARANTINE MODALITY ACTIVE</strong>
-              <span>— All access nodes are physically isolated. Manual and biometric overrides are restricted.</span>
-            </motion.div>
-          ) : null}
 
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
@@ -616,14 +346,8 @@ export default function App() {
                 {currentTab === "dashboard" && (
                   <DashboardView
                     hardware={hardware}
-                    onUpdateHardware={handleUpdateHardware}
-                    onCommand={handleBoardCommand}
                     mqttConnected={mqttConnected}
                     logs={logs}
-                    onAddLog={handleAddLog}
-                    isEmergencyLocked={isEmergencyLocked}
-                    faceScanState={faceScanState}
-                    faceScanMessage={faceScanMessage}
                   />
                 )}
 
@@ -634,6 +358,8 @@ export default function App() {
                     onDeleteUser={handleDeleteUser}
                     latestRfidScan={latestRfidEnrollment}
                     onStartRfidScan={handleStartRfidEnrollment}
+                    faceEnrollment={faceEnrollment}
+                    onStartFaceEnrollment={handleStartFaceEnrollment}
                   />
                 )}
 
@@ -707,23 +433,13 @@ export default function App() {
                     </div>
 
                     <div className="space-y-6">
-                      {/* Section 1: Facial Recognition calibration */}
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-sans text-[10px] text-[#64748B] uppercase tracking-wider">Face Match Confidence Threshold</span>
-                          <span className="font-mono text-[#F8FAFC] font-semibold">{facialThreshold}%</span>
+                      <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
+                        <div className="font-sans text-[10px] uppercase tracking-wider text-sky-200">
+                          Cấu hình AI chỉ đọc
                         </div>
-                        <input
-                          type="range"
-                          min="90"
-                          max="100"
-                          step="0.1"
-                          value={facialThreshold}
-                          onChange={(e) => setFacialThreshold(parseFloat(e.target.value))}
-                          className="w-full accent-[#94A3B8] bg-[#161618] rounded-lg h-1.5 cursor-pointer"
-                        />
-                        <p className="text-[10px] text-[#64748B] leading-relaxed font-sans">
-                          Scans yielding high-dimensionality vector distances below this threshold trigger automatic denial of access.
+                        <p className="mt-2 text-[10px] leading-relaxed text-[#94A3B8]">
+                          Model HFR S16 và ngưỡng nhận diện được nạp trong firmware ESP32-CAM.
+                          Dashboard không thay đổi model, ngưỡng so khớp hoặc trạng thái cổng.
                         </p>
                       </div>
 
@@ -739,15 +455,15 @@ export default function App() {
                           <div className="bg-[#161618] p-4 rounded-xl border border-[#1E293B]/60 flex items-center gap-3">
                             <Cpu className="w-4 h-4 text-[#94A3B8]" />
                             <div>
-                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Processor Temp</div>
-                              <div className="text-xs font-semibold text-[#F8FAFC]">41.5°C (NOMINAL)</div>
+                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">HiveMQ Uplink</div>
+                              <div className="text-xs font-semibold text-[#F8FAFC]">{mqttConnected ? "CONNECTED" : "OFFLINE"}</div>
                             </div>
                           </div>
                           <div className="bg-[#161618] p-4 rounded-xl border border-[#1E293B]/60 flex items-center gap-3">
                             <Database className="w-4 h-4 text-[#94A3B8]" />
                             <div>
-                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Ping Latency</div>
-                              <div className="text-xs font-semibold text-[#F8FAFC]">12ms (STABLE)</div>
+                              <div className="text-[9px] font-sans text-[#64748B] uppercase tracking-wider">Gate Authority</div>
+                              <div className="text-xs font-semibold text-[#F8FAFC]">ESP32 LOCAL</div>
                             </div>
                           </div>
                         </div>
@@ -758,11 +474,11 @@ export default function App() {
                       {/* Section 3: Diagnostic Logs Terminal */}
                       <div className="bg-[#0A0A0B] rounded-xl p-4 border border-[#1E293B] font-mono text-[10px] text-emerald-500/80 space-y-1.5 overflow-x-auto select-all">
                         <p className="text-[#64748B]">// SENTINEL SECURE LINUX DAEMON STARTUP //</p>
-                        <p>[OK] Loaded face_id_neural_weight.bin ... 128-dim vectors</p>
-                        <p>[OK] RFID PN532 Reader initialized via I2C address 0x24</p>
-                        <p>[OK] SG90 Servo motor calibrated to neutral secured 0°</p>
-                        <p>[OK] Connected to Sentinel Cloud server: {window.location.origin}</p>
-                        <p className="text-[#94A3B8] animate-pulse">SYSTEM READY. WAITING FOR ENTRY INTERACTION...</p>
+                        <p>[INFO] Face Recognition: HFR S16 on ESP32-CAM</p>
+                        <p>[INFO] Camera transport: ESP-NOW result messages only</p>
+                        <p>[INFO] RFID authorization: local NVS registry</p>
+                        <p>[INFO] Telemetry endpoint: {window.location.origin}</p>
+                        <p className="text-[#94A3B8] animate-pulse">MONITOR READY. WAITING FOR BOARD EVENTS...</p>
                       </div>
                     </div>
                   </div>
@@ -773,18 +489,11 @@ export default function App() {
         </main>
       </div>
 
-      {/* Persistent Biometric Intrusion Detection Modal Overlay */}
-      <IncidentModal
-        isOpen={isViolationOpen}
-        incident={activeIncident}
-        onClose={handleCloseViolation}
-        onEscalate={() => {}}
-        isAutomatedLockActive={isAutomatedLockActive}
+      <AuthenticationAlertModal
+        isOpen={isAuthenticationAlertOpen}
+        alert={activeAuthenticationAlert}
+        onClose={handleCloseAuthenticationAlert}
       />
-
-      {currentTab !== "dashboard" && (
-        <PersistentCameraWidget onOpenDashboard={() => setCurrentTab("dashboard")} />
-      )}
 
     </div>
   );

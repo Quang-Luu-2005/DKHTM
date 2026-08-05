@@ -2,6 +2,10 @@
 #include "Ultrasonic.h"
 #include "SystemConfig.h"
 
+namespace {
+constexpr int PRESENCE_DISTANCE_CM = 50;
+}
+
 Ultrasonic::Ultrasonic(int trig, int echo): trig_pin(trig), echo_pin(echo){}
 
 void Ultrasonic::init() {
@@ -23,10 +27,10 @@ int Ultrasonic::get_distance() {
   return distance;
 }
 
-bool Ultrasonic::is_violate() {
+bool Ultrasonic::is_present() {
   if (!g_config.ultrasonic) return false;
   int distance = get_distance();
-  if (distance != 0 && distance <= 6) {
+  if (distance != 0 && distance <= PRESENCE_DISTANCE_CM) {
     return true;
   } 
   return false;

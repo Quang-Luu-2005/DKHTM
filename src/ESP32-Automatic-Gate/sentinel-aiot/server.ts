@@ -3,8 +3,6 @@ import express, { type Response } from "express";
 import mqtt from "mqtt";
 import nodemailer from "nodemailer";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import http from "node:http";
-import https from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,11 +30,8 @@ const mqttUrl = process.env.MQTT_URL!;
 const mqttUploadTopic = process.env.MQTT_UPLOAD_TOPIC || "/board/upload/data";
 const mqttCommandTopic = process.env.MQTT_COMMAND_TOPIC || "/board/get/data";
 const serverPort = Number(process.env.SERVER_PORT || 3001);
-const cameraControlUrl = new URL(process.env.ESP32_CAM_URL || "http://sentinel-cam.local");
-const cameraStreamUrl = new URL(
-  process.env.ESP32_CAM_STREAM_URL || "http://sentinel-cam.local:81/stream",
-);
 const enrollmentWindowMs = 30_000;
+const maxLocalRfidRecords = 20;
 const smtpPort = Number(process.env.SMTP_PORT || 465);
 const smtpSecure = process.env.SMTP_SECURE
   ? process.env.SMTP_SECURE === "true"
@@ -54,6 +49,7 @@ interface RegisteredUser {
   email?: string;
   role: string;
   rfidUid: string;
+  faceIdStatus: "ENROLLED" | "PENDING";
 }
 
 const databaseDirectory = path.join(currentDir, ".sentinel-data");
@@ -75,7 +71,9 @@ function isRegisteredUser(value: unknown): value is RegisteredUser {
     typeof user.fullName === "string" &&
     (user.email === undefined || typeof user.email === "string") &&
     typeof user.role === "string" &&
-    typeof user.rfidUid === "string"
+    typeof user.rfidUid === "string" &&
+    (user.faceIdStatus === undefined ||
+      user.faceIdStatus === "ENROLLED" || user.faceIdStatus === "PENDING")
   );
 }
 
@@ -97,6 +95,8 @@ function persistRegisteredUsers(users: RegisteredUser[]) {
 
 let registeredUsers = loadRegisteredUsers();
 let enrollmentExpiresAt = 0;
+let activeFaceEnrollment: { employeeId: string; expiresAt: number } | null = null;
+let rfidRegistryVersion = Math.floor(Date.now() / 1000) >>> 0;
 
 const mailTransporter = smtpEnabled
   ? nodemailer.createTransport({
@@ -119,17 +119,6 @@ if (mailTransporter) {
   console.log("[EMAIL] Notifications disabled; SMTP environment variables are incomplete");
 }
 
-const allowedActions = new Set([
-  "open",
-  "close",
-  "normal",
-  "led_green",
-  "led_red",
-  "buzzer_on",
-  "buzzer_off",
-  "reset_violation",
-]);
-
 const app = express();
 const eventClients = new Set<Response>();
 
@@ -140,39 +129,28 @@ function broadcast(event: string, payload: unknown) {
   for (const client of eventClients) client.write(frame);
 }
 
-function proxyCameraRequest(target: URL, response: Response) {
-  const client = target.protocol === "https:" ? https : http;
-  let upstreamResponseRef: http.IncomingMessage | null = null;
-  const upstreamRequest = client.get(target, (upstreamResponse) => {
-    upstreamResponseRef = upstreamResponse;
-    if (!upstreamResponse.statusCode || upstreamResponse.statusCode >= 400) {
-      response.status(502).json({ error: `ESP32-CAM returned HTTP ${upstreamResponse.statusCode}` });
-      upstreamResponse.resume();
-      return;
-    }
-
-    response.status(upstreamResponse.statusCode);
-    for (const header of ["content-type", "content-length", "cache-control"]) {
-      const value = upstreamResponse.headers[header];
-      if (value) response.setHeader(header, value);
-    }
-    upstreamResponse.pipe(response);
+function publishRfidRegistry() {
+  if (!mqttClient.connected) return false;
+  const cards = registeredUsers
+    .filter((user) => user.rfidUid !== "NOT LINKED")
+    .map((user) => ({
+      uid: normalizeRfidUid(user.rfidUid),
+      employeeId: user.id,
+      employeeName: user.fullName,
+    }));
+  const payload = JSON.stringify({
+    action: "rfid_registry_replace",
+    version: rfidRegistryVersion,
+    cards,
   });
-
-  upstreamRequest.setTimeout(10_000, () => {
-    upstreamRequest.destroy(new Error("ESP32-CAM request timed out"));
-  });
-  upstreamRequest.on("error", (error) => {
-    if (!response.headersSent) {
-      response.status(502).json({ error: `ESP32-CAM unavailable: ${error.message}` });
+  mqttClient.publish(mqttCommandTopic, payload, { qos: 1, retain: true }, (error) => {
+    if (error) {
+      console.error(`[RFID] Registry sync failed: ${error.message}`);
     } else {
-      response.end();
+      console.log(`[RFID] Registry sync queued: ${cards.length} local records`);
     }
   });
-  response.on("close", () => {
-    upstreamResponseRef?.destroy();
-    upstreamRequest.destroy();
-  });
+  return true;
 }
 
 function securityNotificationRecipients() {
@@ -219,7 +197,11 @@ async function sendNotification(recipients: string[], subject: string, text: str
 
 async function notifyGateEvent(payload: Record<string, unknown>) {
   const result = typeof payload.result === "string" ? payload.result.toLowerCase() : "";
-  const isFaceAccess = payload.access_method === "face";
+  const eventType = typeof payload.eventType === "string" ? payload.eventType : "";
+  const authMethod = typeof payload.authMethod === "string"
+    ? payload.authMethod.toUpperCase()
+    : payload.access_method === "face" ? "FACE" : "RFID";
+  const isFaceAccess = authMethod === "FACE";
   const rfidUid = typeof payload.rfid_uid === "string" ? payload.rfid_uid : "Không xác định";
   const eventTime = new Intl.DateTimeFormat("vi-VN", {
     dateStyle: "medium",
@@ -228,7 +210,7 @@ async function notifyGateEvent(payload: Record<string, unknown>) {
   }).format(new Date());
   const gateId = typeof payload.gate_id === "string" ? payload.gate_id : "GT-NORTH-01";
 
-  if (result === "granted") {
+  if (eventType === "AUTH_SUCCESS" || result === "granted") {
     const employeeId = typeof payload.employee_id === "string" ? payload.employee_id : "";
     const employee = registeredUsers.find(
       (user) =>
@@ -255,41 +237,48 @@ async function notifyGateEvent(payload: Record<string, unknown>) {
     );
   }
 
-  if (result === "denied") {
+  // Individual failures and camera retries are logged on the web only. Email is
+  // sent once, after the board reports the third countable failure in a session.
+  if (eventType === "AUTH_FAILURE" || eventType === "AUTH_RETRY" || result === "denied") {
+    return 0;
+  }
+
+  if (eventType === "AUTHENTICATION_ALERT") {
+    const recipients = securityNotificationRecipients();
+    if (recipients.length === 0) {
+      console.warn("[EMAIL] Authentication alert has no Administrator or Security Officer recipient");
+    }
     return sendNotification(
-      securityNotificationRecipients(),
-      isFaceAccess
-        ? "[Sentinel] Cảnh báo khuôn mặt không khớp"
-        : "[Sentinel] Cảnh báo thẻ RFID không hợp lệ",
+      recipients,
+      "[Sentinel] CẢNH BÁO XÁC THỰC BẤT THƯỜNG",
       [
-        isFaceAccess
-          ? "Hệ thống vừa từ chối một khuôn mặt không khớp database."
-          : "Hệ thống vừa từ chối một yêu cầu ra vào bằng RFID.",
-        ...(isFaceAccess ? [] : [`UID: ${rfidUid}`]),
-        `Lý do: ${String(payload.reason || "not_registered")}`,
+        "Hệ thống ghi nhận nhiều lần xác thực không hợp lệ trong cùng một phiên.",
         `Thời gian: ${eventTime}`,
         `Cổng: ${gateId}`,
+        `Phương thức: ${authMethod}`,
+        `Loại cảnh báo: ${String(payload.alertType || "REPEATED_AUTH_FAILURE")}`,
+        `Số lần thất bại: ${Number(payload.failedAttempts || 3)}`,
+        "Trạng thái cổng: Đang khóa.",
+        "",
+        "Đây là cảnh báo xác thực bất thường, không phải xác nhận có hành vi vượt cổng.",
       ].join("\n"),
     );
   }
 
-  if (result === "violated") {
-    const incidentDetails = typeof payload.details === "string"
-      ? payload.details
-      : "ESP32 vừa phát hiện hành động vượt cổng hoặc xâm nhập.";
+  if (eventType === "FORCED_LOCK_PRESENCE_ALERT") {
     const recipients = securityNotificationRecipients();
     if (recipients.length === 0) {
-      console.warn("[EMAIL] Violation detected but no Administrator or Security Officer email is registered");
+      console.warn("[EMAIL] Forced-lock presence alert has no Administrator or Security Officer recipient");
     }
     return sendNotification(
       recipients,
-      "[Sentinel] CẢNH BÁO VI PHẠM TẠI CỔNG",
+      "[Sentinel] CẢNH BÁO CÓ NGƯỜI TẠI CỔNG ĐANG KHÓA CƯỠNG BỨC",
       [
-        incidentDetails,
+        "HC-SR04 phát hiện có người hoặc vật thể tiến vào vùng cổng đang khóa cưỡng bức.",
         `Thời gian: ${eventTime}`,
         `Cổng: ${gateId}`,
-        "Trạng thái: Cổng đã khóa và buzzer đang hoạt động.",
-        "Vui lòng kiểm tra ngay.",
+        "Trạng thái cổng: Đang khóa cưỡng bức.",
+        "Cảnh báo chỉ được gửi một lần cho đến khi vùng cảm biến trống trở lại.",
       ].join("\n"),
     );
   }
@@ -314,6 +303,7 @@ mqttClient.on("connect", () => {
       return;
     }
     console.log(`[MQTT] Subscribed to ${mqttUploadTopic}`);
+    if (registeredUsers.length > 0) publishRfidRegistry();
   });
   broadcast("broker-status", { connected: true });
 });
@@ -335,12 +325,46 @@ mqttClient.on("message", (topic, payloadBuffer) => {
   const rawPayload = payloadBuffer.toString("utf8");
   try {
     const payload = JSON.parse(rawPayload) as Record<string, unknown>;
-    broadcast("board-event", { topic, payload, receivedAt: new Date().toISOString() });
+    const receivedAt = new Date().toISOString();
+    if (typeof payload.timestamp !== "string") payload.timestamp = receivedAt;
 
-    if (payload.event === "gate_event") {
+    // ESP32-CAM stores only the employee ID with each embedding. Resolve the
+    // display name at the trusted server boundary before forwarding the event
+    // to browsers or composing notification emails.
+    if (typeof payload.employee_id === "string") {
+      const employee = registeredUsers.find(
+        (user) => user.id === payload.employee_id,
+      );
+      if (employee &&
+          (typeof payload.employee_name !== "string" ||
+           payload.employee_name.length === 0 ||
+           payload.employee_name === payload.employee_id)) {
+        payload.employee_name = employee.fullName;
+      }
+    }
+    broadcast("board-event", { topic, payload, receivedAt });
+
+    if (payload.event === "gate_event" || payload.event === "authentication_alert" || payload.event === "forced_lock_alert") {
       void notifyGateEvent(payload).catch((error: Error) => {
         console.error(`[EMAIL] Notification error: ${error.message}`);
       });
+    }
+
+    if (payload.event === "face_enrollment" &&
+        typeof payload.employee_id === "string" &&
+        typeof payload.status === "string") {
+      const employeeId = payload.employee_id;
+      const status = payload.status.toUpperCase();
+      if (status === "SUCCESS") {
+        registeredUsers = registeredUsers.map((user) =>
+          user.id === employeeId ? { ...user, faceIdStatus: "ENROLLED" } : user,
+        );
+        persistRegisteredUsers(registeredUsers);
+      }
+      if (status === "SUCCESS" || status === "FAILED") {
+        activeFaceEnrollment = null;
+      }
+      return;
     }
 
     if (payload.event !== "rfid_scan" || typeof payload.rfid_uid !== "string") {
@@ -367,6 +391,11 @@ mqttClient.on("message", (topic, payloadBuffer) => {
         }),
       );
       console.log(`[RFID] Enrollment captured ${rfidUid}`);
+      return;
+    }
+
+    if (payload.authorizationMode === "LOCAL") {
+      console.log(`[RFID] Local board decision received for ${rfidUid}`);
       return;
     }
 
@@ -406,34 +435,7 @@ app.get("/api/status", (_request, response) => {
     commandTopic: mqttCommandTopic,
     registeredUsers: registeredUsers.length,
     emailNotificationsEnabled: smtpEnabled,
-    cameraControlUrl: cameraControlUrl.toString(),
   });
-});
-
-app.get("/api/camera/status", (_request, response) => {
-  proxyCameraRequest(new URL("/status", cameraControlUrl), response);
-});
-
-app.get("/api/camera/capture", (_request, response) => {
-  const captureUrl = new URL("/capture", cameraControlUrl);
-  captureUrl.searchParams.set("timestamp", String(Date.now()));
-  proxyCameraRequest(captureUrl, response);
-});
-
-app.get("/api/camera/stream", (_request, response) => {
-  proxyCameraRequest(cameraStreamUrl, response);
-});
-
-app.post("/api/camera/flash", (request, response) => {
-  const enabled = request.body?.enabled;
-  if (typeof enabled !== "boolean") {
-    response.status(400).json({ error: "enabled must be a boolean" });
-    return;
-  }
-
-  const flashUrl = new URL("/flash", cameraControlUrl);
-  flashUrl.searchParams.set("enabled", enabled ? "1" : "0");
-  proxyCameraRequest(flashUrl, response);
 });
 
 app.put("/api/users", (request, response) => {
@@ -452,6 +454,10 @@ app.put("/api/users", (request, response) => {
       user.rfidUid === "NOT LINKED"
         ? "NOT LINKED"
         : normalizeRfidUid(user.rfidUid),
+    faceIdStatus: (
+      (user.faceIdStatus === "ENROLLED" ? "ENROLLED" : "PENDING") as
+        RegisteredUser["faceIdStatus"]
+    ),
   }));
   const linkedUids = normalizedUsers
     .map((user) => user.rfidUid)
@@ -467,9 +473,26 @@ app.put("/api/users", (request, response) => {
     return;
   }
 
+  if (linkedUids.length > maxLocalRfidRecords) {
+    response.status(422).json({
+      error: `ESP32 chỉ lưu tối đa ${maxLocalRfidRecords} thẻ RFID cục bộ`,
+    });
+    return;
+  }
+  if (normalizedUsers.some((user) =>
+    user.id.length === 0 || user.id.length >= 32 ||
+    user.fullName.length >= 64 ||
+    (user.rfidUid !== "NOT LINKED" && user.rfidUid.length >= 32)
+  )) {
+    response.status(422).json({ error: "ID, tên hoặc UID vượt giới hạn lưu trữ của ESP32" });
+    return;
+  }
+
   registeredUsers = normalizedUsers;
   persistRegisteredUsers(registeredUsers);
-  response.json({ saved: true, count: registeredUsers.length });
+  rfidRegistryVersion = (rfidRegistryVersion + 1) >>> 0;
+  const boardSyncQueued = publishRfidRegistry();
+  response.json({ saved: true, count: registeredUsers.length, boardSyncQueued });
 });
 
 app.post("/api/enrollment/start", (_request, response) => {
@@ -479,60 +502,57 @@ app.post("/api/enrollment/start", (_request, response) => {
   }
 
   enrollmentExpiresAt = Date.now() + enrollmentWindowMs;
+  mqttClient.publish(
+    mqttCommandTopic,
+    JSON.stringify({ action: "rfid_enrollment_start" }),
+    { qos: 1, retain: false },
+  );
   response.status(202).json({ accepted: true, expiresInMs: enrollmentWindowMs });
 });
 
-app.post("/api/incidents", async (request, response) => {
-  const gateId = typeof request.body?.gateId === "string" ? request.body.gateId : "GT-NORTH-01";
-  const details = typeof request.body?.details === "string"
-    ? request.body.details
-    : "Sự kiện vi phạm được kích hoạt từ giao diện Sentinel.";
-
-  try {
-    const notified = await notifyGateEvent({
-      event: "gate_event",
-      result: "violated",
-      gate_id: gateId,
-      details,
-    });
-    response.status(202).json({ accepted: true, notified });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Email notification failed";
-    response.status(502).json({ error: message });
-  }
-});
-
-app.post("/api/face-results", (request, response) => {
-  const authorized = request.body?.authorized;
-  const requestId = request.body?.requestId;
-  if (typeof authorized !== "boolean" || typeof requestId !== "string" || !requestId) {
-    response.status(400).json({ error: "Invalid face recognition result" });
-    return;
-  }
+app.post("/api/face-enrollment/start", (request, response) => {
   if (!mqttClient.connected) {
     response.status(503).json({ error: "MQTT broker is not connected" });
     return;
   }
 
-  const payload = JSON.stringify({
-    action: "face_result",
-    authorized,
-    request_id: requestId,
-    employee_id: typeof request.body.employeeId === "string" ? request.body.employeeId : "",
-    employee_name: typeof request.body.employeeName === "string" ? request.body.employeeName : "",
-    confidence: typeof request.body.confidence === "number" ? request.body.confidence : 0,
-    reason: typeof request.body.reason === "string"
-      ? request.body.reason
-      : authorized ? "face_matched" : "face_not_matched",
-  });
+  const employeeId = typeof request.body?.employeeId === "string"
+    ? request.body.employeeId.trim()
+    : "";
+  const employee = registeredUsers.find((user) => user.id === employeeId);
+  if (!employee) {
+    response.status(404).json({ error: "Nhân viên chưa được lưu trong hệ thống" });
+    return;
+  }
+  if (employeeId.length === 0 || employeeId.length > 24) {
+    response.status(422).json({ error: "Mã nhân viên phải có từ 1 đến 24 ký tự" });
+    return;
+  }
+  if (activeFaceEnrollment && activeFaceEnrollment.expiresAt > Date.now()) {
+    response.status(409).json({
+      error: `Camera đang đăng ký khuôn mặt cho ${activeFaceEnrollment.employeeId}`,
+    });
+    return;
+  }
 
-  mqttClient.publish(mqttCommandTopic, payload, { qos: 0 }, (error) => {
-    if (error) {
-      response.status(502).json({ error: error.message });
-      return;
-    }
-    response.status(202).json({ accepted: true, requestId });
-  });
+  activeFaceEnrollment = {
+    employeeId,
+    expiresAt: Date.now() + 75_000,
+  };
+  mqttClient.publish(
+    mqttCommandTopic,
+    JSON.stringify({ action: "face_enrollment_start", employee_id: employeeId }),
+    { qos: 1, retain: false },
+    (error) => {
+      if (error) {
+        activeFaceEnrollment = null;
+        console.error(`[FACE] Enrollment command failed: ${error.message}`);
+      } else {
+        console.log(`[FACE] Enrollment requested for ${employeeId}`);
+      }
+    },
+  );
+  response.status(202).json({ accepted: true, employeeId });
 });
 
 app.get("/api/events", (request, response) => {
@@ -547,28 +567,6 @@ app.get("/api/events", (request, response) => {
   );
 
   request.on("close", () => eventClients.delete(response));
-});
-
-app.post("/api/commands", (request, response) => {
-  const action = request.body?.action;
-  if (typeof action !== "string" || !allowedActions.has(action)) {
-    response.status(400).json({ error: "Unsupported board action" });
-    return;
-  }
-
-  if (!mqttClient.connected) {
-    response.status(503).json({ error: "MQTT broker is not connected" });
-    return;
-  }
-
-  const payload = JSON.stringify({ action, source: "sentinel-web" });
-  mqttClient.publish(mqttCommandTopic, payload, { qos: 0 }, (error) => {
-    if (error) {
-      response.status(502).json({ error: error.message });
-      return;
-    }
-    response.status(202).json({ accepted: true, action });
-  });
 });
 
 const staticDirectory = path.join(currentDir, "dist");

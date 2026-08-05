@@ -1,4 +1,4 @@
-import { User, AuditLog, HardwareState, SecurityIncident } from "./types";
+import { User, AuditLog, HardwareState, AuthenticationAlert } from "./types";
 
 export const INITIAL_USERS: User[] = [
   {
@@ -79,7 +79,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     subjectName: "Unknown",
     accessMethod: "RFID",
     gateId: "GT-SOUTH-04",
-    status: "VIOLATION",
+    status: "AUTH_FAILURE",
     confidence: "N/A"
   },
   {
@@ -135,7 +135,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     subjectName: "Unknown",
     accessMethod: "Face ID",
     gateId: "GT-MAIN-00",
-    status: "VIOLATION",
+    status: "AUTH_FAILURE",
     confidence: "N/A"
   }
 ];
@@ -147,14 +147,15 @@ export const INITIAL_HARDWARE: HardwareState = {
   systemBuzzer: "MUTED"
 };
 
-export const INITIAL_INCIDENT: SecurityIncident = {
-  id: "EVT_ID: #404-ERR",
+export const INITIAL_AUTHENTICATION_ALERT: AuthenticationAlert = {
+  id: "AUTH-ALERT-DEMO",
   timestamp: "14:28:45",
   gateId: "ESP32_SEC_01",
-  violationDetails: "A face recognition mismatch occurred at the primary entry point. The system failed to correlate the captured biometric data with any registered user. Electronic buzzer has been triggered and servo lock remains engaged.",
-  servoLocked: true,
-  buzzerActive: true,
-  policeNotified: "PENDING",
+  alertType: "REPEATED_UNKNOWN_FACE",
+  authMethod: "FACE",
+  failedAttempts: 3,
+  decision: "DENIED",
+  gateState: "LOCKED",
   captureImageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuA1-U-sOKlVXo3ex17StlU2Z4m1fVHX66Fvwho1CR515JP6SQ0SawYOTugf5fuVrj6TMOgIPMh5wrqZIQw_SSEq8QBepOibM4pAbPMA6iNfZw6MR2rzhWFUq_H0YeFsZFCVa5Q4U4vBQ9NMCgwnmVQhmspHltenF2teCete7C1-piRveTdU64xBEgcs8YopnOz8KtH5Yc4iHU89VqdIyWzGbyv_m3XtVqYwKXq_CgPmRZ5ICJvhxuVRDopo6HxnSVgBRXZ2mm5Hyho"
 };
 
@@ -193,7 +194,16 @@ export function getAuditLogs(): AuditLog[] {
     localStorage.setItem("sentinel_logs", JSON.stringify(INITIAL_AUDIT_LOGS));
     return INITIAL_AUDIT_LOGS;
   }
-  return JSON.parse(logs);
+  const stored = JSON.parse(logs) as Array<AuditLog & { status: string; accessMethod: string }>;
+  const validStatuses = new Set(["ONLINE", "AUTH_FAILURE", "AUTH_ALERT", "EXPIRED"]);
+  return stored.map((log) => ({
+    ...log,
+    status: validStatuses.has(log.status) ? log.status : "AUTH_FAILURE",
+    accessMethod:
+      log.accessMethod === "Face ID" || log.accessMethod === "RFID" || log.accessMethod === "Manual Override"
+        ? log.accessMethod
+        : "Face ID",
+  })) as AuditLog[];
 }
 
 export function addAuditLog(log: Omit<AuditLog, "id" | "timestamp">): AuditLog[] {
@@ -209,6 +219,11 @@ export function addAuditLog(log: Omit<AuditLog, "id" | "timestamp">): AuditLog[]
   };
 
   logs.unshift(newLog);
+  localStorage.setItem("sentinel_logs", JSON.stringify(logs));
+  return logs;
+}
+
+export function saveAuditLogs(logs: AuditLog[]): AuditLog[] {
   localStorage.setItem("sentinel_logs", JSON.stringify(logs));
   return logs;
 }

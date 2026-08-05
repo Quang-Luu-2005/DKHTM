@@ -1,17 +1,15 @@
 import type { User } from "../types";
 
-export type BoardAction =
-  | "open"
-  | "close"
-  | "normal"
-  | "led_green"
-  | "led_red"
-  | "buzzer_on"
-  | "buzzer_off"
-  | "reset_violation";
-
 export interface BoardPayload {
   event?: string;
+  status?: string;
+  eventType?: "AUTH_SUCCESS" | "AUTH_FAILURE" | "AUTH_RETRY" | "AUTHENTICATION_ALERT" | "FORCED_LOCK_PRESENCE_ALERT";
+  alertType?: "REPEATED_AUTH_FAILURE" | "REPEATED_UNKNOWN_FACE" | "REPEATED_INVALID_RFID" | "PRESENCE_DETECTED_DURING_FORCED_LOCK";
+  authMethod?: "FACE" | "RFID" | "MIXED" | "NONE";
+  failedAttempts?: number;
+  decision?: "GRANTED" | "DENIED";
+  gateState?: "OPEN" | "LOCKED";
+  timestamp?: string;
   result?: string;
   gate?: string;
   led?: string;
@@ -25,7 +23,10 @@ export interface BoardPayload {
   confidence?: number;
   reason?: string;
   passes?: number;
-  violators?: number;
+  authenticationAlerts?: number;
+  view?: string;
+  completedViews?: number;
+  totalViews?: number;
 }
 
 interface BoardEventEnvelope {
@@ -70,30 +71,18 @@ export function connectBoardEvents({
   return () => eventSource.close();
 }
 
-export async function sendBoardCommand(action: BoardAction) {
-  const response = await fetch("/api/commands", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `Command failed with HTTP ${response.status}`);
-  }
-}
-
 export async function syncUsersDatabase(users: User[]) {
   const response = await fetch("/api/users", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      users: users.map(({ id, fullName, email, role, rfidUid }) => ({
+      users: users.map(({ id, fullName, email, role, rfidUid, faceIdStatus }) => ({
         id,
         fullName,
         email: email || "",
         role,
         rfidUid,
+        faceIdStatus,
       })),
     }),
   });
@@ -112,35 +101,14 @@ export async function startRfidEnrollment() {
   }
 }
 
-export async function reportViolationNotification(gateId: string, details: string) {
-  const response = await fetch("/api/incidents", {
+export async function startFaceEnrollment(employeeId: string) {
+  const response = await fetch("/api/face-enrollment/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gateId, details }),
+    body: JSON.stringify({ employeeId }),
   });
-
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `Incident notification failed with HTTP ${response.status}`);
-  }
-}
-
-export async function sendFaceRecognitionResult(result: {
-  requestId: string;
-  authorized: boolean;
-  employeeId?: string;
-  employeeName?: string;
-  confidence: number;
-  reason: string;
-}) {
-  const response = await fetch("/api/face-results", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(result),
-  });
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `Face result failed with HTTP ${response.status}`);
+    throw new Error(body.error || `Face enrollment failed with HTTP ${response.status}`);
   }
 }
