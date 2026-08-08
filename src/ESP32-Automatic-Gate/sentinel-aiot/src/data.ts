@@ -3,76 +3,17 @@ import { User, AuditLog, HardwareState, AuthenticationAlert } from "./types";
 export const INITIAL_USERS: User[] = [
   {
     id: "nv001",
-    fullName: "Nguyễn Văn A (nv001)",
+    fullName: "Nguyễn Văn A",
     role: "General Staff",
     rfidUid: "NOT LINKED",
     faceIdStatus: "ENROLLED"
   },
   {
     id: "101",
-    fullName: "Nhân viên 101",
-    role: "General Staff",
-    rfidUid: "NOT LINKED",
-    faceIdStatus: "ENROLLED"
-  },
-  {
-    id: "SENT-001",
-    fullName: "Jonathan Doe",
-    role: "Administrator",
-    rfidUid: "E2:00:15:B4:77",
-    faceIdStatus: "ENROLLED"
-  },
-  {
-    id: "SENT-042",
-    fullName: "Sarah Chen",
+    fullName: "Hoàng Nhân",
     role: "Security Officer",
-    rfidUid: "A4:F1:00:22:98",
-    faceIdStatus: "ENROLLED"
-  },
-  {
-    id: "SENT-109",
-    fullName: "Mike Bell",
-    role: "Technician",
     rfidUid: "NOT LINKED",
-    faceIdStatus: "PENDING"
-  },
-  {
-    id: "SENT-115",
-    fullName: "Aleksei Kozlov",
-    role: "General Staff",
-    rfidUid: "C9:12:AA:77:FF",
     faceIdStatus: "ENROLLED"
-  },
-  {
-    id: "SENT-082",
-    fullName: "Marcus Sterling",
-    role: "General Staff",
-    rfidUid: "B3:E5:88:AC:12",
-    faceIdStatus: "ENROLLED"
-  },
-  {
-    id: "SENT-095",
-    fullName: "Elena Vance",
-    role: "Technician",
-    rfidUid: "NOT LINKED",
-    faceIdStatus: "ENROLLED",
-    avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuC5cJpziF_yMPkHP4VGuCwnKNJTWjEl2duYDQ27FuG0ZI_3MLGz556QvjjuHa4PmCn2c_bQyfvfNrhDrfMNFCH7t80jRVLLj0XYmcsRBaQ2tWgchiIiCtOp-xxnQFm27VP-H1NfjbxjRhAMhNsvfj4nFvnNR0n4N8TbjXs4qVcVAjlhFyBfeVijGTligO8BzzY5uj5cDzY3VXjZOuUi4bVYZ3J1dpSM1aYc7IwsV0HCWCcHy08VpGqNCx68hn6OlX_H9H8b7oIVSHU"
-  },
-  {
-    id: "SENT-102",
-    fullName: "Marcus Thorne",
-    role: "Administrator",
-    rfidUid: "F2:E1:CC:DD:AA",
-    faceIdStatus: "ENROLLED",
-    avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuB44dDLVxzIwQB3ldH3IdJWqsN8WIvoNOYNuMg_eBRusTfDQM9oty6BApZQVeW40S5N9E8rXMBII5tkiApOq4NPHD-kmLzf9B9GlfX0AKhmqdMe8Zwu1QEPHY9zNEOADyArazf5hXiSKWeOmEFmYLfGfV3YbHmcyRsIznlKBRbcoedv_2-1GUo3kTUrW9UeL4PELA8Bo5Qff_aM_rV-A78EG916pn4aEGnklrhuV1YrKXTmruDYe481SRoYfS5ApV9idLeuSf4qKX8"
-  },
-  {
-    id: "SENT-110",
-    fullName: "Raj Patel",
-    role: "Security Officer",
-    rfidUid: "A1:B2:C3:D4:E5",
-    faceIdStatus: "ENROLLED",
-    avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAv8IEf8FQWyQNbakcMvWMn2Ycqw-5YiycRlRH45flN7xB5wiDhRd14PGAtNOjoSXxE7WQeI-Ct8w2hU5gG-1e6I26l9UhJZa5Qqa2nuQr06-z97HjbePMQoV3v4-ajDUyRV7OKWzcXgT-zw-zGF_G_xBLVC_acwQuo9wFnvRlGeB4twdUvv9J-44gk4f-ghg8gTYiDYYZLAuDJHKhh-LCNZgz6TOpVtTOoTaxgRT_9dN6K9gyheaI7WKzHBuV6eZEEyvNyoxdYGRI"
   }
 ];
 
@@ -182,14 +123,12 @@ export function getUsers(): User[] {
   }
   try {
     const existing = JSON.parse(stored) as User[];
-    // Merge missing initial users
-    const missing = INITIAL_USERS.filter((initUser) => !existing.some((u) => u.id === initUser.id));
-    if (missing.length > 0) {
-      const merged = [...missing, ...existing];
-      localStorage.setItem("sentinel_users", JSON.stringify(merged));
-      return merged;
-    }
-    return existing;
+    // Filter out old SENT demo users and keep only real ones (or initial ones)
+    const cleaned = existing.filter((u) => !u.id.startsWith("SENT-"));
+    const missing = INITIAL_USERS.filter((initUser) => !cleaned.some((u) => u.id === initUser.id));
+    const merged = [...cleaned, ...missing];
+    localStorage.setItem("sentinel_users", JSON.stringify(merged));
+    return merged;
   } catch {
     localStorage.setItem("sentinel_users", JSON.stringify(INITIAL_USERS));
     return INITIAL_USERS;
