@@ -22,6 +22,7 @@ export interface AuditLog {
   gateId: string;
   status: "ONLINE" | "AUTH_FAILURE" | "AUTH_ALERT" | "EXPIRED";
   confidence: string; // "99.8%" or "N/A"
+  executionTime?: string; // "1.2s" or "350ms"
   avatarUrl?: string;
 }
 

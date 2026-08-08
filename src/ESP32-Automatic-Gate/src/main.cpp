@@ -29,7 +29,7 @@ void procedure_open_gate();
 namespace {
 constexpr unsigned long RFID_AUTHORIZATION_TIMEOUT_MS = 7000;
 constexpr unsigned long RFID_ENROLLMENT_WINDOW_MS = 30000;
-constexpr unsigned long FACE_SCAN_TIMEOUT_MS = 9000;
+constexpr unsigned long FACE_SCAN_TIMEOUT_MS = 6000;
 constexpr unsigned long FACE_RETRY_DELAY_MS = 750;
 constexpr unsigned long FACE_ENROLLMENT_TIMEOUT_MS = 70000;
 constexpr unsigned long ESP_NOW_RETRY_INTERVAL_MS = 2000;
@@ -227,7 +227,7 @@ void update_gate_violation_detection() {
   lastPresenceSampleAt = millis();
 
   const int distanceCm = ultra.get_distance();
-  const bool violationSignal = distanceCm > 0 && distanceCm <= 50;
+  const bool violationSignal = distanceCm > 0 && distanceCm <= 10;
   if (violationSignal) {
     absenceSamples = 0;
     if (presenceSamples < PRESENCE_REQUIRED_SAMPLES) presenceSamples++;

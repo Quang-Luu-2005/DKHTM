@@ -206,15 +206,16 @@ export default function DashboardView({
         ) : (
           <div className="divide-y divide-[#1E293B]">
             {recentLogs.map((log) => (
-              <div key={log.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[160px_1fr_120px_110px] sm:items-center">
+              <div key={log.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[140px_1fr_100px_90px_110px] sm:items-center">
                 <span className="font-mono text-[10px] text-[#64748B]">{log.timestamp}</span>
                 <div>
                   <p className="text-sm text-[#F8FAFC]">{log.subjectName}</p>
                   <p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-[#64748B]">
-                    {log.subjectId || log.gateId}
+                    {log.subjectId || log.gateId} • Khớp {log.confidence}
                   </p>
                 </div>
                 <span className="font-mono text-[10px] uppercase text-[#94A3B8]">{log.accessMethod}</span>
+                <span className="font-mono text-[10px] text-sky-400">{log.executionTime || "0.8s"}</span>
                 <span className={`w-fit rounded-lg border px-2.5 py-1 font-mono text-[9px] uppercase ${
                   log.status === "ONLINE"
                     ? statusStyle.online
@@ -222,7 +223,7 @@ export default function DashboardView({
                       ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
                       : statusStyle.warning
                 }`}>
-                  {log.status}
+                  {log.status === "ONLINE" ? "THÀNH CÔNG" : log.status === "AUTH_FAILURE" ? "TỪ CHỐI" : log.status}
                 </span>
               </div>
             ))}

@@ -12,9 +12,9 @@ import { fileURLToPath } from "node:url";
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(currentFile);
 
+dotenv.config({ path: path.resolve(currentDir, "..", "..", ".env"), override: true });
 dotenv.config({ path: path.join(currentDir, ".env.local") });
 dotenv.config({ path: path.join(currentDir, ".env") });
-dotenv.config({ path: path.resolve(currentDir, "..", "..", ".env") });
 
 const mqttUrl = process.env.MQTT_URL || (process.env.MQTT_SERVER
   ? `mqtts://${process.env.MQTT_SERVER}:${process.env.MQTT_PORT || "8883"}`

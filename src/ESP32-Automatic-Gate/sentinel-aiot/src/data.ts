@@ -2,6 +2,20 @@ import { User, AuditLog, HardwareState, AuthenticationAlert } from "./types";
 
 export const INITIAL_USERS: User[] = [
   {
+    id: "nv001",
+    fullName: "Nguyễn Văn A (nv001)",
+    role: "General Staff",
+    rfidUid: "NOT LINKED",
+    faceIdStatus: "ENROLLED"
+  },
+  {
+    id: "101",
+    fullName: "Nhân viên 101",
+    role: "General Staff",
+    rfidUid: "NOT LINKED",
+    faceIdStatus: "ENROLLED"
+  },
+  {
     id: "SENT-001",
     fullName: "Jonathan Doe",
     role: "Administrator",
@@ -161,12 +175,25 @@ export const INITIAL_AUTHENTICATION_ALERT: AuthenticationAlert = {
 
 // LocalStorage helpers
 export function getUsers(): User[] {
-  const users = localStorage.getItem("sentinel_users");
-  if (!users) {
+  const stored = localStorage.getItem("sentinel_users");
+  if (!stored) {
     localStorage.setItem("sentinel_users", JSON.stringify(INITIAL_USERS));
     return INITIAL_USERS;
   }
-  return JSON.parse(users);
+  try {
+    const existing = JSON.parse(stored) as User[];
+    // Merge missing initial users
+    const missing = INITIAL_USERS.filter((initUser) => !existing.some((u) => u.id === initUser.id));
+    if (missing.length > 0) {
+      const merged = [...missing, ...existing];
+      localStorage.setItem("sentinel_users", JSON.stringify(merged));
+      return merged;
+    }
+    return existing;
+  } catch {
+    localStorage.setItem("sentinel_users", JSON.stringify(INITIAL_USERS));
+    return INITIAL_USERS;
+  }
 }
 
 export function saveUser(user: User): User[] {

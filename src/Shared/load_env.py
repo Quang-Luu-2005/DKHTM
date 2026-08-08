@@ -6,7 +6,13 @@ from pathlib import Path
 
 
 project_dir = Path(env.subst("$PROJECT_DIR"))
-shared_env_path = project_dir.parent / ".env"
+# Find .env in project_dir, src/.env, or root .env
+if (project_dir / "src" / ".env").exists():
+    shared_env_path = project_dir / "src" / ".env"
+elif (project_dir / ".env").exists():
+    shared_env_path = project_dir / ".env"
+else:
+    shared_env_path = project_dir.parent / ".env"
 generated_header = project_dir / "include" / "env_config.generated.h"
 
 

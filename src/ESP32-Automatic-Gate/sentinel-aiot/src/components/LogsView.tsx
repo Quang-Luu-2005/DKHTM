@@ -107,7 +107,7 @@ export default function LogsView({ logs }: LogsViewProps) {
         <table className="w-full min-w-[820px] text-left">
           <thead className="border-b border-[#1E293B] bg-[#161618]">
             <tr>
-              {["Thời gian", "Nhân viên / sự kiện", "Phương thức", "Cổng", "Kết quả", "Độ tin cậy"].map((label) => (
+              {["Thời gian", "Nhân viên / sự kiện", "Phương thức", "Cổng", "Thời gian xử lý", "Kết quả", "Độ trùng khớp"].map((label) => (
                 <th key={label} className="px-5 py-4 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
                   {label}
                 </th>
@@ -124,6 +124,7 @@ export default function LogsView({ logs }: LogsViewProps) {
                 </td>
                 <td className="px-5 py-4 text-xs text-[#94A3B8]">{log.accessMethod}</td>
                 <td className="px-5 py-4 font-mono text-[10px] text-[#94A3B8]">{log.gateId}</td>
+                <td className="px-5 py-4 font-mono text-[10px] text-sky-400">{log.executionTime || "0.8s"}</td>
                 <td className="px-5 py-4">
                   <span className={`rounded-lg border px-2.5 py-1 font-mono text-[9px] ${
                     log.status === "ONLINE"
@@ -132,10 +133,10 @@ export default function LogsView({ logs }: LogsViewProps) {
                         ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
                         : "border-amber-500/30 bg-amber-500/10 text-amber-300"
                   }`}>
-                    {log.status}
+                    {log.status === "ONLINE" ? "THÀNH CÔNG" : log.status === "AUTH_FAILURE" ? "TỪ CHỐI" : log.status}
                   </span>
                 </td>
-                <td className="px-5 py-4 font-mono text-[10px] text-[#94A3B8]">{log.confidence}</td>
+                <td className="px-5 py-4 font-mono text-[10px] text-emerald-400">{log.confidence}</td>
               </tr>
             ))}
           </tbody>

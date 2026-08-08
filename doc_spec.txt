@@ -1,0 +1,559 @@
+﻿________________
+
+
+
+
+Tài liệu đặc tả yêu cầu 
+
+
+Hệ thống kiểm soát cổng AIoT thông minh
+
+
+Phiên bản 1.4
+Nhóm 6
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Thành viên:
+        Lưu Huy Minh Quang - ID: 23127016
+        Hoàng Nhân - ID: 23127094
+        Trần Cao Vân - ID: 23127141
+        Nguyễn Trần Thiên Phú - ID: 23127246
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Mục lục
+1. Giới thiệu
+1.1 Mục đích và phạm vi của tài liệu
+1.2 Bối cảnh
+1.3 Đối tượng sử dụng tài liệu
+1.4 Định nghĩa, tiêu chuẩn và thuật ngữ làm việc
+1.5 Cách sử dụng tài liệu này
+1.6 Phạm vi và góc nhìn sản phẩm
+1.7 Nhóm người dùng, đặc điểm và quyền truy cập
+1.8 Tài liệu hướng dẫn người dùng
+1.9 Ràng buộc thiết kế và triển khai
+1.10 Giả định và phụ thuộc
+1.11 Mục tiêu tổng thể và lợi ích kỳ vọng
+2. Đề xuất giá trị, Use Case và yêu cầu chức năng
+2.1 Từ đề xuất giá trị đến đặc tả nền tảng
+2.2 Mục tiêu tổng thể: Khai thác dữ liệu và thiết bị tại cổng để cung cấp kiểm soát ra vào an toàn, tự động và có thể giám sát
+2.3 Danh sách tác nhân
+2.4 Mục tiêu 1: Phát hiện và nhận diện khuôn mặt
+2.4.1 Use Case: Đăng ký dữ liệu người dùng và phương thức xác thực
+2.4.2 Use Case: Xác thực ra vào bằng Face ID
+
+
+2.5 Mục tiêu 2: Phát hiện vi phạm nhảy cổng và khóa cổng
+2.5.1 Use Case: Phát hiện vi phạm và khóa cổng
+2.5.2 Use Case: Gửi cảnh báo thời gian thực và xử lý sự cố
+2.6 Mục tiêu 3: Sử dụng RFID để mở cổng dưới 2 giây với độ chính xác 98% và hỗ trợ mở cổng tự động
+2.6.1 Use Case: Xác thực ra vào bằng NFC/RFID
+
+
+2.7 Yêu cầu chức năng
+3. Yêu cầu phi chức năng
+3.1 Yêu cầu chất lượng khi vận hành
+3.2 Yêu cầu chất lượng ngoài thời gian vận hành
+3.3 Danh sách yêu cầu phi chức năng
+4. Các yêu cầu khác
+4.1 Metadata mô tả tối thiểu cần có từ bên cung cấp dữ liệu
+4.2 Định dạng dữ liệu được hệ thống hỗ trợ
+5. Danh sách thiết bị và chi phí ước tính
+6. Kết luận và kế hoạch tiếp theo
+
+
+1. Giới thiệu
+1.1 Mục đích và phạm vi của tài liệu
+Tài liệu này là bản đặc tả yêu cầu cho hệ thống kiểm soát cổng AIoT dựa trên ESP32, camera nhận diện khuôn mặt và đầu đọc thẻ NFC/RFID. Mục đích của tài liệu là mô tả rõ phạm vi sản phẩm, nhóm người dùng, hành vi hệ thống, các use case tích hợp, yêu cầu chức năng, yêu cầu phi chức năng và ràng buộc triển khai nhằm hỗ trợ phát triển, kiểm thử, trình bày dự án và mở rộng hệ thống trong tương lai.
+
+
+Phạm vi của tài liệu bao quát toàn bộ luồng vận hành của một cổng kiểm soát ra vào ở mức nguyên mẫu: đăng ký danh tính người dùng, xác thực bằng Face ID hoặc thẻ, điều khiển thanh chắn, phát hiện vi phạm, cảnh báo thời gian thực, quản trị thiết bị và phân tích vận hành. Các hệ thống thương mại nằm ngoài phạm vi hiện tại, như hạ tầng thanh toán metro quy mô lớn, hệ thống camera toàn thành phố hoặc cổng sản xuất nhiều làn, chỉ được xem là hướng mở rộng trong tương lai và không thuộc phạm vi triển khai hiện tại.
+1.2 Bối cảnh
+Dự án xuất phát từ nhu cầu tự động hóa kiểm soát ra vào tại các khu vực có lưu lượng lớn như nhà ga metro, bến xe, nhà chờ, bãi đỗ xe hoặc khu vực hạn chế. Các phương pháp thủ công hoặc phụ thuộc hoàn toàn vào giám sát của con người có chi phí vận hành cao, khó mở rộng và phản ứng chậm trước vi phạm. Ngược lại, ESP32, camera AI, giao tiếp MQTT/WebSocket, dashboard web và lưu trữ dữ liệu thời gian thực hiện nay cho phép xây dựng một nền tảng kiểm soát ra vào gọn nhẹ nhưng có năng lực thực tế về định danh, cảnh báo và giám sát.
+
+
+Hệ thống được thiết kế như một nền tảng tích hợp phần cứng và phần mềm: các thiết bị tại cổng chịu trách nhiệm cảm biến và phản hồi tại chỗ, trong khi backend và dashboard chịu trách nhiệm xác thực, lưu trữ, trực quan hóa và vận hành. Cách tiếp cận này phù hợp với phương pháp EIP: bắt đầu từ nhu cầu vận hành thực tế và chuyển hóa thành đặc tả yêu cầu có thể hỗ trợ phát triển cũng như mở rộng về sau.
+1.3 Đối tượng sử dụng tài liệu
+Tài liệu này hướng đến các nhóm đối tượng sau:
+- Giảng viên và hội đồng đánh giá: dùng để đánh giá mức độ đầy đủ của phát biểu vấn đề, kiến trúc và logic yêu cầu.
+- Nhóm phát triển dự án: dùng làm tài liệu tham chiếu chung cho thiết kế phần cứng, thiết kế phần mềm và kiểm thử.
+- Người vận hành nguyên mẫu: dùng để hiểu các chức năng hệ thống, chế độ vận hành cổng và quy trình xử lý cảnh báo.
+- Nhà phát triển trong tương lai: dùng làm nền tảng để mở rộng sang triển khai nhiều làn, tăng cường bảo mật hoặc tích hợp AI nâng cao hơn.
+
+
+1.4 Định nghĩa, tiêu chuẩn và thuật ngữ làm việc
+Trong tài liệu này, các thuật ngữ sau được sử dụng:
+- Nền tảng cổng AIoT: nền tảng tích hợp thiết bị cổng, xử lý dữ liệu và dashboard giám sát.
+- EIP: phương pháp xây dựng đặc tả bắt đầu từ nhu cầu vận hành thực tế, sau đó chuyển hóa thành mục tiêu, use case và yêu cầu hệ thống.
+- Face ID: cơ chế xác thực danh tính dựa trên dữ liệu khuôn mặt đã đăng ký.
+- NFC/RFID: cơ chế xác thực danh tính dựa trên UID thẻ đã được cấp quyền.
+- Web Dashboard: giao diện quản trị dùng để theo dõi trạng thái cổng, cảnh báo, nhật ký và cấu hình thiết bị.
+- Sự kiện vi phạm: hành vi vi phạm như nhảy qua cổng, bám đuôi người khác hoặc cố gắng truy cập trái phép.
+- Chế độ mặc định: chế độ vận hành bình thường, trong đó xác thực đầy đủ và kiểm soát vi phạm được bật.
+
+
+Hệ thống tham chiếu các thực hành triển khai phổ biến như giao tiếp MQTT/WebSocket để truyền sự kiện thời gian thực, quản lý API/backend cho xác thực và ghi log, cùng nguyên tắc an toàn khi lỗi: khi một thành phần quan trọng gặp sự cố, cổng không được mở nếu chưa có quyền hợp lệ.
+1.5 Cách sử dụng tài liệu này
+Nên sử dụng tài liệu này theo thứ tự sau:
+- Đọc phần giới thiệu để hiểu phạm vi, mục tiêu và giả định của hệ thống.
+- Đọc danh sách tác nhân để xác định các thực thể tương tác với hệ thống.
+- Đọc từng use case để hiểu luồng chính, ngoại lệ và hậu điều kiện.
+- Đọc các yêu cầu chức năng để xây dựng backlog triển khai hoặc tiêu chí nghiệm thu.
+- Đọc các yêu cầu phi chức năng, ràng buộc và hướng mở rộng để hoàn thiện thiết kế kỹ thuật và kế hoạch phát triển.
+1.6 Phạm vi và góc nhìn sản phẩm
+Sản phẩm được nhìn nhận như một hệ thống kiểm soát ra vào tích hợp với ba lớp chính:
+- Lớp thiết bị tại cổng: hai module ESP32-CAM (AI Recognition Module chuyên nhận diện khuôn mặt và Streaming Module chuyên stream video), đầu đọc NFC/RFID, bộ điều khiển ESP32, servo, LED và buzzer.
+- Lớp xử lý và điều phối: backend xác thực, message broker, logic xử lý cảnh báo và cơ sở dữ liệu.
+- Lớp giám sát và điều khiển: Web Dashboard để đăng ký người dùng, xem trạng thái, xử lý cảnh báo, điều khiển chế độ cổng và tra cứu lịch sử.
+
+
+Sản phẩm không chỉ là một bộ cổng tự động đóng/mở mà còn là một nền tảng dữ liệu vận hành ở quy mô nguyên mẫu: dữ liệu được tạo tại thiết bị, được xử lý và lưu trữ, sau đó hiển thị cho người vận hành và được tái sử dụng cho phân tích, kiểm toán và cải tiến.
+1.7 Nhóm người dùng, đặc điểm và quyền truy cập
+Các nhóm người dùng chính gồm:
+- Quản trị viên/người vận hành hệ thống: có quyền đăng ký danh tính, cấu hình chế độ cổng, bật hoặc tắt thiết bị, xem nhật ký và xác nhận xử lý cảnh báo.
+- Nhân viên an ninh: có quyền xem cảnh báo, kiểm tra vi phạm và xác nhận sự cố đã được xử lý.
+- Hành khách/người dùng cổng: tương tác gián tiếp với hệ thống thông qua Face ID hoặc thẻ NFC/RFID.
+
+
+Quyền truy cập được phân tách tối thiểu như sau: người vận hành có thể xem và xử lý sự kiện; quản trị viên có thể cấu hình hệ thống và chỉnh sửa dữ liệu danh tính; người dùng cuối không có quyền thay đổi trạng thái hệ thống.
+1.8 Tài liệu hướng dẫn người dùng
+Người vận hành hệ thống tối thiểu cần được cung cấp các tài liệu hỗ trợ sau:
+- Hướng dẫn đăng ký người dùng và liên kết thẻ
+- Hướng dẫn sử dụng dashboard và chế độ cổng
+- Hướng dẫn xử lý cảnh báo vi phạm
+- Hướng dẫn kiểm tra nhanh khi camera, đầu đọc thẻ hoặc servo gặp lỗi
+- Hướng dẫn khởi động lại và xác minh sau bảo trì
+1.9 Ràng buộc thiết kế và triển khai
+Các ràng buộc triển khai chính gồm:
+- Hệ thống được xây dựng trên phần cứng nhúng hạn chế tài nguyên như ESP32
+- Độ chính xác của Face ID phụ thuộc vào chất lượng camera, góc camera, ánh sáng và chất lượng ảnh đăng ký
+- Mô hình hiện tại hướng đến một làn nguyên mẫu đơn và chưa được tối ưu cho nhiều làn hoạt động đồng thời
+- Chức năng dashboard và việc gửi cảnh báo phụ thuộc vào mạng nội bộ hoặc kết nối internet theo cấu hình hệ thống
+- Cơ chế bảo mật và quản lý tài khoản trong phiên bản dự án chưa tương đương với các triển khai thương mại quy mô lớn
+1.10 Giả định và phụ thuộc
+Tài liệu này dựa trên các giả định sau:
+- Người dùng hợp lệ đã có hồ sơ khuôn mặt hoặc UID thẻ được lưu trong hệ thống
+- Camera, đầu đọc thẻ, servo và backend đã được triển khai, kết nối đúng và ổn định ở mức nguyên mẫu
+- Hệ thống cung cấp chức năng ghi log và truy xuất dữ liệu thông qua dashboard
+- Người vận hành có thể truy cập giao diện quản trị với quyền phù hợp
+- Môi trường trình diễn cho phép mô phỏng cả hành vi xác thực và hành vi vi phạm để kiểm thử use case
+2. Đề xuất giá trị, Use Case và yêu cầu chức năng
+2.1 Từ đề xuất giá trị đến đặc tả nền tảng
+Hệ thống kiểm soát cổng AIoT được hình thành từ các nhu cầu vận hành thực tế: tự động hóa xác thực ra vào, giảm phụ thuộc vào điều khiển thủ công, phát hiện vi phạm sớm và cung cấp khả năng giám sát tập trung. Từ đề xuất giá trị đó, tài liệu này chuyển hóa bài toán thành các tác nhân, use case và yêu cầu chức năng có thể dùng trực tiếp cho thiết kế, triển khai và kiểm thử.
+2.2 Mục đích:
+Mục đích của hệ thống là khai thác dữ liệu tại cổng nhằm cải thiện quá trình xác thực, phản ứng an ninh và khả năng quan sát vận hành. Thông qua việc tự động hóa kiểm soát ra vào, hệ thống giúp giảm công sức thủ công, tăng tính linh hoạt nhờ hỗ trợ cả xác thực bằng Face ID và NFC/RFID, đồng thời phát hiện sớm các hành vi vi phạm với cảnh báo theo thời gian thực. Ngoài ra, hệ thống còn cho phép truy vết toàn bộ lượt xác thực và sự cố để phục vụ phân tích, kiểm toán và cải tiến, từ đó tạo nền tảng để mở rộng sang hệ thống nhiều làn hoặc tích hợp vào các kịch bản giao thông thông minh trong tương lai. 
+2.3 Các và Danh sách tác nhân
+  
+
+
+
+  
+
+
+
+Danh sách tác nhân
+
+
+Tác nhân
+	Vai trò
+	Quản trị viên / Người vận hành hệ thống
+	Quản lý dữ liệu người dùng, cấu hình cổng, theo dõi cảnh báo và xác nhận xử lý sự cố.
+	Hành khách / Người dùng cổng
+	Sử dụng Face ID hoặc thẻ NFC/RFID để xác thực khi đi qua cổng.
+	AI Recognition Module
+	Ghi nhận ảnh chụp khuôn mặt và phát hiện hành vi vi phạm để gửi dữ liệu về hệ thống.
+	Streaming Module
+	Cung cấp luồng video thời gian thực lên Dashboard.
+	Đầu đọc NFC/RFID
+	Đọc UID thẻ và gửi dữ liệu xác thực đến bộ điều khiển.
+	Dịch vụ Face ID / Backend
+	Xử lý ảnh, phát hiện khuôn mặt, đối chiếu với dữ liệu đã đăng ký và trả về kết quả xác thực.
+	ESP32 / Bộ điều khiển cổng
+	Nhận kết quả xác thực, điều khiển servo, LED và buzzer, đồng thời giao tiếp với lớp web qua MQTT/WebSocket.
+	Servo
+	Mở hoặc đóng thanh chắn cổng.
+	Nhân viên an ninh
+	Nhận cảnh báo, kiểm tra vi phạm thực tế và xác nhận xử lý.
+	
+
+2.4 Mục tiêu 1:
+Thu thập và xử lý hình ảnh từ AI Recognition Module để phát hiện và nhận diện tối đa 20 người dùng đã đăng ký, đạt độ chính xác định danh trên 95%, tỷ lệ nhận nhầm dưới 2% và thời gian phản hồi dưới 1.5 giây trong phạm vi quan sát hợp lệ của camera. 
+2.4.1 Use Case: Đăng ký dữ liệu người dùng và phương thức xác thực
+Mô tả
+	Tên use case: Quản lý danh tính người dùng
+ID: UC-FINAL-01
+Làm rõ: Quản lý danh tính người dùng cho Face ID và NFC/RFID
+	Tiền điều kiện
+	- Quản trị viên đã đăng nhập vào Web Dashboard.
+- Camera, đầu đọc thẻ và kết nối backend đang hoạt động bình thường.
+- Người dùng cần đăng ký chưa tồn tại trong hệ thống hoặc được phép cập nhật hồ sơ.
+	Tác nhân
+	Quản trị viên / Người vận hành hệ thống, người dùng cần đăng ký, AI Camera, đầu đọc NFC/RFID, dịch vụ Face ID / Backend, Cơ sở dữ liệu.
+	Mục đích
+	Use case này cho phép hệ thống tạo một hồ sơ danh tính thống nhất cho người dùng, bao gồm thông tin cá nhân, dữ liệu khuôn mặt và mã thẻ NFC/RFID, làm cơ sở cho các lần xác thực sau. Cho phép quản lý trạng thái hồ sơ người dùng (kích hoạt, tạm khóa, xóa) khi nhân viên nghỉ phép hoặc nghỉ việc.
+	Quy trình cơ bản
+	1. Quản trị viên mở trang quản lý người dùng trên Web Dashboard.
+2. Hệ thống hiển thị giao diện tạo hoặc cập nhật hồ sơ người dùng.
+3. Quản trị viên nhập thông tin người dùng gồm mã người dùng, họ tên, vai trò hoặc quyền ra vào cổng.
+4. Quản trị viên nhấp chọn hoặc kéo thả một tệp ảnh chụp chính diện, rõ mặt và đủ ánh sáng của nhân viên vào vùng "Tải ảnh chụp chính diện" trên Web Dashboard.
+5. Hệ thống thực hiện tiền xử lý ảnh (Pre-processing), hiển thị khung căn chỉnh khuôn mặt trực quan và gửi tệp hình ảnh lên cơ cấu dịch vụ Face ID / Backend để trích xuất ma trận đặc trưng danh tính.
+6. Nếu ảnh hợp lệ, hệ thống trích xuất đặc trưng khuôn mặt và lưu vào cơ sở dữ liệu.
+7. Quản trị viên quét thẻ NFC/RFID của người dùng tại đầu đọc.
+8. Hệ thống nhận UID thẻ, kiểm tra trùng lặp và liên kết UID với hồ sơ người dùng.
+9. Web Dashboard hiển thị thông báo đăng ký thành công.
+10. Quy trình đăng ký kết thúc.
+11. Quản trị viên có thể chọn chức năng tạm khóa hoặc xóa hồ sơ người dùng khi cần thiết. Khi đó, hệ thống sẽ vô hiệu hóa quyền ra vào của ID tương ứng ngay lập tức.
+	Luồng thay thế
+	- Nếu camera không hoạt động, hệ thống hiển thị lỗi và không cho phép hoàn tất bước đăng ký khuôn mặt.
+- Nếu ảnh không có khuôn mặt hoặc có nhiều hơn một khuôn mặt, hệ thống yêu cầu chụp lại ảnh.
+- Nếu UID thẻ đã được gán cho người dùng khác, hệ thống từ chối liên kết và yêu cầu dùng thẻ khác.
+- Nếu lưu trữ dữ liệu thất bại, hệ thống hiển thị lỗi và không hoàn tất đăng ký.
+	Hậu điều kiện
+	- Hồ sơ người dùng được lưu trong hệ thống.
+- Dữ liệu khuôn mặt và/hoặc UID thẻ được liên kết với hồ sơ người dùng.
+- Người dùng có thể được xác thực bằng Face ID hoặc NFC/RFID trong các lần đi qua sau.
+	2.4.2 Use Case: Xác thực ra vào bằng Face ID
+Mô tả
+	Tên use case: Xác thực ra vào bằng Face ID
+ID: UC-FINAL-02
+Làm rõ: Xác thực khuôn mặt cho điều khiển cổng
+	Tiền điều kiện
+	- Cổng đang hoạt động bình thường.
+- Chức năng Face ID đang được bật.
+- AI Recognition Module, backend Face ID, MQTT/WebSocket và servo đang hoạt động bình thường.
+- Người dùng đã được đăng ký hồ sơ khuôn mặt trong hệ thống.
+	Tác nhân
+	Hành khách, AI Recognition Module, Streaming Module, dịch vụ Face ID / Backend, Cơ sở dữ liệu, ESP32 / Bộ điều khiển cổng, Servo, Web Dashboard.
+	Mục đích
+	Use case này mô tả quy trình người dùng được xác thực bằng khuôn mặt. Nếu xác thực thành công, hệ thống mở cổng và ghi lại nhật ký đi qua.
+	Quy trình cơ bản
+	1. Hành khách đi vào vùng nhận diện của camera tại cổng.
+2. AI Recognition Module ghi nhận ảnh khuôn mặt và gửi dữ liệu đến dịch vụ Face ID.
+3. Dịch vụ Face ID phát hiện khuôn mặt và đối chiếu với dữ liệu đã đăng ký trong cơ sở dữ liệu.
+4. Nếu khuôn mặt hợp lệ, hệ thống tạo kết quả xác thực thành công.
+5. Web Dashboard hiển thị trạng thái Face ID hợp lệ và thông tin người dùng.
+6. Hệ thống gửi lệnh mở cổng đến ESP32.
+7. ESP32 điều khiển servo mở thanh chắn, bật LED xanh và kích hoạt tín hiệu buzzer báo truy cập hợp lệ.
+8. Sau khi người dùng đi qua an toàn, servo đóng cổng lại.
+9. Hệ thống ghi log thời điểm, mã người dùng, phương thức Face ID và trạng thái thành công.
+10. Hệ thống quay lại trạng thái chờ lượt xác thực tiếp theo.
+	Luồng thay thế
+	- Nếu không phát hiện khuôn mặt, hệ thống hiển thị trạng thái không phát hiện khuôn mặt và không mở cổng.
+- Nếu khuôn mặt không khớp với dữ liệu đã đăng ký, hệ thống từ chối mở cổng, ghi log thất bại; nếu số lần thất bại vượt ngưỡng cảnh báo hoặc có dấu hiệu vi phạm, hệ thống chuyển sang UC-FINAL-04.
+- Nếu camera hoặc backend gặp lỗi, hệ thống hiển thị lỗi và cho phép sử dụng phương thức xác thực thẻ dự phòng.
+- Nếu servo không phản hồi, hệ thống báo lỗi thiết bị trên Web Dashboard.
+	Hậu điều kiện
+	- Cổng được mở cho người dùng hợp lệ.
+- Sự kiện đi qua được lưu trong lịch sử vận hành.
+- Hệ thống quay lại trạng thái chờ.
+	2.5 Mục tiêu 2: 
+Kết nối ESP32-S3-CAM với hệ thống IoT để tự động điều khiển Servo đóng/mở cửa sau khi xác thực thành công, ghi nhận đầy đủ lịch sử ra vào lên dashboard và gửi cảnh báo khi phát hiện người lạ hoặc truy cập bất thường với tỷ lệ truyền nhận thành công 99% và độ trễ dưới 2 giây. 
+2.5.1 Use Case: Phát hiện vi phạm và khóa cổng
+Mô tả
+	Tên use case: Phát hiện vi phạm và khóa cổng
+ID: UC-FINAL-03
+Làm rõ: Phát hiện vi phạm thông minh dựa trên AI
+	Tiền điều kiện
+	- Cổng đang ở trạng thái Bình thường hoặc Luôn đóng.
+- AI Recognition Module và mô-đun nhận diện hành vi đang hoạt động bình thường.
+- Kết nối cảnh báo tới Web Dashboard vẫn đang hoạt động.
+	Tác nhân
+	Người vi phạm, AI Recognition Module, Streaming Module, ESP32 / Bộ điều khiển cổng, Servo, Web Dashboard.
+	Mục đích
+	Use case này mô tả cách hệ thống phát hiện hành vi đi qua cổng trái phép, chẳng hạn nhảy qua thanh chắn hoặc bám đuôi người hợp lệ, rồi ngay lập tức chuyển sang trạng thái bảo vệ.
+	Quy trình cơ bản
+	1. AI Recognition Module liên tục giám sát khu vực cổng theo thời gian thực.
+2. Hệ thống phát hiện một người cố gắng nhảy qua cổng, lách qua khe hẹp hoặc bám đuôi sau một hành khách hợp lệ.
+3. Hệ thống ngay lập tức kích hoạt trạng thái báo động khẩn cấp.
+4. ESP32 giữ hoặc khóa servo để ngăn thanh chắn mở; nếu cổng đang mở, hệ thống ưu tiên đóng lại khi an toàn.
+5. LED đỏ nhấp nháy liên tục và buzzer phát cảnh báo tại chỗ.
+6. AI Recognition Module ghi nhận hình ảnh vi phạm; đồng thời Streaming Module cung cấp bằng chứng video trực tiếp lên Dashboard.
+7. Hệ thống tạo log vi phạm gồm thời điểm, mã cổng, hình ảnh và loại vi phạm.
+8. Dữ liệu vi phạm được gửi đến Web Dashboard để xử lý tiếp theo theo UC-FINAL-04.
+	Luồng thay thế
+	- Nếu không đủ dữ liệu để kết luận có vi phạm, hệ thống không tạo cảnh báo mức cao và tiếp tục giám sát.
+- Nếu AI Camera mất kết nối, hệ thống ghi nhận lỗi thiết bị và yêu cầu kiểm tra thủ công.
+- Nếu cổng ở chế độ Luôn mở hoặc Bảo trì, phát hiện vi phạm có thể bị vô hiệu hóa tùy theo cấu hình vận hành.
+	Hậu điều kiện
+	- Cổng được giữ ở trạng thái an toàn.
+- Sự kiện vi phạm được ghi log và gửi đến trung tâm giám sát.
+- Nhân viên an ninh có thể tra cứu dữ liệu sự kiện sau đó.
+	2.5.2 Use Case: Gửi cảnh báo thời gian thực và xử lý sự cố
+Mô tả
+	Tên use case: Gửi cảnh báo thời gian thực và xử lý sự cố
+ID: UC-FINAL-04
+Làm rõ: Cảnh báo từ xa và phản hồi sự cố
+	Tiền điều kiện
+	- Hệ thống đã phát hiện xác thực không hợp lệ hoặc hành vi vi phạm.
+- Web Dashboard, backend và kênh truyền MQTT/WebSocket đang hoạt động.
+	Tác nhân
+	Web Dashboard, Nhân viên an ninh, Quản trị viên / Người vận hành hệ thống, ESP32 / Bộ điều khiển cổng.
+	Mục đích
+	Use case này bảo đảm các sự kiện bất thường được hiển thị ngay cho người vận hành để họ phản hồi nhanh và duy trì dấu vết kiểm toán.
+	Quy trình cơ bản
+	1. Backend nhận gói cảnh báo từ cổng gồm loại sự kiện, thời điểm, mã cổng và dữ liệu hình ảnh liên quan.
+2. Hệ thống lưu thông tin cảnh báo vào cơ sở dữ liệu.
+3. Web Dashboard ngay lập tức hiển thị popup cảnh báo kèm trạng thái vi phạm.
+4. Giao diện hiển thị trực tiếp vị trí cổng, hình ảnh từ Recognition Module và luồng video trực tiếp từ Streaming Module.
+5. Nếu được cấu hình, hệ thống gửi thông báo đẩy  đến thiết bị của nhân viên an ninh.
+6. Nhân viên an ninh hoặc quản trị viên kiểm tra tình hình và xác nhận xử lý trên Web Dashboard.
+7. Hệ thống đóng cảnh báo đang hiển thị, cập nhật trạng thái sự kiện thành Đã xử lý và lưu thời điểm xử lý.
+	Luồng thay thế
+	- Nếu Web Dashboard tạm thời mất kết nối, backend vẫn lưu log và đồng bộ lại cảnh báo khi kết nối được khôi phục.
+- Nếu cảnh báo lặp lại nhiều lần liên tiếp, hệ thống tăng mức ưu tiên để nhân viên chú ý.
+- Nếu xác thực Face ID thất bại nhưng ngay sau đó sử dụng thẻ hợp lệ, hệ thống vẫn giữ log cảnh báo trước đó để kiểm tra.
+	Hậu điều kiện
+	- Cảnh báo được hiển thị và lưu trữ đầy đủ.
+- Nhân viên có thể xác nhận sự cố đã được xử lý.
+- Toàn bộ quá trình xử lý được ghi log để xem xét sau.
+	2.6 Mục tiêu 3:
+Sử dụng RFID để mở cổng dưới 2 giây với độ chính xác 98% và hỗ trợ mở cổng tự động.
+2.6.1 Use Case: Xác thực ra vào bằng NFC/RFID
+Mô tả
+	Tên use case: Xác thực ra vào bằng NFC/RFID
+ID: UC-FINAL-05
+Làm rõ: Sử dụng RFID để mở cổng tự động dưới 2 giây với độ chính xác mục tiêu 98%
+	Tiền điều kiện
+	- Cổng đang hoạt động bình thường.
+- Đầu đọc RFID, ESP32, servo và kết nối backend đang hoạt động bình thường.
+- UID thẻ của người dùng đã được đăng ký và còn hiệu lực trong cơ sở dữ liệu.
+- Chế độ mở cổng tự động sau xác thực thẻ đã được bật.
+	Tác nhân
+	Hành khách / Người dùng cổng, đầu đọc RFID, ESP32 / Bộ điều khiển cổng, Cơ sở dữ liệu, Web Dashboard, Servo.
+	Mục đích
+	Use case này mô tả quy trình người dùng sử dụng thẻ RFID để xác thực và mở cổng tự động. Hệ thống cần phản hồi trong thời gian dưới 2 giây, đạt độ chính xác xác thực 98% trong điều kiện vận hành bình thường và ghi nhận đầy đủ lịch sử truy cập.
+	Quy trình cơ bản
+	1. Hành khách đưa thẻ RFID lại gần đầu đọc tại cổng.
+2. Đầu đọc đọc UID thẻ và gửi dữ liệu đến ESP32.
+3. ESP32 gửi yêu cầu xác thực UID đến backend hoặc kiểm tra với dữ liệu đồng bộ cục bộ tùy theo cấu hình hệ thống.
+4. Hệ thống đối chiếu UID với cơ sở dữ liệu người dùng đã được cấp quyền.
+5. Nếu UID hợp lệ, hệ thống trả về kết quả xác thực thành công trong thời gian dưới 2 giây.
+6. ESP32 tự động điều khiển servo mở thanh chắn, bật LED xanh và kích hoạt tín hiệu buzzer báo truy cập hợp lệ.
+7. Sau khi người dùng đi qua an toàn, servo tự động đóng cổng lại.
+8. Hệ thống ghi log thời điểm, UID thẻ hoặc mã người dùng, phương thức RFID và trạng thái thành công.
+9. Hệ thống quay lại trạng thái chờ lượt xác thực tiếp theo.
+	Luồng thay thế
+	- Nếu thẻ không hợp lệ, hết hạn hoặc chưa đăng ký, hệ thống không mở cổng, bật LED đỏ và kích hoạt tín hiệu buzzer lỗi.
+- Nếu đầu đọc không đọc được thẻ, hệ thống yêu cầu người dùng quét lại.
+- Nếu thời gian phản hồi vượt quá 2 giây, hệ thống ghi nhận sự kiện lỗi hiệu năng và hiển thị cảnh báo trên Web Dashboard.
+- Nếu mất kết nối backend, hệ thống không tự động mở cổng trừ khi có cơ chế dự phòng đã cấu hình trước.
+	Hậu điều kiện
+	- Cổng được mở tự động cho người dùng có thẻ hợp lệ.
+- Sự kiện quẹt/chạm thẻ được lưu trong lịch sử vận hành.
+- Hệ thống ghi nhận kết quả xác thực, thời gian phản hồi và quay lại trạng thái chờ.
+	2.7 Yêu cầu chức năng
+
+
+Mã yêu cầu
+	Mã UC
+	Mô tả
+	Mức ưu tiên
+	FINAL-FREQ-01
+	UC-FINAL-01
+	Hệ thống phải cho phép quản trị viên tạo và cập nhật hồ sơ người dùng.
+	Bắt buộc
+	FINAL-FREQ-02
+	UC-FINAL-01
+	Hệ thống phải lưu dữ liệu khuôn mặt của người dùng hợp lệ.
+	Bắt buộc
+	FINAL-FREQ-03
+	UC-FINAL-01
+	Hệ thống phải liên kết UID thẻ NFC/RFID với hồ sơ người dùng.
+	Bắt buộc
+	FINAL-FREQ-04
+	UC-FINAL-02
+	Hệ thống phải nhận diện khuôn mặt do camera tại cổng ghi nhận.
+	Bắt buộc
+	FINAL-FREQ-05
+	UC-FINAL-02
+	Hệ thống phải đối chiếu khuôn mặt với dữ liệu đã đăng ký.
+	Bắt buộc
+	FINAL-FREQ-06
+	UC-FINAL-02
+	Hệ thống phải mở cổng khi xác thực Face ID thành công.
+	Bắt buộc
+	FINAL-FREQ-07
+	UC-FINAL-05
+	Hệ thống phải xác thực các UID thẻ NFC/RFID được cấp quyền.
+	Bắt buộc
+	FINAL-FREQ-08
+	UC-FINAL-05
+	Hệ thống phải mở cổng khi xác thực thẻ thành công.
+	Bắt buộc
+	FINAL-FREQ-09
+	UC-FINAL-03
+	Hệ thống phải phát hiện các vi phạm như nhảy cổng hoặc bám đuôi.
+	Bắt buộc
+	FINAL-FREQ-10
+	UC-FINAL-03/04
+	Hệ thống phải khóa cổng và phát cảnh báo khi phát hiện vi phạm.
+	Bắt buộc
+	FINAL-FREQ-11
+	UC-FINAL-04
+	Web Dashboard phải hiển thị cảnh báo thời gian thực và cho phép người vận hành xác nhận xử lý.
+	Bắt buộc
+	FINAL-FREQ-12
+	UC-FINAL-05
+	Hệ thống phải hoàn tất xác thực RFID và mở cổng tự động trong thời gian dưới 2 giây.
+	Bắt buộc
+	FINAL-FREQ-13
+	UC-FINAL-05
+	Hệ thống phải đạt độ chính xác xác thực RFID tối thiểu 98% trong điều kiện vận hành bình thường.
+	Bắt buộc
+	FINAL-FREQ-14
+	UC-FINAL-01/02/03/04/05
+	Hệ thống phải ghi log mọi lần thử xác thực và mọi sự kiện vi phạm.
+	Bắt buộc
+	FINAL-FREQ-15
+	UC-FINAL-05
+	Hệ thống phải tự động điều khiển servo mở cổng sau khi thẻ RFID hợp lệ được xác thực.
+	Bắt buộc
+	FINAL-FREQ-16
+	UC-FINAL-01/02/05
+	Hệ thống chỉ cho phép người dùng được cấp quyền quản lý dữ liệu danh tính
+	Bắt buộc
+	FINAL-FREQ-17
+	UC-FINAL-01
+	Hệ thống phải cho phép quản trị viên tạm khóa hoặc xóa hồ sơ người dùng khi nhân viên nghỉ phép hoặc nghỉ việc.
+	Bắt buộc
+	3. Yêu cầu phi chức năng
+3.1 Yêu cầu chất lượng khi vận hành
+Các yêu cầu chất lượng khi vận hành tập trung vào an toàn cổng, khả dụng của luồng xác thực, độ phản hồi của điều khiển thời gian thực và việc ghi nhận sự kiện khi hệ thống đang hoạt động.
+3.2 Yêu cầu chất lượng ngoài thời gian vận hành
+Các yêu cầu chất lượng ngoài thời gian vận hành tập trung vào khả năng bảo trì, khả năng mở rộng, khả năng kiểm toán, quyền riêng tư dữ liệu danh tính và độ rõ ràng của giao diện quản trị.
+3.3 Danh sách yêu cầu phi chức năng
+
+
+ID
+	Mối quan tâm
+	Mức ưu tiên
+	Mô tả
+	NFREQ-01
+	Bảo mật
+	Bắt buộc
+	Chỉ quản trị viên hoặc nhân sự được cấp quyền mới có thể đăng ký, cập nhật hoặc xóa dữ liệu người dùng, dữ liệu khuôn mặt và UID thẻ.
+	NFREQ-02
+	Quyền riêng tư
+	Bắt buộc
+	Dữ liệu khuôn mặt và dữ liệu thẻ chỉ được sử dụng cho xác thực ra vào và phải được bảo vệ trong hệ thống.
+	NFREQ-03
+	Độ tin cậy
+	Bắt buộc
+	Nếu camera, đầu đọc thẻ, backend hoặc kết nối mạng gặp lỗi, hệ thống không được tự động mở cổng trừ khi thông qua cơ chế dự phòng đã được phê duyệt.
+	NFREQ-04
+	An toàn
+	Bắt buộc
+	Khi phát hiện vi phạm hoặc sự cố nghiêm trọng, cổng phải chuyển sang trạng thái an toàn và ngăn việc mở trái phép.
+	NFREQ-05
+	Tính dễ sử dụng
+	Nên có
+	Dashboard nên hiển thị rõ các trạng thái hợp lệ, không hợp lệ, vi phạm, lỗi thiết bị và đã xử lý.
+	NFREQ-06
+	Hiệu năng
+	Bắt buộc
+	Hệ thống phải phản hồi nhanh theo mục tiêu của từng luồng: Face ID dưới 1.5 giây, cảnh báo/điều khiển IoT dưới 2 giây và RFID mở cổng tự động dưới 2 giây trong điều kiện vận hành bình thường.
+	NFREQ-07
+	Khả năng kiểm toán
+	Bắt buộc
+	Mọi lần thử xác thực, thay đổi cấu hình và thao tác xử lý cảnh báo phải được ghi log để phục vụ phân tích và kiểm toán.
+	NFREQ-08
+	Khả năng bảo trì
+	Nên có
+	Hệ thống nên hỗ trợ kiểm tra, cấu hình lại hoặc thay thế các thành phần chính như camera, đầu đọc RFID, ESP32, servo, LED và buzzer mà không làm thay đổi logic use case cốt lõi.
+
+
+	4. Các yêu cầu khác
+4.1 Metadata mô tả tối thiểu cần có từ bên cung cấp dữ liệu
+Đối với mỗi sự kiện xác thực hoặc vi phạm, hệ thống tối thiểu nên lưu các trường sau: mã sự kiện, thời điểm, mã cổng, phương thức xác thực, danh tính người dùng hoặc UID thẻ khi có, kết quả xác thực, trạng thái thiết bị liên quan, trạng thái cảnh báo và tham chiếu đến ảnh hoặc bản ghi bằng chứng nếu được lưu.
+4.2 Định dạng dữ liệu được hệ thống hỗ trợ
+Hệ thống ưu tiên JSON cho trao đổi payload giữa thiết bị, backend và dashboard; JPEG hoặc PNG cho ảnh khuôn mặt hoặc ảnh bằng chứng; CSV hoặc XLSX cho báo cáo xuất ra; và một chuẩn thời gian nhất quán để đồng bộ log giữa các thành phần.
+
+
+5. Danh sách thiết bị và chi phí ước tính
+
+
+STT
+	Thiết bị
+	Số lượng
+	Đơn giá (VND)
+	Link
+	1
+	ESP32 CP2102 38P Type-C 
+	1
+	123.000
+	Link
+	2
+	Cảm biến siêu âm (HC-SR04) 
+	1
+	25.000
+	Link
+	3
+	Module đọc thẻ RFID RC522
+	1
+	21.000
+	Link
+	4
+	Micro Servo SG90 
+	1
+	30.000
+	Link
+	5
+	ESP32-CAM AI Thinker 
+	2
+	200.000
+	Link
+	6
+	LED 
+	2
+	800
+	Link
+	7
+	Buzzer 
+	1
+	3.000
+	Link
+	8
+	Điện trở 220 Ω
+	5
+	200
+	Link
+	Tổng cộng
+	604.600 (VND)
+	6. Kết luận và kế hoạch tiếp theo
+Tài liệu này mô tả một đặc tả có cấu trúc EIP đầy đủ cho hệ thống kiểm soát cổng AIoT, bao gồm bối cảnh, phạm vi, nhóm người dùng, use case, yêu cầu chức năng, yêu cầu phi chức năng và các yêu cầu dữ liệu liên quan. Ở giai đoạn hiện tại, hệ thống phù hợp cho một nguyên mẫu một làn với Face ID, NFC/RFID, cảnh báo vi phạm và dashboard giám sát.
+
+
+Trong giai đoạn tiếp theo, hệ thống có thể được mở rộng bằng cách cải thiện độ chính xác nhận diện trong điều kiện ánh sáng khó, hỗ trợ nhiều làn cổng hoạt động đồng thời, tinh chỉnh phân quyền quản trị, tăng độ tin cậy của cơ chế cảnh báo và tích hợp sâu hơn với các nền tảng giao thông thông minh hoặc đô thị thông minh quy mô lớn.

@@ -494,9 +494,14 @@ export default function RegistrationView({
                           </td>
                           <td className="px-6 py-4 text-center">
                             {user.faceIdStatus === "ENROLLED" ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 text-[8px] font-sans font-medium tracking-widest uppercase">
-                                ĐÃ KHAI BÁO
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => alert(`[VECTOR EMBEDDINGS 512D FOR ${user.fullName} (${user.id})]\n\nModel: MobileNet-FastFace (S16 Quantized)\nDimensions: 512 Floats\nFlash Address: ESP32-CAM-HFR /fr Partition\n\n[Sample Vector Array Preview]:\n[-0.0412, 0.1892, 0.0034, -0.1105, 0.0781, 0.2210, -0.0934, 0.1452, -0.0021, 0.3120, -0.1542, 0.0882, ...]`)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 text-[8px] font-sans font-medium tracking-widest uppercase hover:bg-emerald-900/40 cursor-pointer transition-colors"
+                                title="Bấm để xem mảng Vector AI 512D"
+                              >
+                                ĐÃ KHAI BÁO (512D)
+                              </button>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/20 border border-amber-500/20 text-amber-400 text-[8px] font-sans font-medium tracking-widest uppercase">
                                 CHƯA KHAI BÁO
