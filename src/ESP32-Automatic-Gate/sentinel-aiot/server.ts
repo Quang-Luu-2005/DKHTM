@@ -109,15 +109,22 @@ function loadRegisteredUsers(): RegisteredUser[] {
     const stored = JSON.parse(readFileSync(usersDatabasePath, "utf8")) as unknown;
     return Array.isArray(stored) ? stored.filter(isRegisteredUser) : [];
   } catch {
-    return [];
+    return [
+      { id: "nv001", fullName: "Nguyễn Văn A", email: "nv001@sentinel.aiot", role: "General Staff", rfidUid: "NOT LINKED", faceIdStatus: "ENROLLED" },
+      { id: "101", fullName: "Hoàng Nhân", email: "hnhan23@clc.fitus.edu.vn", role: "Security Officer", rfidUid: "NOT LINKED", faceIdStatus: "ENROLLED" }
+    ];
   }
 }
 
 function persistRegisteredUsers(users: RegisteredUser[]) {
-  mkdirSync(databaseDirectory, { recursive: true });
-  const temporaryPath = `${usersDatabasePath}.tmp`;
-  writeFileSync(temporaryPath, `${JSON.stringify(users, null, 2)}\n`, "utf8");
-  renameSync(temporaryPath, usersDatabasePath);
+  try {
+    mkdirSync(databaseDirectory, { recursive: true });
+    const temporaryPath = `${usersDatabasePath}.tmp`;
+    writeFileSync(temporaryPath, `${JSON.stringify(users, null, 2)}\n`, "utf8");
+    renameSync(temporaryPath, usersDatabasePath);
+  } catch (error) {
+    console.warn(`[STORAGE] Local file persist skipped on read-only serverless: ${error}`);
+  }
 }
 
 function employeeToRow(user: RegisteredUser): EmployeeRow {
