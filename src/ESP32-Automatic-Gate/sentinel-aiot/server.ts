@@ -937,8 +937,10 @@ app.get("*", (request, response, next) => {
 const keepAliveTimer = setInterval(() => {
   for (const client of eventClients) client.write(": keep-alive\n\n");
 }, 20000);
-keepAliveTimer.unref();
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(serverPort, () => {
+    console.log(`[Sentinel] API listening on http://localhost:${serverPort}`);
+  });
+}
 
-app.listen(serverPort, () => {
-  console.log(`[Sentinel] API listening on http://localhost:${serverPort}`);
-});
+export default app;
