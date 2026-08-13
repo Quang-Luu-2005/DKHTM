@@ -8,6 +8,7 @@
 \usepackage[vietnamese]{babel}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
 
@@ -59,7 +60,7 @@
       \usebeamerfont{footline}\insertshortdate
     \end{beamercolorbox}%
     \begin{beamercolorbox}[wd=.10\paperwidth,ht=2.2ex,dp=.8ex,center]{title in head/foot}%
-      \usebeamerfont{footline}\insertframenumber/\inserttotalframenumber
+      \usebeamerfont{footline}\insertframenumber
     \end{beamercolorbox}%
   }%
 }
@@ -200,56 +201,86 @@
 
 % Trang 8
 \begin{frame}{Mục tiêu 1: Nhận diện được, nhưng phản hồi còn chậm}
-  \small
-  \begin{block}{Mục tiêu ban đầu}
-    Nhận diện tối đa 20 người trong phạm vi 0,5 m; độ chính xác trên 95\%, tỷ lệ nhận nhầm dưới 2\% và phản hồi dưới 1,5 giây.
-  \end{block}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.64\textwidth}
+      \small
+      \begin{block}{Mục tiêu ban đầu}
+        Tối đa 20 người; độ chính xác trên 95\%; phản hồi dưới 1,5 giây.
+      \end{block}
 
-  \begin{itemize}
-    \item \textbf{Kết quả chức năng:} đăng ký ba góc mặt, lưu dữ liệu trên camera, tự nhận diện và mở cổng khi khớp.
-    \item \textbf{Phù hợp quy mô nguyên mẫu:} hệ thống quản lý hồ sơ người dùng và đồng bộ tối đa 20 thẻ xuống cổng.
-    \item \textbf{Thời gian thực tế:} từ lúc phát hiện người đến khi nhận diện và phản hồi mất khoảng 5--7 giây.
-  \end{itemize}
+      \begin{itemize}
+        \item Đăng ký ba góc mặt và lưu dữ liệu trên camera.
+        \item Tự nhận diện, kiểm tra quyền và mở cổng khi khớp.
+        \item Thời gian phản hồi thực tế: khoảng 5--7 giây.
+      \end{itemize}
 
-  \begin{alertblock}{Đánh giá: Đạt chức năng, chưa đạt mục tiêu tốc độ}
-    Hệ thống nhận diện được người dùng, nhưng phản hồi chậm hơn mức 1,5 giây đặt ra ban đầu.
-  \end{alertblock}
+      \begin{alertblock}{Đánh giá}
+        \textbf{Đạt chức năng, chưa đạt mục tiêu tốc độ.}
+      \end{alertblock}
+
+    \column{0.32\textwidth}
+      \centering
+      \includegraphics[width=\linewidth]{assets/face-recognition.png}
+      \vspace{0.25em}
+
+      {\footnotesize Nhận diện được xử lý ngay tại camera.}
+  \end{columns}
 \end{frame}
 
 % Trang 9
 \begin{frame}{Mục tiêu 2: Phát hiện trèo bằng cảm biến siêu âm}
-  \small
-  \begin{block}{Mục tiêu ban đầu}
-    Phát hiện hành vi trèo hoặc vượt cổng khi chưa được cấp quyền, giữ cổng ở trạng thái an toàn và gửi cảnh báo cho người quản lý.
-  \end{block}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.64\textwidth}
+      \small
+      \begin{block}{Mục tiêu ban đầu}
+        Phát hiện vượt cổng trái phép, giữ khóa và gửi cảnh báo.
+      \end{block}
 
-  \begin{itemize}
-    \item \textbf{Điều kiện phát hiện:} cảm biến siêu âm ghi nhận vật thể trong vùng kiểm soát khi cổng vẫn đóng và chưa có lệnh mở hợp lệ.
-    \item \textbf{Cách xử lý:} hệ thống giữ khóa, bật trạng thái cảnh báo và gửi sự kiện lên trang quản lý.
-    \item \textbf{Tránh báo nhầm lượt hợp lệ:} khi người dùng đã xác thực và cổng được mở, tín hiệu đi qua không bị xem là hành vi trèo.
-  \end{itemize}
+      \begin{itemize}
+        \item Cảm biến theo dõi vùng kiểm soát khi cổng đóng.
+        \item Có vật thể bất thường: giữ khóa và gửi cảnh báo.
+        \item Cổng đã mở hợp lệ: không kích hoạt cảnh báo.
+      \end{itemize}
 
-  \begin{alertblock}{Đánh giá: Đạt mục tiêu phát hiện và cảnh báo}
-    Cảm biến siêu âm kết hợp trạng thái đóng hoặc mở của cổng để phát hiện hành vi trèo theo thiết kế của nhóm.
-  \end{alertblock}
+      \begin{alertblock}{Đánh giá}
+        \textbf{Đạt mục tiêu phát hiện và cảnh báo.}
+      \end{alertblock}
+
+    \column{0.32\textwidth}
+      \centering
+      \includegraphics[width=\linewidth]{assets/ultrasonic-detection.png}
+      \vspace{0.25em}
+
+      {\footnotesize Cảm biến kết hợp với trạng thái đóng/mở của cổng.}
+  \end{columns}
 \end{frame}
 
 % Trang 10
 \begin{frame}{Mục tiêu 3: Luồng RFID/NFC hoàn chỉnh}
-  \small
-  \begin{block}{Mục tiêu ban đầu}
-    Xác thực RFID/NFC và mở cổng dưới 2 giây, độ chính xác tối thiểu 98\% trong điều kiện bình thường.
-  \end{block}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.64\textwidth}
+      \small
+      \begin{block}{Mục tiêu ban đầu}
+        Xác thực và mở cổng dưới 2 giây; độ chính xác tối thiểu 98\%.
+      \end{block}
 
-  \begin{itemize}
-    \item \textbf{Kết quả chức năng:} quét và gán thẻ, nhận thẻ hợp lệ hoặc không hợp lệ, mở cổng, đổi đèn, phát tín hiệu và ghi lịch sử.
-    \item \textbf{Phương án dự phòng:} danh sách thẻ được lưu ngay trên mạch nên thẻ hợp lệ được kiểm tra mà không phải chờ máy chủ trả lời.
-    \item \textbf{Trải nghiệm sử dụng:} thẻ hợp lệ được xử lý ngay tại cổng; thẻ không hợp lệ bị từ chối và ghi vào lịch sử.
-  \end{itemize}
+      \begin{itemize}
+        \item Quét, gán và phân biệt thẻ hợp lệ hoặc không hợp lệ.
+        \item Danh sách thẻ được lưu ngay trên mạch để xử lý nhanh.
+        \item Mở cổng, đổi đèn và ghi lịch sử tại chỗ.
+      \end{itemize}
 
-  \begin{alertblock}{Đánh giá: Đạt mục tiêu chức năng}
-    Luồng từ quét thẻ đến mở cổng tự động hoàn chỉnh trong sản phẩm.
-  \end{alertblock}
+      \begin{alertblock}{Đánh giá}
+        \textbf{Đạt mục tiêu chức năng.}
+      \end{alertblock}
+
+    \column{0.32\textwidth}
+      \centering
+      \includegraphics[width=\linewidth]{assets/rfid-access.png}
+      \vspace{0.25em}
+
+      {\footnotesize Thẻ được kiểm tra trực tiếp tại cổng.}
+  \end{columns}
 \end{frame}
 
 % Trang 11
