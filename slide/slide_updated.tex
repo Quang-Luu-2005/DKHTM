@@ -1,290 +1,349 @@
-\documentclass[aspectratio=169]{beamer}
+\documentclass[aspectratio=169,11pt]{beamer}
 
 \usetheme{Madrid}
 \useinnertheme{circles}
-\usecolortheme{default}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T5]{fontenc}
 \usepackage[vietnamese]{babel}
-\usepackage{amsmath}
-\usepackage{amssymb}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning}
+\usetikzlibrary{arrows.meta,positioning}
+
+% Bảng màu bám theo bản trình chiếu gốc.
+\definecolor{Primary}{HTML}{3733B5}
+\definecolor{PrimaryDark}{HTML}{282477}
+\definecolor{Success}{HTML}{168A45}
+\definecolor{Warning}{HTML}{D66A00}
+\definecolor{Danger}{HTML}{C90000}
+\definecolor{LightPurple}{HTML}{F1F0FA}
+\definecolor{LightRed}{HTML}{FDEDED}
+\definecolor{BodyText}{HTML}{161616}
+
+\setbeamercolor{normal text}{fg=BodyText,bg=white}
+\setbeamercolor{structure}{fg=Primary}
+\setbeamercolor{title}{fg=BodyText,bg=white}
+\setbeamercolor{subtitle}{fg=BodyText,bg=white}
+\setbeamercolor{frametitle}{fg=white,bg=Primary}
+\setbeamercolor{palette primary}{fg=white,bg=Primary}
+\setbeamercolor{palette secondary}{fg=white,bg=PrimaryDark}
+\setbeamercolor{palette tertiary}{fg=white,bg=Primary}
+\setbeamercolor{author in head/foot}{fg=white,bg=PrimaryDark}
+\setbeamercolor{title in head/foot}{fg=white,bg=Primary}
+\setbeamercolor{date in head/foot}{fg=white,bg=PrimaryDark}
+\setbeamercolor{block title}{fg=white,bg=PrimaryDark}
+\setbeamercolor{block body}{fg=BodyText,bg=LightPurple}
+\setbeamercolor{block title alerted}{fg=white,bg=Danger}
+\setbeamercolor{block body alerted}{fg=BodyText,bg=LightRed}
+
+\setbeamerfont{title}{size=\Large,series=\bfseries}
+\setbeamerfont{subtitle}{size=\normalsize}
+\setbeamerfont{frametitle}{size=\large,series=\mdseries}
+\setbeamerfont{normal text}{size=\normalsize}
+\setbeamerfont{footline}{size=\tiny}
+
+\setbeamertemplate{blocks}[rounded][shadow=true]
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.30\paperwidth,ht=2.2ex,dp=.8ex,center]{author in head/foot}%
+      \usebeamerfont{footline}\insertshortauthor\ (HCMUS)
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.38\paperwidth,ht=2.2ex,dp=.8ex,center]{title in head/foot}%
+      \usebeamerfont{footline}\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.22\paperwidth,ht=2.2ex,dp=.8ex,center]{date in head/foot}%
+      \usebeamerfont{footline}\insertshortdate
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.10\paperwidth,ht=2.2ex,dp=.8ex,center]{title in head/foot}%
+      \usebeamerfont{footline}\insertframenumber/\inserttotalframenumber
+    \end{beamercolorbox}%
+  }%
+}
 
 \hypersetup{
-  pdftitle={He thong kiem soat ra vao thong minh - AIoT},
-  pdfauthor={Nhom: Quang, Nhan, Van, Phu},
-  pdfsubject={Smart Access Control with Camera, RFID, MQTT and Web Sentinel},
+  unicode=true,
+  pdftitle={Hệ thống kiểm soát ra vào thông minh - Báo cáo cuối kỳ và đánh giá mức độ đáp ứng mục tiêu},
+  pdfauthor={Lưu Huy Minh Quang, Hoàng Nhân, Trần Cao Vân, Nguyễn Trần Thiên Phú},
+  pdfsubject={Đánh giá sản phẩm AIoT với camera, RFID và Web Sentinel}
 }
 
 \title[Kiểm soát ra vào AIoT]{Hệ thống kiểm soát ra vào thông minh}
-\subtitle{Báo cáo tiến độ \& Danh mục chức năng (Sprint 6)}
-\author[Nhóm thực hiện]{Lưu Huy Minh Quang -- 23127016 \and Hoàng Nhân -- 23127094 \and Trần Cao Vân -- 23127141 \and Nguyễn Trần Thiên Phú -- 23127246}
-\institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM\\[0.3em]\textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}}
-\date{Tháng 6, 2026}
-
-\AtBeginSection[]{
-  \begin{frame}[plain]
-    \vfill
-    \centering
-      {\Large Phần \insertsectionnumber}\par\vspace{0.6em}
-      {\LARGE\bfseries \insertsectionhead}\par
-    \vfill
-  \end{frame}
-}
+\subtitle{Báo cáo cuối kỳ và đánh giá mức độ đáp ứng mục tiêu}
+\author[Nhóm thực hiện]{Lưu Huy Minh Quang \and Hoàng Nhân \and Trần Cao Vân \and Nguyễn Trần Thiên Phú}
+\institute[HCMUS]{Khoa Công nghệ Thông tin\\Đại học Khoa học Tự nhiên, ĐHQG TP.HCM}
+\date[Tháng 8 năm 2026]{Tháng 8 năm 2026}
 
 \begin{document}
 
-%------- TITLE -------
-\begin{frame}
-  \begin{center}
-    \vspace{0.4em}
-    {\usebeamerfont{title}\Large\bfseries\inserttitle\par}
-    \vspace{0.3em}
-    {\usebeamerfont{subtitle}\insertsubtitle\par}
+% Trang 1
+\begin{frame}[c]
+  \centering
+  {\usebeamerfont{title}\inserttitle\par}
+  \vspace{0.25em}
+  {\usebeamerfont{subtitle}\insertsubtitle\par}
 
-    \vspace{1.2em}
-    {\large\bfseries Nhóm thực hiện}\\[0.6em]
-    \begin{tabular}{ll}
-      Lưu Huy Minh Quang & 23127016 \\
-      Hoàng Nhân & 23127094 \\
-      Trần Cao Vân & 23127141 \\
-      Nguyễn Trần Thiên Phú & 23127246 \\
-    \end{tabular}\\[0.8em]
-    \textit{Khoa CNTT -- ĐH Khoa học Tự nhiên, ĐHQG TP.HCM}\\
-    \textit{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}
+  \vspace{1em}
+  {\large\bfseries Nhóm thực hiện}\par
+  \vspace{0.4em}
+  \begin{tabular}{ll}
+    Lưu Huy Minh Quang & 23127016 \\
+    Hoàng Nhân & 23127094 \\
+    Trần Cao Vân & 23127141 \\
+    Nguyễn Trần Thiên Phú & 23127246
+  \end{tabular}
 
-    \vspace{0.8em}
-    {\large \insertdate}
-  \end{center}
+  \vspace{0.75em}
+  \textsl{Khoa Công nghệ Thông tin -- ĐH Khoa học Tự nhiên, ĐHQG TP.HCM}\\
+  \textsl{Môn: Nhập môn lập trình điều khiển thiết bị thông minh}
+
+  \vspace{0.7em}
+  \insertdate
 \end{frame}
 
-%------- MỤC LỤC -------
+% Trang 2
 \begin{frame}{Nội dung trình bày}
-  \vspace{0.4em}
+  \vspace{1.5em}
   \begin{enumerate}
-    \item Tóm tắt hiện trạng hệ thống
-    \item Chức năng đã hoàn thành \& hoạt động ổn định
-    \item Các chức năng chưa ổn định (Cần hoàn thiện)
-    \item Đề xuất hoàn thiện trong Sprint 6
-    \item Kiến trúc \& Luồng vận hành thực tế
+    \item Sản phẩm cuối cùng đang làm được gì?
+    \item Các phần từng chưa hoàn thành nay ở trạng thái nào?
+    \item Đồ án đáp ứng ba mục tiêu ban đầu đến đâu?
+    \item Kết luận và phạm vi của phiên bản hiện tại
   \end{enumerate}
 \end{frame}
 
-%============================
-\section{Tóm tắt hiện trạng hệ thống}
-%============================
+% Trang 3
+\begin{frame}{Kết luận sau khi rà soát toàn bộ đồ án}
+  \begin{block}{Sản phẩm đã thành hình ở mức nguyên mẫu một cổng}
+    Người dùng có thể đăng ký hồ sơ, dùng khuôn mặt hoặc thẻ để xác thực, mở cổng tự động và theo dõi sự kiện trên trang quản lý.
+  \end{block}
 
-\begin{frame}{Hiện trạng tổng quan}
-  \textbf{Trạng thái chung của project:}
-  \vspace{0.6em}
   \begin{itemize}
-    \item \textbf{Phần lõi ổn định:} Hệ thống RFID, giao thức MQTT (HiveMQ) và Web Sentinel đã hoàn thành và hoạt động tương đối ổn định.
-    \item \textbf{Đang hoàn thiện:} Camera ESP32-CAM, nhận diện khuôn mặt và module phát hiện vi phạm qua cảm biến siêu âm đang ở giai đoạn hoàn thiện & kiểm thử.
-    \item \textbf{Mã nguồn chính:} Đã được đồng bộ và lưu trữ tại nhánh \texttt{main} trên GitHub.
+    \item \textbf{\color{Success}Hoàn thành:} nhận diện khuôn mặt, xác thực thẻ, điều khiển cổng, lưu hồ sơ và gửi cảnh báo.
+    \item \textbf{\color{Success}Hoàn thành phát hiện hành vi trèo:} cảm biến siêu âm báo vi phạm khi có vật thể trong vùng kiểm soát lúc cổng chưa mở.
+    \item \textbf{\color{Warning}Hạn chế:} toàn bộ quá trình nhận diện mất khoảng 5--7 giây.
   \end{itemize}
 \end{frame}
 
-%============================
-\section{Chức năng đã hoàn thành \& hoạt động ổn định}
-%============================
-
-\begin{frame}{List chức năng đã hoàn thành (1/2)}
-  \begin{columns}[T]
+% Trang 4
+\begin{frame}{Sản phẩm cuối cùng đang làm được gì?}
+  \begin{columns}[T,onlytextwidth]
     \column{0.48\textwidth}
-      \textbf{Điều khiển cổng \& Servo}
+      \textbf{Tại cổng}
       \begin{itemize}
-        \item \textbf{Điều khiển cổng:} Chế độ bình thường, mở cưỡng bức, khóa cưỡng bức (Đã lập trình).
-        \item \textbf{Servo:} Tự động mở cổng khi có quyền và tự đóng (Đã lập trình).
-      \end{itemize}
-      \vspace{0.4em}
-      \textbf{Định danh RFID / NFC}
-      \begin{itemize}
-        \item \textbf{RFID đọc UID:} Gửi lên Server đối chiếu Database (Đã hoạt động).
-        \item \textbf{RFID hợp lệ:} Mở cổng, LED xanh, buzzer báo, ghi log (Đã hoạt động).
-        \item \textbf{RFID không hợp lệ:} Đóng cổng, LED đỏ, buzzer kêu 3 lần (Đã lập trình).
-        \item \textbf{Liên kết thẻ:} Quét và gán thẻ cho nhân viên (Đã hoạt động).
+        \item Phát hiện người tiến vào vùng cổng và phát hiện trèo khi cổng chưa mở.
+        \item Nhận diện khuôn mặt đã đăng ký ngay trên camera.
+        \item Đọc thẻ, phân biệt thẻ hợp lệ và không hợp lệ.
+        \item Mở hoặc đóng thanh chắn, đổi đèn báo và phát tín hiệu xác nhận.
       \end{itemize}
 
     \column{0.48\textwidth}
-      \textbf{Hạ tầng Kết nối \& Web Sentinel}
+      \textbf{Trên trang quản lý}
       \begin{itemize}
-        \item \textbf{ESP32--HiveMQ:} Wi-Fi, TLS MQTT, gửi/nhận lệnh (Đã hoạt động).
-        \item \textbf{Web Sentinel:} Giao diện điều khiển & nhận trạng thái qua MQTT bridge (Đã hoạt động).
-        \item \textbf{Nhật ký (Log):} Ghi nhận lượt RFID, khuôn mặt, từ chối & vi phạm (Đã lập trình).
+        \item Quản lý hồ sơ, vai trò, email và thẻ của người dùng.
+        \item Đăng ký khuôn mặt theo ba góc nhìn.
+        \item Xem trực tiếp camera, lịch sử xác thực và cảnh báo gần nhất.
+        \item Gửi email đúng nhóm quản trị hoặc an ninh khi có cảnh báo.
       \end{itemize}
   \end{columns}
 \end{frame}
 
-\begin{frame}{List chức năng đã hoàn thành (2/2)}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Quản lý \& Thông báo Email}
-      \begin{itemize}
-        \item \textbf{Quản lý nhân viên:} Thêm/sửa nhân viên, vai trò (role), email, UID RFID và ảnh khuôn mặt (Đã lập trình).
-        \item \textbf{Email cơ bản:} Tự động gửi email xác nhận cho nhân viên khi lượt ra vào được chấp nhận (Đã hoạt động).
-        \item \textbf{Email vi phạm:} Bộ lọc tự động gửi email cảnh báo chỉ tới \textit{Administrator} và \textit{Security Officer} (Đã lập trình).
-      \end{itemize}
+% Trang 5
+\begin{frame}{Một lượt ra vào diễn ra như thế nào?}
+  \centering
+  \vspace{0.8em}
+  \begin{tikzpicture}[
+    node distance=0.42cm,
+    flowbox/.style={rounded corners=4pt,draw=Primary,fill=Primary!5,
+      minimum width=2.15cm,minimum height=1.3cm,text width=1.9cm,
+      align=center,font=\small\bfseries,inner sep=5pt},
+    flowarr/.style={-{Stealth[length=2.2mm]},thick,draw=Primary}
+  ]
+    \node[flowbox] (arrival) {Có người\\đến cổng};
+    \node[flowbox,right=of arrival] (identity) {Nhận diện mặt\\hoặc đọc thẻ};
+    \node[flowbox,right=of identity] (access) {Kiểm tra\\quyền ra vào};
+    \node[flowbox,right=of access] (gate) {Mở cổng\\hoặc giữ khóa};
+    \node[flowbox,right=of gate] (history) {Ghi lịch sử\\và cảnh báo};
 
-    \column{0.48\textwidth}
-      \textbf{Xử lý vi phạm \& Camera}
-      \begin{itemize}
-        \item \textbf{Xử lý vi phạm:} Khóa cổng, LED đỏ, buzzer kêu liên tục & đẩy sự kiện lên Web (Đã lập trình).
-        \item \textbf{Reset vi phạm:} Mở khóa từ Web Sentinel hoặc nút bấm cứng trên mạch (Đã lập trình).
-        \item \textbf{ESP32-CAM:} Capture snapshot, MJPEG stream, bật/tắt đèn trợ sáng (Đã lập trình).
-        \item \textbf{Nhận diện khuôn mặt:} Giữ mặt 2s, so khớp ảnh, gửi kết quả về cổng (Đã lập trình).
-      \end{itemize}
-  \end{columns}
+    \draw[flowarr] (arrival) -- (identity);
+    \draw[flowarr] (identity) -- (access);
+    \draw[flowarr] (access) -- (gate);
+    \draw[flowarr] (gate) -- (history);
+  \end{tikzpicture}
+
+  \vspace{1em}
+  \begin{block}{Điểm thay đổi so với thiết kế cũ}
+    Trang quản lý có thể xem trực tiếp luồng camera tại cổng. Việc nhận diện vẫn được xử lý ngay trên camera và kết quả xác thực được gửi về mạch cổng.
+  \end{block}
 \end{frame}
 
-\begin{frame}{Minh chứng chức năng hoạt động ổn định}
+% Trang 6
+\begin{frame}{Các phần từng chưa hoàn thành: kết quả cuối (1/2)}
   \begin{itemize}
-    \item \textbf{Hệ thống Web \& API:} Web Sentinel & Node API chạy tại port 3000 và 3001, kết nối thành công với HiveMQ Cloud.
-    \item \textbf{Giao tiếp Real-time:} Gửi/nhận dữ liệu ổn định qua 2 topic: \texttt{/board/upload/data} và \texttt{/board/get/data}.
-    \item \textbf{Xác thực \& Lưu trữ:} Khởi động ESP32 tự kết nối Wi-Fi/MQTT, RFID hợp lệ mở cổng & ghi log, Database tự lưu và phục hồi dữ liệu nhân viên sau khi restart server.
-    \item \textbf{Firmware \& Cấu hình:} Đã build và upload firmware thành công cho cả ESP32 Cổng và ESP32-CAM.
+    \item \textbf{\color{Success}Đăng ký và nhận diện khuôn mặt -- Hoàn thành:} camera nhận ba góc mặt, lưu dữ liệu ngay trên thiết bị, nhận diện và gửi kết quả về cổng.
+    \item \textbf{\color{Success}Phân nhóm email -- Hoàn thành:} cảnh báo được gửi tới người có vai trò Quản trị viên hoặc Nhân viên an ninh; email cá nhân dùng cho thông báo lượt vào hợp lệ.
+    \item \textbf{\color{Success}Luồng camera -- Hoàn thành:} trang quản lý hiển thị trực tiếp hình ảnh từ camera; việc nhận diện vẫn diễn ra tại camera và kết quả được gửi về cổng.
   \end{itemize}
 \end{frame}
 
-%============================
-\section{Các chức năng chưa ổn định}
-%============================
+% Trang 7
+\begin{frame}{Các phần từng chưa hoàn thành: kết quả cuối (2/2)}
+  \vspace{1.5em}
+  \begin{itemize}
+    \item \textbf{\color{Success}Phát hiện trèo -- Hoàn thành:} khi cổng chưa mở mà cảm biến siêu âm phát hiện vật thể trong vùng kiểm soát, hệ thống xác định đây là vi phạm, tiếp tục khóa cổng và gửi cảnh báo.
+    \item \textbf{\color{Success}Khôi phục kết nối -- Hoàn thành:} mạch và trang quản lý tự kết nối lại khi Wi-Fi hoặc kênh truyền bị gián đoạn ngắn.
+  \end{itemize}
+\end{frame}
 
-\begin{frame}{Chức năng cần hoàn thiện \& Hạn chế kỹ thuật}
-  \begin{columns}[T]
+% Trang 8
+\begin{frame}{Mục tiêu 1: Nhận diện được, nhưng phản hồi còn chậm}
+  \small
+  \begin{block}{Mục tiêu ban đầu}
+    Nhận diện tối đa 20 người trong phạm vi 0,5 m; độ chính xác trên 95\%, tỷ lệ nhận nhầm dưới 2\% và phản hồi dưới 1,5 giây.
+  \end{block}
+
+  \begin{itemize}
+    \item \textbf{Kết quả chức năng:} đăng ký ba góc mặt, lưu dữ liệu trên camera, tự nhận diện và mở cổng khi khớp.
+    \item \textbf{Phù hợp quy mô nguyên mẫu:} hệ thống quản lý hồ sơ người dùng và đồng bộ tối đa 20 thẻ xuống cổng.
+    \item \textbf{Thời gian thực tế:} từ lúc phát hiện người đến khi nhận diện và phản hồi mất khoảng 5--7 giây.
+  \end{itemize}
+
+  \begin{alertblock}{Đánh giá: Đạt chức năng, chưa đạt mục tiêu tốc độ}
+    Hệ thống nhận diện được người dùng, nhưng phản hồi chậm hơn mức 1,5 giây đặt ra ban đầu.
+  \end{alertblock}
+\end{frame}
+
+% Trang 9
+\begin{frame}{Mục tiêu 2: Phát hiện trèo bằng cảm biến siêu âm}
+  \small
+  \begin{block}{Mục tiêu ban đầu}
+    Phát hiện hành vi trèo hoặc vượt cổng khi chưa được cấp quyền, giữ cổng ở trạng thái an toàn và gửi cảnh báo cho người quản lý.
+  \end{block}
+
+  \begin{itemize}
+    \item \textbf{Điều kiện phát hiện:} cảm biến siêu âm ghi nhận vật thể trong vùng kiểm soát khi cổng vẫn đóng và chưa có lệnh mở hợp lệ.
+    \item \textbf{Cách xử lý:} hệ thống giữ khóa, bật trạng thái cảnh báo và gửi sự kiện lên trang quản lý.
+    \item \textbf{Tránh báo nhầm lượt hợp lệ:} khi người dùng đã xác thực và cổng được mở, tín hiệu đi qua không bị xem là hành vi trèo.
+  \end{itemize}
+
+  \begin{alertblock}{Đánh giá: Đạt mục tiêu phát hiện và cảnh báo}
+    Cảm biến siêu âm kết hợp trạng thái đóng hoặc mở của cổng để phát hiện hành vi trèo theo thiết kế của nhóm.
+  \end{alertblock}
+\end{frame}
+
+% Trang 10
+\begin{frame}{Mục tiêu 3: Luồng RFID/NFC hoàn chỉnh}
+  \small
+  \begin{block}{Mục tiêu ban đầu}
+    Xác thực RFID/NFC và mở cổng dưới 2 giây, độ chính xác tối thiểu 98\% trong điều kiện bình thường.
+  \end{block}
+
+  \begin{itemize}
+    \item \textbf{Kết quả chức năng:} quét và gán thẻ, nhận thẻ hợp lệ hoặc không hợp lệ, mở cổng, đổi đèn, phát tín hiệu và ghi lịch sử.
+    \item \textbf{Phương án dự phòng:} danh sách thẻ được lưu ngay trên mạch nên thẻ hợp lệ được kiểm tra mà không phải chờ máy chủ trả lời.
+    \item \textbf{Trải nghiệm sử dụng:} thẻ hợp lệ được xử lý ngay tại cổng; thẻ không hợp lệ bị từ chối và ghi vào lịch sử.
+  \end{itemize}
+
+  \begin{alertblock}{Đánh giá: Đạt mục tiêu chức năng}
+    Luồng từ quét thẻ đến mở cổng tự động hoàn chỉnh trong sản phẩm.
+  \end{alertblock}
+\end{frame}
+
+% Trang 11
+\begin{frame}{Tổng hợp mức độ đáp ứng ba mục tiêu}
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.32}
+  \begin{tabular}{>{\raggedright\arraybackslash}p{2.45cm}
+                  >{\raggedright\arraybackslash}p{5.35cm}
+                  >{\raggedright\arraybackslash}p{3.0cm}}
+    \toprule
+    \textbf{Mục tiêu} & \textbf{Kết quả sản phẩm} & \textbf{Mức đáp ứng} \\
+    \midrule
+    Nhận diện người
+      & Nhận diện và mở cổng; toàn bộ quá trình mất khoảng 5--7 giây
+      & \textbf{\color{Warning}Đạt chức năng, còn chậm} \\
+    Phát hiện trèo hoặc vượt cổng
+      & Cảm biến phát hiện vật thể khi cổng chưa mở, giữ khóa và gửi cảnh báo
+      & \textbf{\color{Success}Đạt} \\
+    RFID/NFC
+      & Quét thẻ, kiểm tra quyền, mở cổng và ghi lịch sử
+      & \textbf{\color{Success}Đạt} \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+% Trang 12
+\begin{frame}{Kiến trúc sản phẩm cuối cùng}
+  \centering
+  \begin{tikzpicture}[
+    node distance=0.75cm and 0.75cm,
+    archbox/.style={rounded corners=5pt,minimum width=3.05cm,minimum height=1.55cm,
+      text width=2.75cm,align=center,font=\small\bfseries,inner sep=6pt,thick},
+    archarr/.style={-{Stealth[length=2.4mm]},thick,draw=Primary},
+    syncarr/.style={{Stealth[length=2.4mm]}-{Stealth[length=2.4mm]},thick,draw=Warning}
+  ]
+    \node[archbox,draw=Primary,fill=Primary!6] (input)
+      {Thiết bị đầu vào\\{\footnotesize Camera + thẻ + cảm biến}};
+    \node[archbox,draw=PrimaryDark,fill=Primary!10,right=of input] (control)
+      {Mạch điều khiển cổng\\{\footnotesize Kiểm tra quyền ra vào}};
+    \node[archbox,draw=Success,fill=Success!8,right=of control] (output)
+      {Thiết bị phản hồi\\{\footnotesize Servo + đèn + còi}};
+    \node[archbox,draw=Warning,fill=Warning!7,below=0.85cm of control] (web)
+      {Trang quản lý\\{\footnotesize Hồ sơ + lịch sử + email}};
+
+    \draw[archarr] (input) -- (control);
+    \draw[archarr] (control) -- (output);
+    \draw[syncarr] (control) -- node[left,font=\footnotesize]{Trạng thái / lệnh đăng ký} (web);
+  \end{tikzpicture}
+
+  \vspace{0.65em}
+  \begin{minipage}{0.96\textwidth}
+    \small
+    \textbf{Nguyên tắc chính:} nhận diện được xử lý ngay tại camera; mạch cổng quyết định mở hoặc đóng; trang quản lý dùng để quản lý hồ sơ, theo dõi và nhận cảnh báo.
+  \end{minipage}
+\end{frame}
+
+% Trang 13
+\begin{frame}{Phạm vi của phiên bản cuối}
+  \vspace{1em}
+  \begin{columns}[T,onlytextwidth]
     \column{0.48\textwidth}
-      \textbf{Chức năng chưa ổn định}
+      \textbf{Có thể trình diễn}
       \begin{itemize}
-        \item \textbf{Stream ESP32-CAM:} Thỉnh thoảng bị đen hình, rò rỉ kết nối MJPEG.
-        \item \textbf{Nhận diện khuôn mặt:} Chưa kiểm thử đa dạng góc mặt và điều kiện ánh sáng.
-        \item \textbf{Phát hiện vi phạm:} Mới nạp firmware, chưa kiểm thử vật lý end-to-end với HC-SR04.
-        \item \textbf{Phân quyền Email:} Database chưa cập nhật đủ email của Admin/Security Officer.
+        \item Đăng ký hồ sơ, khuôn mặt và thẻ.
+        \item Mở cổng bằng khuôn mặt hoặc RFID.
+        \item Phát hiện trèo khi cảm biến có tín hiệu lúc cổng chưa mở.
+        \item Từ chối người hoặc thẻ không hợp lệ.
+        \item Hiển thị lịch sử và gửi cảnh báo.
       \end{itemize}
 
     \column{0.48\textwidth}
-      \textbf{Rủi ro phần cứng \& Vận hành}
+      \textbf{Giới hạn còn lại}
       \begin{itemize}
-        \item \textbf{Buzzer \& Nguồn:} Âm lượng buzzer chưa đồng đều do phụ thuộc nguồn điện.
-        \item \textbf{Tự đóng cổng:} Dùng thời gian cố định (\textit{fixed delay}), chưa có cảm biến nhận biết người đã đi qua hoàn toàn.
-        \item \textbf{Mạng \& Kết nối:} Chưa hỗ trợ stream khi MacBook và ESP32-CAM khác subnet; chưa kiểm thử mất kết nối Wi-Fi/MQTT dài hạn.
+        \item Toàn bộ quá trình nhận diện khuôn mặt cần khoảng 5--7 giây.
+        \item Nhật ký chủ yếu được lưu trên trình duyệt đang sử dụng.
       \end{itemize}
   \end{columns}
 \end{frame}
 
-%============================
-\section{Đề xuất hoàn thiện trong Sprint 6}
-%============================
+% Trang 14
+\begin{frame}{Kết luận}
+  \begin{block}{Kết quả cuối kỳ}
+    Nhóm đã xây dựng được một nguyên mẫu kiểm soát ra vào có đủ luồng người dùng, thiết bị và trang quản lý để trình diễn. Điểm mạnh là xác thực RFID và nhận diện khuôn mặt ngay trên thiết bị.
+  \end{block}
 
-\begin{frame}{Kế hoạch hành động Sprint 6 (1/2)}
-  \begin{enumerate}
-    \item \textbf{Ổn định luồng Camera:}
-      \begin{itemize}
-        \item Tự động kết nối lại khi ESP32-CAM reset; triệt tiêu kết nối MJPEG trùng lặp.
-        \item Đảm bảo stream chạy liên tục 30--60 phút không đen hình; hiển thị rõ trạng thái mất kết nối.
-      \end{itemize}
-    \vspace{0.3em}
-    \item \textbf{Hoàn thiện Nhận diện khuôn mặt:}
-      \begin{itemize}
-        \item Kiểm thử nhiều nhân viên, ánh sáng khác nhau; thiết lập ngưỡng tin cậy (\textit{confidence threshold}) tối ưu.
-        \item Mặt hợp lệ $\rightarrow$ Mở cổng; Mặt không hợp lệ $\rightarrow$ Báo lỗi 3 tiếng; Chống gửi lặp kết quả.
-      \end{itemize}
-    \vspace{0.3em}
-    \item \textbf{Hoàn thiện Phát hiện vi phạm (HC-SR04):}
-      \begin{itemize}
-        \item Hiệu chỉnh khoảng cách và số lần xác nhận; tránh báo nhầm người vừa được cấp quyền ra vào.
-        \item Vi phạm $\rightarrow$ Khóa cổng, bật buzzer liên tục, ghi log và gửi email tức thì.
-      \end{itemize}
-  \end{enumerate}
-\end{frame}
+  \vspace{0.35em}
+  \begin{alertblock}{Kết luận so với ba mục tiêu}
+    Mục tiêu 2 và 3 đạt yêu cầu trong sản phẩm. Mục tiêu 1 đạt chức năng phát hiện và nhận diện người dùng, nhưng toàn bộ quá trình mất khoảng 5--7 giây, chậm hơn mục tiêu ban đầu.
+  \end{alertblock}
 
-\begin{frame}{Kế hoạch hành động Sprint 6 (2/2)}
-  \begin{enumerate}
-    \setcounter{enumi}{3}
-    \item \textbf{Hoàn thiện Phân quyền Thông báo Email:}
-      \begin{itemize}
-        \item Cập nhật đầy đủ email Role Admin \& Security Officer.
-        \item Phân luồng: Cảnh báo vi phạm chỉ gửi cho Admin/An ninh; Nhân viên chỉ nhận log ra vào cá nhân.
-      \end{itemize}
-    \vspace{0.3em}
-    \item \textbf{Cải thiện State Machine của Cổng:}
-      \begin{itemize}
-        \item Loại bỏ hàm \texttt{delay()} gây nghẽn chương trình; chỉ đóng cổng khi người đã qua hoặc hết timeout an toàn.
-        \item Tự khôi phục trạng thái chuẩn xác sau sự cố mất điện / mất mạng Wi-Fi / MQTT.
-      \end{itemize}
-    \vspace{0.3em}
-    \item \textbf{Nhật ký \& Kiểm thử End-to-End:}
-      \begin{itemize}
-        \item Lưu log phía Server tránh mất data khi reload; lập bảng kết quả Pass/Fail và quay video demo.
-      \end{itemize}
-  \end{enumerate}
-\end{frame}
-
-%============================
-\section{Kiến trúc \& Luồng vận hành thực tế}
-%============================
-
-\begin{frame}{Kiến trúc tổng thể hệ thống IoT}
-  \begin{center}
-  \begin{tikzpicture}[
-    layerbox/.style={rectangle, rounded corners=4pt, text width=3.2cm,
-      align=center, minimum height=1.3cm, font=\small\bfseries, inner sep=5pt},
-    inputbox/.style={layerbox, draw=blue!70, fill=blue!8},
-    ctrlbox/.style={layerbox, draw=violet!70!black, fill=violet!10},
-    actbox/.style={layerbox, draw=green!55!black, fill=green!9},
-    webbox/.style={layerbox, draw=orange!80!black, fill=orange!10},
-    arr/.style={-{Stealth[length=2mm]}, thick, blue!70}
-  ]
-    \node[inputbox] (input) {Khối đầu vào\\{\scriptsize Camera + RFID/NFC + Cảm biến HC-SR04}};
-    \node[ctrlbox, right=1.0cm of input] (ctrl) {Khối điều khiển\\{\scriptsize ESP32 Main + ESP32-CAM}};
-    \node[actbox, right=1.0cm of ctrl] (act) {Khối chấp hành\\{\scriptsize Servo + LED + Buzzer}};
-    \node[webbox, above=1.2cm of ctrl] (web) {Web Sentinel Dashboard\\{\scriptsize HiveMQ MQTT + Node API + DB}};
-
-    \draw[arr] (input) -- (ctrl);
-    \draw[arr] (ctrl) -- (act);
-    \draw[arr] (ctrl) -- (web);
-  \end{tikzpicture}
-  \end{center}
-
-  \vspace{0.4em}
-  \small\textbf{Luồng vận hành:} Cảm biến/RFID gửi tín hiệu $\rightarrow$ ESP32 xử lý $\rightarrow$ Điều khiển Servo/Buzzer $\rightarrow$ Đẩy nhật ký real-time lên Web Sentinel qua MQTT HiveMQ.
-\end{frame}
-
-\begin{frame}{Sơ đồ liên kết phần cứng \& Phần mềm}
-  \begin{center}
-  \begin{tikzpicture}[
-    block/.style={rectangle, rounded corners=4pt, text width=2.55cm,
-      align=center, minimum height=1.0cm, font=\small, inner sep=4pt},
-    inputbox/.style={block, draw=blue!70, fill=blue!8},
-    ctrlbox/.style={block, draw=violet!70!black, fill=violet!10},
-    actbox/.style={block, draw=green!55!black, fill=green!9},
-    webbox/.style={block, draw=orange!80!black, fill=orange!10},
-    dbbox/.style={block, draw=gray!70!black, fill=gray!10},
-    arr/.style={-{Stealth[length=2mm]}, thick, blue!70},
-    dataarr/.style={<->, >=Stealth, thick, orange!80!black}
-  ]
-    \node[inputbox] (input) {Đầu vào\\{\scriptsize RFID RC522\\ESP32-CAM\\HC-SR04}};
-    \node[ctrlbox, right=0.8cm of input] (ctrl) {Bộ xử lý trung tâm\\{\scriptsize ESP32 Cổng\\(State Machine)}};
-    \node[actbox, right=0.8cm of ctrl] (act) {Chấp hành\\{\scriptsize SG90 Servo\\LED / Buzzer}};
-    \node[webbox, below=0.9cm of ctrl] (web) {Web Sentinel\\{\scriptsize Node API (3001)\\React Web (3000)}};
-    \node[dbbox, right=0.8cm of web] (db) {Database\\{\scriptsize Nhân viên, RFID\\Nhật ký, Role}};
-
-    \draw[arr] (input) -- node[above, font=\scriptsize]{Dữ liệu} (ctrl);
-    \draw[arr] (ctrl) -- node[above, font=\scriptsize]{Lệnh} (act);
-    \draw[arr] (ctrl) -- node[left, font=\scriptsize]{MQTT} (web);
-    \draw[dataarr] (web) -- node[above, font=\scriptsize]{Sync} (db);
-  \end{tikzpicture}
-  \end{center}
-\end{frame}
-
-%------- CLOSING -------
-\begin{frame}[plain]
-  \begin{center}
-    \vspace{2.5cm}
-    {\Huge \textbf{Cảm ơn thầy và các bạn!}}\\[0.8em]
-    {\Large Q\&A -- Phản hồi \& Thảo luận}
-  \end{center}
+  \vfill
+  \centering
+  {\Large\bfseries Hỏi đáp và thảo luận}
 \end{frame}
 
 \end{document}
