@@ -485,10 +485,19 @@ static bool initializeCamera() {
   if (sensor) {
     sensor->set_vflip(sensor, 0);
     sensor->set_hmirror(sensor, 0);
-    sensor->set_brightness(sensor, 0);
-    sensor->set_saturation(sensor, 0);
+    sensor->set_brightness(sensor, 1);     // -2 to 2: Hơi tăng sáng nhẹ
+    sensor->set_contrast(sensor, 1);       // -2 to 2: Tăng tương phản đường nét mặt
+    sensor->set_saturation(sensor, 0);     // -2 to 2
+    sensor->set_whitebal(sensor, 1);       // Bật AWB
+    sensor->set_awb_gain(sensor, 1);       // Tự động chỉnh gain AWB
+    sensor->set_wb_mode(sensor, 0);        // Auto WB
+    sensor->set_exposure_ctrl(sensor, 1);  // Bật tự động phơi sáng AEC
+    sensor->set_aec2(sensor, 1);           // Bật AEC nâng cao
+    sensor->set_gain_ctrl(sensor, 1);      // Bật AGC
+    sensor->set_agc_gain(sensor, 0);
+    sensor->set_gainceiling(sensor, (gainceiling_t)2);
   }
-  Serial.println("CAMERA|init=SUCCESS|format=JPEG|size=QVGA");
+  Serial.println("CAMERA|init=SUCCESS|format=JPEG|size=QVGA|optimized=TRUE");
   return true;
 }
 
@@ -499,6 +508,14 @@ static void releaseCapturedFace(CapturedFace &face) {
   }
 }
 
+static void flushCameraBuffers() {
+  for (int i = 0; i < 2; ++i) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb) esp_camera_fb_return(fb);
+    delay(15);
+  }
+}
+
 static FaceFrameStatus captureUsableFace(CapturedFace &face) {
   camera_fb_t *frame = esp_camera_fb_get();
   if (!frame) {
@@ -506,11 +523,12 @@ static FaceFrameStatus captureUsableFace(CapturedFace &face) {
     return FaceFrameStatus::CAMERA_ERROR;
   }
 
-  // Khi camera chạy JPEG, frame->width/height đôi khi là 0 trước khi giải mã.
-  // Chúng ta gán cứng kích thước theo FRAMESIZE_QVGA (320x240):
-  face.width = 320;
-  face.height = 240;
-  const size_t rgbSize = 320 * 240 * 3;
+  const int width = frame->width > 0 ? frame->width : 320;
+  const int height = frame->height > 0 ? frame->height : 240;
+  face.width = width;
+  face.height = height;
+
+  const size_t rgbSize = static_cast<size_t>(width) * height * 3;
   face.bgr888 = static_cast<uint8_t *>(
       heap_caps_malloc(rgbSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!face.bgr888) {
@@ -529,24 +547,32 @@ static FaceFrameStatus captureUsableFace(CapturedFace &face) {
   }
 
   std::list<dl::detect::result_t> &candidates = stageOneDetector->infer(
-      face.bgr888, {face.height, face.width, 3});
-  std::list<dl::detect::result_t> &results = stageTwoDetector->infer(
-      face.bgr888, {face.height, face.width, 3}, candidates);
-
-  if (results.empty()) {
+      face.bgr888, {height, width, 3});
+  if (candidates.empty()) {
     releaseCapturedFace(face);
     return FaceFrameStatus::NO_FACE;
   }
-  if (results.size() != 1) {
-    Serial.printf("HFR_CAPTURE|multiple_faces=%u\n", static_cast<unsigned>(results.size()));
+
+  std::list<dl::detect::result_t> &results = stageTwoDetector->infer(
+      face.bgr888, {height, width, 3}, candidates);
+
+  // Nếu Stage 2 tìm thấy kết quả thì ưu tiên dùng Stage 2; nếu không thì fallback sang Stage 1
+  std::list<dl::detect::result_t> &finalFaces = !results.empty() ? results : candidates;
+
+  if (finalFaces.empty()) {
+    releaseCapturedFace(face);
+    return FaceFrameStatus::NO_FACE;
+  }
+  if (finalFaces.size() > 1) {
+    Serial.printf("HFR_CAPTURE|multiple_faces=%u\n", static_cast<unsigned>(finalFaces.size()));
     releaseCapturedFace(face);
     return FaceFrameStatus::MULTIPLE_FACES;
   }
 
-  const dl::detect::result_t &detectedFace = results.front();
-  const int width = detectedFace.box[2] - detectedFace.box[0] + 1;
-  const int height = detectedFace.box[3] - detectedFace.box[1] + 1;
-  if (width < MIN_FACE_SIZE_PX || height < MIN_FACE_SIZE_PX) {
+  const dl::detect::result_t &detectedFace = finalFaces.front();
+  const int boxWidth = detectedFace.box[2] - detectedFace.box[0] + 1;
+  const int boxHeight = detectedFace.box[3] - detectedFace.box[1] + 1;
+  if (boxWidth < MIN_FACE_SIZE_PX || boxHeight < MIN_FACE_SIZE_PX) {
     releaseCapturedFace(face);
     return FaceFrameStatus::FACE_TOO_SMALL;
   }
@@ -591,11 +617,13 @@ static sentinel_now::Message performRecognition(
       sentinel_now::MessageType::SCAN_RESULT, request.sequence,
       request.sessionId, millis());
   response.attempt = request.attempt;
+
+  flushCameraBuffers();
   CapturedFace face;
   int attemptsUsed = 0;
   const uint32_t startedAt = millis();
   const FaceFrameStatus status =
-      captureUsableFaceWithRetries(face, 3, 120, attemptsUsed);
+      captureUsableFaceWithRetries(face, 6, 80, attemptsUsed);
   const uint32_t detectionMs = millis() - startedAt;
   if (status != FaceFrameStatus::READY) {
     response.result = transportStatus(status);
@@ -666,12 +694,13 @@ static bool enrollOneView(const String &employeeId, const char *view,
   Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=2000\n",
                 employeeId.c_str(), view);
   delay(2000);
+  flushCameraBuffers();
 
   CapturedFace face;
   int attemptsUsed = 0;
   const uint32_t startedAt = millis();
   const FaceFrameStatus status =
-      captureUsableFaceWithRetries(face, 25, 120, attemptsUsed);
+      captureUsableFaceWithRetries(face, 25, 100, attemptsUsed);
   if (status != FaceFrameStatus::READY) {
     failureReason = statusName(status);
     Serial.printf(
