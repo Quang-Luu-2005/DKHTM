@@ -29,11 +29,12 @@ void procedure_open_gate();
 namespace {
 constexpr unsigned long RFID_AUTHORIZATION_TIMEOUT_MS = 7000;
 constexpr unsigned long RFID_ENROLLMENT_WINDOW_MS = 30000;
-constexpr unsigned long FACE_SCAN_TIMEOUT_MS = 6000;
+constexpr unsigned long FACE_SCAN_TIMEOUT_MS = 7000;
 constexpr unsigned long FACE_RETRY_DELAY_MS = 750;
+constexpr unsigned long STREAM_FACE_TRIGGER_DELAY_MS = 3000;
 constexpr unsigned long FACE_ENROLLMENT_TIMEOUT_MS = 70000;
 constexpr unsigned long ESP_NOW_RETRY_INTERVAL_MS = 2000;
-constexpr unsigned long FACE_PRESENCE_TIMEOUT_MS = 3500;
+constexpr unsigned long FACE_PRESENCE_TIMEOUT_MS = 8000;
 constexpr unsigned long PRESENCE_SAMPLE_INTERVAL_MS = 100;
 constexpr uint8_t PRESENCE_REQUIRED_SAMPLES = 3;
 constexpr uint8_t ABSENCE_REQUIRED_SAMPLES = 5;
@@ -140,7 +141,7 @@ void start_authentication_session(bool requestFaceScan, const char *trigger) {
   Serial.printf("Authentication session started|session=%lu|trigger=%s\n",
                 static_cast<unsigned long>(authenticationSessionId), trigger);
   mqtt_upload_status("authentication_session_started");
-  if (requestFaceScan) schedule_face_scan(0);
+  if (requestFaceScan) schedule_face_scan(STREAM_FACE_TRIGGER_DELAY_MS);
 }
 
 const char *face_retry_reason(sentinel_now::FaceResult result) {
@@ -204,7 +205,7 @@ void process_stream_face_presence() {
     start_authentication_session(true, "stream_face_detector");
   } else if (!authenticationAlertSent && !faceScanPending &&
              !faceScanScheduled && !rfidAuthorizationPending) {
-    schedule_face_scan(0);
+    schedule_face_scan(STREAM_FACE_TRIGGER_DELAY_MS);
   }
 }
 
@@ -345,14 +346,21 @@ void update_face_scan() {
 
   if (faceScanPending) {
     if (millis() - faceScanStartedAt < FACE_SCAN_TIMEOUT_MS) return;
-    Serial.printf("ESP-NOW face timeout|session=%lu|sequence=%lu\n",
+    Serial.printf("ESP-NOW face timeout (7s)|session=%lu|sequence=%lu\n",
                   static_cast<unsigned long>(authenticationSessionId),
                   static_cast<unsigned long>(activeFaceSequence));
     faceScanPending = false;
     activeFaceSequence = 0;
-    mqtt_upload_face_denied("camera_timeout", 0.0f,
-                            failedAuthenticationAttempts, false);
-    schedule_face_scan(FACE_RETRY_DELAY_MS);
+    gate.close();
+    gate.state = GATE_CLOSED;
+    led.light_red();
+    register_authentication_failure(AuthenticationMethod::FACE);
+    buzzer.reject_three_beeps();
+    mqtt_upload_face_denied("face_scan_timeout_unmatched", 0.0f,
+                            failedAuthenticationAttempts, true);
+    if (!authenticationAlertSent) {
+      schedule_face_scan(FACE_RETRY_DELAY_MS);
+    }
     return;
   }
 

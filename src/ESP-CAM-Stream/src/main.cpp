@@ -198,9 +198,10 @@ esp_err_t statusHandler(httpd_req_t *request) {
   char response[256];
   snprintf(response, sizeof(response),
            "{\"online\":true,\"hostname\":\"%s.local\",\"ip\":\"%s\","
-           "\"rssi\":%d,\"streamPort\":%u,\"flash\":%s,\"uptimeMs\":%lu}",
+           "\"rssi\":%d,\"streamPort\":%u,\"flash\":%s,\"faceDetected\":%s,\"faceCount\":%u,\"uptimeMs\":%lu}",
            CAMERA_HOSTNAME, WiFi.localIP().toString().c_str(), WiFi.RSSI(),
            CAMERA_STREAM_PORT, flashLedEnabled ? "true" : "false",
+           faceDetected ? "true" : "false", faceDetected ? 1 : 0,
            static_cast<unsigned long>(millis()));
   setCommonHeaders(request);
   httpd_resp_set_type(request, "application/json");
