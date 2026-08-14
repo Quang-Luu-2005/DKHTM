@@ -966,20 +966,21 @@ app.get("/api/events", (request, response) => {
   request.on("close", () => eventClients.delete(response));
 });
 
-const staticDirectory = path.join(currentDir, "dist");
-app.use(express.static(staticDirectory));
-app.get("*", (request, response, next) => {
-  if (request.path.startsWith("/api/")) {
-    next();
-    return;
-  }
-  response.sendFile(path.join(staticDirectory, "index.html"));
-});
+if (!process.env.VERCEL) {
+  const staticDirectory = path.join(currentDir, "dist");
+  app.use(express.static(staticDirectory));
+  app.get("*", (request, response, next) => {
+    if (request.path.startsWith("/api/")) {
+      next();
+      return;
+    }
+    response.sendFile(path.join(staticDirectory, "index.html"));
+  });
 
-const keepAliveTimer = setInterval(() => {
-  for (const client of eventClients) client.write(": keep-alive\n\n");
-}, 20000);
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  setInterval(() => {
+    for (const client of eventClients) client.write(": keep-alive\n\n");
+  }, 20000);
+
   app.listen(serverPort, () => {
     console.log(`[Sentinel] API listening on http://localhost:${serverPort}`);
   });

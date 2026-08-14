@@ -52,22 +52,7 @@ export default function DashboardView({
   };
 
   React.useEffect(() => {
-    const controller = new AbortController();
     setStreamState("connecting");
-    fetch("/api/camera/status", { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("Camera status unavailable");
-        return response.json();
-      })
-      .then(() => {
-        setStreamState("online");
-        setFrameVersion(Date.now());
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setStreamState("offline");
-      });
-    return () => controller.abort();
   }, [streamVersion]);
 
   React.useEffect(() => {
@@ -153,7 +138,7 @@ export default function DashboardView({
         <div className="relative aspect-video min-h-[240px] bg-black">
           <img
             key={streamVersion}
-            src={`/api/camera/capture?v=${streamVersion}-${frameVersion}`}
+            src={`/api/camera/stream?v=${streamVersion}`}
             alt="Luồng trực tiếp từ camera ESP32-CAM"
             className={`h-full w-full object-contain transition-opacity duration-300 ${streamState === "offline" ? "opacity-0" : "opacity-100"}`}
             onLoad={() => setStreamState("online")}
