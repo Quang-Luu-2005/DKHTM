@@ -377,17 +377,42 @@ export default function RegistrationView({
             </div>
             <button
               type="button"
-              disabled={!editingUserId || faceEnrollmentActive}
-              onClick={() => editingUserId && void handleStartFaceEnrollment(editingUserId)}
-              className="mt-4 w-full rounded-xl border border-[#334155] bg-[#1A1A1C] px-4 py-3 text-[10px] uppercase tracking-widest text-[#F8FAFC] transition-all hover:bg-[#262629] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!userId.trim() || faceEnrollmentActive}
+              onClick={async () => {
+                if (!userId.trim()) {
+                  alert("Vui lòng nhập Mã số Nhân viên trước khi quét khuôn mặt.");
+                  return;
+                }
+                if (!fullName.trim()) {
+                  alert("Vui lòng nhập Họ và Tên trước khi quét khuôn mặt.");
+                  return;
+                }
+                // Nếu là nhân viên mới chưa lưu, tự động lưu trước rồi kích hoạt HFR
+                if (!editingUserId) {
+                  try {
+                    await onSaveProfile({
+                      id: userId.trim(),
+                      fullName: fullName.trim(),
+                      email: email.trim(),
+                      role,
+                      rfidUid,
+                      faceIdStatus: "PENDING",
+                    });
+                    setEditingUserId(userId.trim());
+                  } catch (error) {
+                    alert(error instanceof Error ? error.message : "Lỗi lưu hồ sơ nhân viên");
+                    return;
+                  }
+                }
+                void handleStartFaceEnrollment(userId.trim());
+              }}
+              className="mt-4 w-full rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 px-4 py-3 text-[10px] font-semibold uppercase tracking-widest transition-all disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
             >
-              {!editingUserId
-                ? "Chọn nhân viên trong danh sách"
-                : faceEnrollmentActive
-                  ? "Camera đang đăng ký..."
-                  : faceIdStatus === "ENROLLED"
-                    ? "Đăng ký lại khuôn mặt"
-                    : "Bắt đầu đăng ký khuôn mặt"}
+              {faceEnrollmentActive
+                ? "Camera HFR đang nhận dạng..."
+                : faceIdStatus === "ENROLLED"
+                  ? "🔄 Đăng ký lại khuôn mặt trên Cam HFR"
+                  : "📸 Bắt đầu đăng ký khuôn mặt trên Cam HFR"}
             </button>
           </div>
 

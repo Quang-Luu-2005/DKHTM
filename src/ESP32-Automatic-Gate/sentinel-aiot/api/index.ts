@@ -917,11 +917,6 @@ app.post("/api/gate/override", async (request, response) => {
 });
 
 app.post("/api/face-enrollment/start", (request, response) => {
-  if (!mqttClient.connected) {
-    response.status(503).json({ error: "MQTT broker is not connected" });
-    return;
-  }
-
   const employeeId = typeof request.body?.employeeId === "string"
     ? request.body.employeeId.trim()
     : "";
@@ -945,20 +940,62 @@ app.post("/api/face-enrollment/start", (request, response) => {
     employeeId,
     expiresAt: Date.now() + 75_000,
   };
-  mqttClient.publish(
-    mqttCommandTopic,
-    JSON.stringify({ action: "face_enrollment_start", employee_id: employeeId }),
-    { qos: 1, retain: false },
-    (error) => {
+
+  const payload = JSON.stringify({ action: "face_enrollment_start", employee_id: employeeId });
+
+  if (mqttClient.connected) {
+    mqttClient.publish(mqttCommandTopic, payload, { qos: 1, retain: false }, (error) => {
       if (error) {
         activeFaceEnrollment = null;
         console.error(`[FACE] Enrollment command failed: ${error.message}`);
+        response.status(500).json({ error: "Không thể gửi lệnh tới camera" });
       } else {
         console.log(`[FACE] Enrollment requested for ${employeeId}`);
+        response.status(202).json({ accepted: true, employeeId });
       }
-    },
-  );
-  response.status(202).json({ accepted: true, employeeId });
+    });
+    return;
+  }
+
+  // On-demand MQTT for Serverless Vercel
+  if (!mqttUrl || !process.env.MQTT_USERNAME || !process.env.MQTT_PASSWORD) {
+    activeFaceEnrollment = null;
+    response.status(503).json({ error: "MQTT broker chưa được cấu hình" });
+    return;
+  }
+
+  try {
+    const tempClient = mqtt.connect(mqttUrl, {
+      username: process.env.MQTT_USERNAME,
+      password: process.env.MQTT_PASSWORD,
+      clientId: `sentinel-face-${Math.random().toString(16).slice(2, 8)}`,
+      clean: true,
+      connectTimeout: 8000,
+    });
+
+    tempClient.on("connect", () => {
+      tempClient.publish(mqttCommandTopic, payload, { qos: 1, retain: false }, (error) => {
+        tempClient.end(true);
+        if (error) {
+          activeFaceEnrollment = null;
+          response.status(500).json({ error: "Lỗi gửi lệnh tới thiết bị" });
+        } else {
+          console.log(`[FACE] Enrollment requested for ${employeeId}`);
+          response.status(202).json({ accepted: true, employeeId });
+        }
+      });
+    });
+
+    tempClient.on("error", (err) => {
+      tempClient.end(true);
+      activeFaceEnrollment = null;
+      response.status(502).json({ error: `Kết nối MQTT thất bại: ${err.message}` });
+    });
+  } catch (err) {
+    activeFaceEnrollment = null;
+    const message = err instanceof Error ? err.message : String(err);
+    response.status(500).json({ error: message });
+  }
 });
 
 app.get("/api/events", (request, response) => {
