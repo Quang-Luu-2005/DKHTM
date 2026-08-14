@@ -691,16 +691,16 @@ static bool sendEnrollmentUpdate(const sentinel_now::Message &request,
 
 static bool enrollOneView(const String &employeeId, const char *view,
                           int &enrolledFaceId, String &failureReason) {
-  Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=2000\n",
+  Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=4500\n",
                 employeeId.c_str(), view);
-  delay(2000);
+  delay(4500);
   flushCameraBuffers();
 
   CapturedFace face;
   int attemptsUsed = 0;
   const uint32_t startedAt = millis();
   const FaceFrameStatus status =
-      captureUsableFaceWithRetries(face, 25, 100, attemptsUsed);
+      captureUsableFaceWithRetries(face, 50, 100, attemptsUsed);
   if (status != FaceFrameStatus::READY) {
     failureReason = statusName(status);
     Serial.printf(
