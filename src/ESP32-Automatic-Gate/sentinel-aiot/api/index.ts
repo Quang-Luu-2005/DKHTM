@@ -681,12 +681,10 @@ app.get("/api/camera/status", async (_request, response) => {
 app.get("/api/camera/capture", async (_request, response) => {
   try {
     const captureUrl = new URL(cameraStreamUrl);
-    if (!captureUrl.hostname.includes("ngrok")) {
-      captureUrl.port = "80";
-    }
     captureUrl.pathname = "/capture";
     captureUrl.search = "";
     const upstreamResponse = await fetch(captureUrl.toString(), {
+      headers: { "ngrok-skip-browser-warning": "true" },
       signal: AbortSignal.timeout(5_000),
     });
     if (!upstreamResponse.ok) {
@@ -705,7 +703,7 @@ app.get("/api/camera/capture", async (_request, response) => {
   }
 });
 
-app.get("/api/camera/stream", (_request, response) => {
+app.get("/api/camera/stream", async (request, response) => {
   let upstreamUrl: URL;
   try {
     upstreamUrl = new URL(cameraStreamUrl);
@@ -714,9 +712,25 @@ app.get("/api/camera/stream", (_request, response) => {
     return;
   }
 
-  if (upstreamUrl.protocol !== "http:" && upstreamUrl.protocol !== "https:") {
-    response.status(500).json({ error: "Camera stream protocol is not supported" });
-    return;
+  // If using Ngrok or standard HTTP capture
+  try {
+    const captureUrl = new URL(cameraStreamUrl);
+    captureUrl.pathname = "/capture";
+    captureUrl.search = "";
+    const upstreamResponse = await fetch(captureUrl.toString(), {
+      headers: { "ngrok-skip-browser-warning": "true" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (upstreamResponse.ok) {
+      const jpeg = Buffer.from(await upstreamResponse.arrayBuffer());
+      response.status(200);
+      response.setHeader("Content-Type", "image/jpeg");
+      response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      response.send(jpeg);
+      return;
+    }
+  } catch {
+    // fallback
   }
 
   const openStream = upstreamUrl.protocol === "https:" ? httpsGet : httpGet;
