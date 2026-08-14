@@ -51,20 +51,29 @@ export default function DashboardView({
     }
   };
 
-  React.useEffect(() => {
-    setStreamState("connecting");
-  }, [streamVersion]);
+  const isFetchingRef = React.useRef(false);
 
-  React.useEffect(() => {
-    const frameTimer = window.setInterval(() => {
+  const handleFrameLoad = () => {
+    setStreamState("online");
+    isFetchingRef.current = false;
+    // Chờ 150ms sau khi nhận ảnh xong rồi mới lấy ảnh tiếp theo -> Ổn định và cực mượt
+    window.setTimeout(() => {
       setFrameVersion(Date.now());
-    }, 350);
-    return () => window.clearInterval(frameTimer);
-  }, []);
+    }, 200);
+  };
+
+  const handleFrameError = () => {
+    isFetchingRef.current = false;
+    // Nếu lỗi, thử lại sau 1 giây
+    window.setTimeout(() => {
+      setFrameVersion(Date.now());
+    }, 1000);
+  };
 
   const reconnectStream = () => {
     setStreamState("connecting");
     setStreamVersion((version) => version + 1);
+    setFrameVersion(Date.now());
   };
 
   return (
@@ -141,9 +150,9 @@ export default function DashboardView({
             key={streamVersion}
             src={`/api/camera/capture?v=${streamVersion}-${frameVersion}`}
             alt="Luồng trực tiếp từ camera ESP32-CAM"
-            className={`h-full w-full object-contain transition-opacity duration-300 ${streamState === "offline" ? "opacity-0" : "opacity-100"}`}
-            onLoad={() => setStreamState("online")}
-            onError={() => setStreamState("offline")}
+            className={`h-full w-full object-contain ${streamState === "offline" ? "opacity-0" : "opacity-100"}`}
+            onLoad={handleFrameLoad}
+            onError={handleFrameError}
           />
           {streamState !== "online" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
