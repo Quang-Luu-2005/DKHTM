@@ -20,15 +20,9 @@ const mqttUrl = process.env.MQTT_URL || (process.env.MQTT_SERVER
   ? `mqtts://${process.env.MQTT_SERVER}:${process.env.MQTT_PORT || "8883"}`
   : "");
 
-const missingEnvironment = [
-  ["MQTT_URL or MQTT_SERVER", mqttUrl],
-  ["MQTT_USERNAME", process.env.MQTT_USERNAME],
-  ["MQTT_PASSWORD", process.env.MQTT_PASSWORD],
-].filter(([, value]) => !value).map(([name]) => name);
-if (missingEnvironment.length > 0) {
-  throw new Error(
-    `Missing MQTT environment variables: ${missingEnvironment.join(", ")}. ` +
-      "Create sentinel-aiot/.env.local from .env.example.",
+if (!mqttUrl || !process.env.MQTT_USERNAME || !process.env.MQTT_PASSWORD) {
+  console.warn(
+    "[MQTT] Missing MQTT credentials in environment. Telemetry will operate in mock/offline mode.",
   );
 }
 
@@ -46,17 +40,17 @@ const smtpSecure = process.env.SMTP_SECURE
   : smtpPort === 465;
 const smtpEnabled = Boolean(
   process.env.SMTP_HOST &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASSWORD &&
-    process.env.SMTP_FROM,
+  process.env.SMTP_USER &&
+  process.env.SMTP_PASSWORD &&
+  process.env.SMTP_FROM,
 );
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const supabase = supabaseUrl && supabaseSecretKey
   ? createClient(supabaseUrl, supabaseSecretKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    })
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
   : null;
 const snapshotBucketName = "security-snapshots";
 let supabaseHealthy = false;
@@ -110,8 +104,6 @@ function loadRegisteredUsers(): RegisteredUser[] {
     return Array.isArray(stored) ? stored.filter(isRegisteredUser) : [];
   } catch {
     return [
-      { id: "nv001", fullName: "Nguyễn Văn A", email: "nv001@sentinel.aiot", role: "General Staff", rfidUid: "NOT LINKED", faceIdStatus: "ENROLLED" },
-      { id: "101", fullName: "Hoàng Nhân", email: "hnhan23@clc.fitus.edu.vn", role: "Security Officer", rfidUid: "NOT LINKED", faceIdStatus: "ENROLLED" }
     ];
   }
 }
@@ -233,14 +225,14 @@ async function initializeSupabase() {
 
 const mailTransporter = smtpEnabled
   ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: smtpPort,
-      secure: smtpSecure,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-      },
-    })
+    host: process.env.SMTP_HOST,
+    port: smtpPort,
+    secure: smtpSecure,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASSWORD,
+    },
+  })
   : null;
 
 if (mailTransporter) {
@@ -577,9 +569,9 @@ mqttClient.on("message", (topic, payloadBuffer) => {
         (user) => user.id === payload.employee_id,
       );
       if (employee &&
-          (typeof payload.employee_name !== "string" ||
-           payload.employee_name.length === 0 ||
-           payload.employee_name === payload.employee_id)) {
+        (typeof payload.employee_name !== "string" ||
+          payload.employee_name.length === 0 ||
+          payload.employee_name === payload.employee_id)) {
         payload.employee_name = employee.fullName;
       }
     }
@@ -597,8 +589,8 @@ mqttClient.on("message", (topic, payloadBuffer) => {
     }
 
     if (payload.event === "face_enrollment" &&
-        typeof payload.employee_id === "string" &&
-        typeof payload.status === "string") {
+      typeof payload.employee_id === "string" &&
+      typeof payload.status === "string") {
       const employeeId = payload.employee_id;
       const status = payload.status.toUpperCase();
       if (status === "SUCCESS") {
@@ -806,7 +798,7 @@ app.put("/api/users", async (request, response) => {
         : normalizeRfidUid(user.rfidUid),
     faceIdStatus: (
       (user.faceIdStatus === "ENROLLED" ? "ENROLLED" : "PENDING") as
-        RegisteredUser["faceIdStatus"]
+      RegisteredUser["faceIdStatus"]
     ),
   }));
   const linkedUids = normalizedUsers
@@ -870,6 +862,32 @@ app.post("/api/enrollment/start", (_request, response) => {
     { qos: 1, retain: false },
   );
   response.status(202).json({ accepted: true, expiresInMs: enrollmentWindowMs });
+});
+
+app.post("/api/gate/override", (request, response) => {
+  if (!mqttClient.connected) {
+    response.status(503).json({ error: "MQTT broker chưa được kết nối" });
+    return;
+  }
+  const action = typeof request.body?.action === "string" ? request.body.action.trim().toLowerCase() : "";
+  if (!["open", "close", "normal", "buzzer_on", "buzzer_off"].includes(action)) {
+    response.status(400).json({ error: "Hành động điều khiển không hợp lệ" });
+    return;
+  }
+  mqttClient.publish(
+    mqttCommandTopic,
+    JSON.stringify({ action }),
+    { qos: 1, retain: false },
+    (error) => {
+      if (error) {
+        console.error(`[GATE] Lỗi gửi lệnh override: ${error.message}`);
+        response.status(500).json({ error: "Không thể gửi lệnh tới thiết bị" });
+      } else {
+        console.log(`[GATE] Lệnh override đã gửi: ${action}`);
+        response.status(200).json({ success: true, action });
+      }
+    }
+  );
 });
 
 app.post("/api/face-enrollment/start", (request, response) => {

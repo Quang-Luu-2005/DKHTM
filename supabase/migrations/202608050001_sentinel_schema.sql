@@ -1,18 +1,13 @@
 create extension if not exists pgcrypto;
 
-create table if not exists public.employees (
-  id text primary key,
-  full_name text not null,
-  email text not null default '',
-  role text not null,
-  rfid_uid text unique,
-  face_id_status text not null default 'PENDING'
-    check (face_id_status in ('PENDING', 'ENROLLED')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+-- 1. Drop existing tables if re-initializing schema
+drop table if exists public.camera_snapshots cascade;
+drop table if exists public.security_alerts cascade;
+drop table if exists public.access_events cascade;
+drop table if exists public.devices cascade;
 
-create table if not exists public.devices (
+-- 2. Create devices table
+create table public.devices (
   id text primary key,
   name text not null,
   device_type text not null
@@ -27,7 +22,8 @@ create table if not exists public.devices (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.access_events (
+-- 3. Create access_events table (using UUID primary key)
+create table public.access_events (
   id uuid primary key default gen_random_uuid(),
   occurred_at timestamptz not null default now(),
   event_type text not null,
@@ -43,7 +39,8 @@ create table if not exists public.access_events (
   payload jsonb not null default '{}'::jsonb
 );
 
-create table if not exists public.security_alerts (
+-- 4. Create security_alerts table (references access_events UUID)
+create table public.security_alerts (
   id uuid primary key default gen_random_uuid(),
   access_event_id uuid references public.access_events(id) on delete set null,
   occurred_at timestamptz not null default now(),
@@ -57,7 +54,8 @@ create table if not exists public.security_alerts (
   payload jsonb not null default '{}'::jsonb
 );
 
-create table if not exists public.camera_snapshots (
+-- 5. Create camera_snapshots table
+create table public.camera_snapshots (
   id uuid primary key default gen_random_uuid(),
   alert_id uuid references public.security_alerts(id) on delete cascade,
   storage_path text not null unique,
@@ -65,6 +63,7 @@ create table if not exists public.camera_snapshots (
   metadata jsonb not null default '{}'::jsonb
 );
 
+-- 6. Indexes
 create index if not exists access_events_occurred_at_idx
   on public.access_events (occurred_at desc);
 create index if not exists access_events_employee_id_idx
@@ -76,6 +75,7 @@ create index if not exists security_alerts_occurred_at_idx
 create index if not exists security_alerts_alert_type_idx
   on public.security_alerts (alert_type);
 
+-- 7. Trigger helper
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -87,37 +87,26 @@ begin
 end;
 $$;
 
-drop trigger if exists employees_set_updated_at on public.employees;
-create trigger employees_set_updated_at
-before update on public.employees
-for each row execute function public.set_updated_at();
-
 drop trigger if exists devices_set_updated_at on public.devices;
 create trigger devices_set_updated_at
 before update on public.devices
 for each row execute function public.set_updated_at();
 
-alter table public.employees enable row level security;
+-- 8. Row Level Security & Permissions
 alter table public.devices enable row level security;
 alter table public.access_events enable row level security;
 alter table public.security_alerts enable row level security;
 alter table public.camera_snapshots enable row level security;
 
-revoke all on public.employees from anon;
 revoke all on public.devices from anon;
 revoke all on public.access_events from anon;
 revoke all on public.security_alerts from anon;
 revoke all on public.camera_snapshots from anon;
 
-grant select on public.employees to authenticated;
 grant select on public.devices to authenticated;
 grant select on public.access_events to authenticated;
 grant select on public.security_alerts to authenticated;
 grant select on public.camera_snapshots to authenticated;
-
-drop policy if exists "authenticated_read_employees" on public.employees;
-create policy "authenticated_read_employees"
-on public.employees for select to authenticated using (true);
 
 drop policy if exists "authenticated_read_devices" on public.devices;
 create policy "authenticated_read_devices"
@@ -135,6 +124,7 @@ drop policy if exists "authenticated_read_camera_snapshots" on public.camera_sna
 create policy "authenticated_read_camera_snapshots"
 on public.camera_snapshots for select to authenticated using (true);
 
+-- 9. Insert initial default devices
 insert into public.devices (id, name, device_type)
 values
   ('gate-main', 'ESP32 Automatic Gate', 'GATE_CONTROLLER'),
@@ -143,16 +133,3 @@ values
 on conflict (id) do update set
   name = excluded.name,
   device_type = excluded.device_type;
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'security-snapshots',
-  'security-snapshots',
-  false,
-  5242880,
-  array['image/jpeg']
-)
-on conflict (id) do update set
-  public = excluded.public,
-  file_size_limit = excluded.file_size_limit,
-  allowed_mime_types = excluded.allowed_mime_types;

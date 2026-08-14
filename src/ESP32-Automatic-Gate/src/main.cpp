@@ -174,7 +174,7 @@ void register_authentication_failure(AuthenticationMethod method) {
   gate.close();
   gate.state = GATE_CLOSED;
   led.light_red();
-  buzzer.no_sound();
+  buzzer.start_siren();
 
   const char *alertType = "REPEATED_AUTH_FAILURE";
   if (failedMethod == AuthenticationMethod::FACE) {
@@ -235,6 +235,7 @@ void update_gate_violation_detection() {
         presenceSamples >= PRESENCE_REQUIRED_SAMPLES) {
       gateViolationAlertSent = true;
       statistic.authenticationAlerts++;
+      buzzer.start_siren();
       mqtt_upload_gate_climb_violation(distanceCm);
       Serial.printf("Gate climb violation published|distance_cm=%d\n", distanceCm);
     }
@@ -590,6 +591,7 @@ void process_mqtt_command() {
 }
 
 void loop() {
+  buzzer.update_siren();
   mqtt_loop(!authenticationSessionActive);
   maintain_esp_now_transport();
   process_mqtt_command();

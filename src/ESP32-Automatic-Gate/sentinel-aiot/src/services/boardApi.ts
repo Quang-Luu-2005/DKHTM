@@ -46,29 +46,70 @@ export function connectBoardEvents({
   onBrokerStatus,
   onEnrollmentScan,
 }: BoardEventHandlers) {
-  const eventSource = new EventSource("/api/events");
+  let eventSource: EventSource | null = null;
+  let isClosed = false;
+  let retryTimeout: number | undefined;
 
-  eventSource.addEventListener("broker-status", (event) => {
-    const status = JSON.parse((event as MessageEvent).data) as { connected?: boolean };
-    onBrokerStatus(Boolean(status.connected));
-  });
+  const checkStatusFallback = async () => {
+    try {
+      const res = await fetch("/api/status", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json() as { mqttConnected?: boolean };
+        onBrokerStatus(Boolean(data.mqttConnected));
+      }
+    } catch {
+      // Ignored
+    }
+  };
 
-  eventSource.addEventListener("board-event", (event) => {
-    const boardEvent = JSON.parse((event as MessageEvent).data) as BoardEventEnvelope;
-    onBoardEvent(boardEvent);
-  });
+  // Check immediately on mount
+  void checkStatusFallback();
+  const statusTimer = window.setInterval(() => {
+    void checkStatusFallback();
+  }, 5000);
 
-  eventSource.addEventListener("rfid-enrollment", (event) => {
-    const scan = JSON.parse((event as MessageEvent).data) as {
-      rfidUid: string;
-      receivedAt: string;
+  const initEventSource = () => {
+    if (isClosed) return;
+    eventSource = new EventSource("/api/events");
+
+    eventSource.addEventListener("broker-status", (event) => {
+      const status = JSON.parse((event as MessageEvent).data) as { connected?: boolean };
+      onBrokerStatus(Boolean(status.connected));
+    });
+
+    eventSource.addEventListener("board-event", (event) => {
+      const boardEvent = JSON.parse((event as MessageEvent).data) as BoardEventEnvelope;
+      onBoardEvent(boardEvent);
+    });
+
+    eventSource.addEventListener("rfid-enrollment", (event) => {
+      const scan = JSON.parse((event as MessageEvent).data) as {
+        rfidUid: string;
+        receivedAt: string;
+      };
+      onEnrollmentScan?.(scan);
+    });
+
+    eventSource.onerror = () => {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      void checkStatusFallback();
+      if (!isClosed) {
+        retryTimeout = window.setTimeout(initEventSource, 3000);
+      }
     };
-    onEnrollmentScan?.(scan);
-  });
+  };
 
-  eventSource.onerror = () => onBrokerStatus(false);
+  initEventSource();
 
-  return () => eventSource.close();
+  return () => {
+    isClosed = true;
+    window.clearInterval(statusTimer);
+    if (retryTimeout) window.clearTimeout(retryTimeout);
+    if (eventSource) eventSource.close();
+  };
 }
 
 export async function fetchUsersDatabase(): Promise<User[]> {
@@ -126,3 +167,17 @@ export async function startFaceEnrollment(employeeId: string) {
     throw new Error(body.error || `Face enrollment failed with HTTP ${response.status}`);
   }
 }
+
+export async function sendGateOverride(action: "open" | "close" | "normal" | "buzzer_on" | "buzzer_off") {
+  const response = await fetch("/api/gate/override", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Lệnh điều khiển cổng thất bại với HTTP ${response.status}`);
+  }
+}
+
+

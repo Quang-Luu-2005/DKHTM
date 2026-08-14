@@ -6,12 +6,15 @@ import {
   CheckCircle2,
   DoorClosed,
   DoorOpen,
+  Lock,
   Radio,
   RefreshCw,
   ShieldAlert,
+  Unlock,
   WifiOff,
 } from "lucide-react";
 import type { AuditLog, HardwareState } from "../types";
+import { sendGateOverride } from "../services/boardApi";
 
 interface DashboardViewProps {
   hardware: HardwareState;
@@ -35,6 +38,18 @@ export default function DashboardView({
   const [streamVersion, setStreamVersion] = React.useState(0);
   const [frameVersion, setFrameVersion] = React.useState(() => Date.now());
   const [streamState, setStreamState] = React.useState<"connecting" | "online" | "offline">("connecting");
+  const [overrideLoading, setOverrideLoading] = React.useState<string | null>(null);
+
+  const handleGateCommand = async (action: "open" | "close" | "normal") => {
+    try {
+      setOverrideLoading(action);
+      await sendGateOverride(action);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gửi lệnh thất bại");
+    } finally {
+      setOverrideLoading(null);
+    }
+  };
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -184,6 +199,51 @@ export default function DashboardView({
           value={`${logs.filter((log) => log.status === "AUTH_ALERT").length} sự kiện`}
           tone="neutral"
         />
+      </section>
+
+      {/* Manual Gate Controls Section */}
+      <section className="rounded-2xl border border-[#1E293B] bg-[#111113] p-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-serif text-lg font-light tracking-wide text-[#F8FAFC]">
+              Điều khiển cổng thủ công
+            </h3>
+            <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
+              Gửi lệnh cưỡng bức tức thời tới ESP32 qua HiveMQ
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={overrideLoading !== null}
+              onClick={() => handleGateCommand("open")}
+              className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-emerald-300 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <Unlock className="h-4 w-4" />
+              {overrideLoading === "open" ? "Đang gửi..." : "Mở cổng"}
+            </button>
+
+            <button
+              type="button"
+              disabled={overrideLoading !== null}
+              onClick={() => handleGateCommand("close")}
+              className="flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-rose-300 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <Lock className="h-4 w-4" />
+              {overrideLoading === "close" ? "Đang gửi..." : "Khóa cổng"}
+            </button>
+
+            <button
+              type="button"
+              disabled={overrideLoading !== null}
+              onClick={() => handleGateCommand("normal")}
+              className="flex items-center gap-2 rounded-xl border border-[#334155] bg-[#1A1A1C] px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-[#94A3B8] transition-all hover:border-[#475569] hover:text-[#F8FAFC] active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`h-4 w-4 ${overrideLoading === "normal" ? "animate-spin" : ""}`} />
+              {overrideLoading === "normal" ? "Đang gửi..." : "Chế độ tự động"}
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-[#1E293B] bg-[#111113] shadow-xl">

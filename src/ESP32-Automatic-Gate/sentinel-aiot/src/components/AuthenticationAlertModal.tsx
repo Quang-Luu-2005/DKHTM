@@ -21,6 +21,7 @@ export default function AuthenticationAlertModal({
   alert,
   onClose,
 }: AuthenticationAlertModalProps) {
+  if (!alert) return null;
   const isForcedLockPresence = alert.alertType === "PRESENCE_DETECTED_DURING_FORCED_LOCK";
   const isGateClimbViolation = alert.alertType === "CLIMB_DETECTED_WHILE_GATE_CLOSED";
   const isPhysicalAlert = isForcedLockPresence || isGateClimbViolation;

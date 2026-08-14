@@ -13,7 +13,17 @@ elif (project_dir / ".env").exists():
     shared_env_path = project_dir / ".env"
 else:
     shared_env_path = project_dir.parent / ".env"
-generated_header = project_dir / "include" / "env_config.generated.h"
+
+# Support both running from subfolder or root workspace
+active_env = env.get("PIOENV", "")
+if active_env == "esp32cam-stream":
+    generated_header = project_dir / "src" / "ESP-CAM-Stream" / "include" / "env_config.generated.h"
+elif active_env == "hfr-s16":
+    generated_header = project_dir / "src" / "ESP32-CAM-HFR" / "include" / "env_config.generated.h"
+elif active_env == "esp32-gate" or project_dir.name == "ESP32-Automatic-Gate":
+    generated_header = project_dir / "src" / "ESP32-Automatic-Gate" / "include" / "env_config.generated.h"
+else:
+    generated_header = project_dir / "include" / "env_config.generated.h"
 
 
 def parse_dotenv(path: Path) -> dict[str, str]:

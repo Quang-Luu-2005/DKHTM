@@ -84,7 +84,7 @@ export default function App() {
   } | null>(null);
   const [isAuthenticationAlertOpen, setIsAuthenticationAlertOpen] = useState(false);
   const [activeAuthenticationAlert, setActiveAuthenticationAlert] =
-    useState<AuthenticationAlert>(INITIAL_AUTHENTICATION_ALERT);
+    useState<AuthenticationAlert | null>(INITIAL_AUTHENTICATION_ALERT);
 
   // Support & Settings customized form states
   const [supportMessage, setSupportMessage] = useState("");
@@ -329,6 +329,9 @@ export default function App() {
 
   const handleCloseAuthenticationAlert = () => {
     setIsAuthenticationAlertOpen(false);
+    void sendGateOverride("buzzer_off").catch((err) => {
+      console.warn("Không thể gửi lệnh tắt còi xuống thiết bị:", err);
+    });
   };
 
   // Handle support ticket submission
