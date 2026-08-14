@@ -517,29 +517,42 @@ async function persistBoardEvent(
   supabaseHealthy = true;
 }
 
-const mqttClient = mqtt.connect(mqttUrl, {
-  username: process.env.MQTT_USERNAME,
-  password: process.env.MQTT_PASSWORD,
-  clientId: `sentinel-web-${Math.random().toString(16).slice(2, 10)}`,
-  clean: true,
-  reconnectPeriod: 5000,
-  connectTimeout: 15000,
-});
+const mqttClient = mqttUrl
+  ? mqtt.connect(mqttUrl, {
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
+    clientId: `sentinel-web-${Math.random().toString(16).slice(2, 10)}`,
+    clean: true,
+    reconnectPeriod: 5000,
+    connectTimeout: 15000,
+  })
+  : ({
+    connected: false,
+    publish: (_t: string, _m: string, _o?: unknown, cb?: (err?: Error) => void) => cb?.(),
+    subscribe: (_t: string, _o?: unknown, cb?: (err?: Error) => void) => cb?.(),
+    on: () => {},
+  } as unknown as mqtt.MqttClient);
 
 void initializeSupabase();
 
-mqttClient.on("connect", () => {
-  console.log(`[MQTT] Connected to ${new URL(mqttUrl).hostname}`);
-  mqttClient.subscribe(mqttUploadTopic, { qos: 0 }, (error) => {
-    if (error) {
-      console.error(`[MQTT] Subscribe failed: ${error.message}`);
-      return;
+if (mqttUrl && mqttClient.on) {
+  mqttClient.on("connect", () => {
+    try {
+      console.log(`[MQTT] Connected to ${new URL(mqttUrl).hostname}`);
+    } catch {
+      console.log("[MQTT] Connected");
     }
-    console.log(`[MQTT] Subscribed to ${mqttUploadTopic}`);
-    if (registeredUsers.length > 0) publishRfidRegistry();
+    mqttClient.subscribe(mqttUploadTopic, { qos: 0 }, (error) => {
+      if (error) {
+        console.error(`[MQTT] Subscribe failed: ${error.message}`);
+        return;
+      }
+      console.log(`[MQTT] Subscribed to ${mqttUploadTopic}`);
+      if (registeredUsers.length > 0) publishRfidRegistry();
+    });
+    broadcast("broker-status", { connected: true });
   });
-  broadcast("broker-status", { connected: true });
-});
+}
 
 mqttClient.on("reconnect", () => {
   broadcast("broker-status", { connected: false, reconnecting: true });
@@ -690,12 +703,12 @@ app.get("/api/users", (_request, response) => {
 app.get("/api/camera/status", async (_request, response) => {
   try {
     const statusUrl = new URL(cameraStreamUrl);
-    if (!statusUrl.hostname.includes("ngrok") && !statusUrl.pathname.includes("/stream")) {
+    if (!statusUrl.hostname.includes("ngrok")) {
       statusUrl.port = "80";
     }
     statusUrl.pathname = "/status";
     statusUrl.search = "";
-    const upstreamResponse = await fetch(statusUrl, {
+    const upstreamResponse = await fetch(statusUrl.toString(), {
       signal: AbortSignal.timeout(5_000),
     });
     if (!upstreamResponse.ok) {
@@ -713,12 +726,12 @@ app.get("/api/camera/status", async (_request, response) => {
 app.get("/api/camera/capture", async (_request, response) => {
   try {
     const captureUrl = new URL(cameraStreamUrl);
-    if (!captureUrl.hostname.includes("ngrok") && !captureUrl.pathname.includes("/stream")) {
+    if (!captureUrl.hostname.includes("ngrok")) {
       captureUrl.port = "80";
     }
     captureUrl.pathname = "/capture";
     captureUrl.search = "";
-    const upstreamResponse = await fetch(captureUrl, {
+    const upstreamResponse = await fetch(captureUrl.toString(), {
       signal: AbortSignal.timeout(5_000),
     });
     if (!upstreamResponse.ok) {
