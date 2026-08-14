@@ -119,24 +119,24 @@ export default function RegistrationView({
   };
 
   const enrollmentInstruction = (() => {
-    if (!faceEnrollment) return "Chọn một nhân viên đã lưu để bắt đầu.";
-    if (faceEnrollment.status === "REQUESTING") return "Đang gửi lệnh tới cổng...";
+    if (!faceEnrollment) return "Nhập tên nhân viên và bấm nút bên dưới để bắt đầu.";
+    if (faceEnrollment.status === "REQUESTING") return "Đang gửi lệnh tới camera HFR...";
     if (faceEnrollment.status === "FAILED") {
-      return `Đăng ký thất bại: ${faceEnrollment.reason || "Không xác định"}`;
+      return `❌ Đăng ký thất bại: ${faceEnrollment.reason || "Hết thời gian hoặc không thấy mặt"}. Vui lòng thử lại.`;
     }
     if (faceEnrollment.status === "SUCCESS") {
-      return "Đã lưu đủ ba góc khuôn mặt vào flash ESP32-CAM.";
+      return "🎉 HOÀN TẤT 100%! Đã lưu 3 góc khuôn mặt vào bộ nhớ flash. Bạn có thể dừng lại.";
     }
     if (faceEnrollment.completedViews === 0) {
-      return "Nhìn thẳng vào camera và giữ khuôn mặt rõ.";
+      return "📸 BƯỚC 1/3: Nhìn THẲNG vào camera HFR (30-40cm). Đợi đèn flash chớp 3 lần.";
     }
     if (faceEnrollment.completedViews === 1) {
-      return "Góc chính diện đã xong. Quay mặt sang trái khoảng 15°.";
+      return "📸 BƯỚC 2/3: Chính diện đã xong! Hãy quay mặt sang TRÁI 15°. Đợi đèn flash chớp 3 lần.";
     }
     if (faceEnrollment.completedViews === 2) {
-      return "Góc trái đã xong. Quay mặt sang phải khoảng 15°.";
+      return "📸 BƯỚC 3/3: Góc trái đã xong! Hãy quay mặt sang PHẢI 15°. Đợi đèn flash chớp 3 lần.";
     }
-    return "Đang ghi dữ liệu khuôn mặt vào flash camera...";
+    return "Đang ghi dữ liệu nhận diện vào chip flash...";
   })();
 
   const handleSaveProfile = async (e: React.FormEvent) => {
