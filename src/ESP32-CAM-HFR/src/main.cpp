@@ -474,16 +474,26 @@ static bool initializeCamera() {
   config.pin_pwdn = CAM_PIN_PWDN;
   config.pin_reset = CAM_PIN_RESET;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_RGB565;
+  config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.jpeg_quality = 10;
+  config.fb_count = psramFound() ? 2 : 1;
+  config.grab_mode = psramFound() ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   const esp_err_t result = esp_camera_init(&config);
-  Serial.printf("CAMERA|init=%s|code=0x%x\n",
-                result == ESP_OK ? "SUCCESS" : "FAILED", result);
-  return result == ESP_OK;
+  if (result != ESP_OK) {
+    Serial.printf("CAMERA|init=FAILED|code=0x%x\n", result);
+    return false;
+  }
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor) {
+    sensor->set_vflip(sensor, 0);
+    sensor->set_hmirror(sensor, 0);
+    sensor->set_brightness(sensor, 0);
+    sensor->set_saturation(sensor, 0);
+  }
+  Serial.println("CAMERA|init=SUCCESS|format=JPEG|size=QVGA");
+  return true;
 }
 
 static void releaseCapturedFace(CapturedFace &face) {
