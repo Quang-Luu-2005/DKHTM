@@ -390,7 +390,7 @@ export default function RegistrationView({
                 // Nếu là nhân viên mới chưa lưu, tự động lưu trước rồi kích hoạt HFR
                 if (!editingUserId) {
                   try {
-                    await onSaveProfile({
+                    await onSaveUser({
                       id: userId.trim(),
                       fullName: fullName.trim(),
                       email: email.trim(),
