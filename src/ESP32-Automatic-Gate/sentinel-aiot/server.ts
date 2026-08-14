@@ -690,7 +690,9 @@ app.get("/api/users", (_request, response) => {
 app.get("/api/camera/status", async (_request, response) => {
   try {
     const statusUrl = new URL(cameraStreamUrl);
-    statusUrl.port = "80";
+    if (!statusUrl.hostname.includes("ngrok") && !statusUrl.pathname.includes("/stream")) {
+      statusUrl.port = "80";
+    }
     statusUrl.pathname = "/status";
     statusUrl.search = "";
     const upstreamResponse = await fetch(statusUrl, {
@@ -711,7 +713,9 @@ app.get("/api/camera/status", async (_request, response) => {
 app.get("/api/camera/capture", async (_request, response) => {
   try {
     const captureUrl = new URL(cameraStreamUrl);
-    captureUrl.port = "80";
+    if (!captureUrl.hostname.includes("ngrok") && !captureUrl.pathname.includes("/stream")) {
+      captureUrl.port = "80";
+    }
     captureUrl.pathname = "/capture";
     captureUrl.search = "";
     const upstreamResponse = await fetch(captureUrl, {
