@@ -506,25 +506,28 @@ static void releaseCapturedFace(CapturedFace &face) {
 static FaceFrameStatus captureUsableFace(CapturedFace &face) {
   camera_fb_t *frame = esp_camera_fb_get();
   if (!frame) {
+    Serial.println("HFR_CAPTURE|frame=NULL");
     return FaceFrameStatus::CAMERA_ERROR;
   }
 
-  face.width = frame->width;
-  face.height = frame->height;
-  const size_t rgbSize = static_cast<size_t>(face.width) * face.height * 3;
+  // Khi camera chạy JPEG, frame->width/height đôi khi là 0 trước khi giải mã.
+  // Chúng ta gán cứng kích thước theo FRAMESIZE_QVGA (320x240):
+  face.width = 320;
+  face.height = 240;
+  const size_t rgbSize = 320 * 240 * 3;
   face.bgr888 = static_cast<uint8_t *>(
       heap_caps_malloc(rgbSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!face.bgr888) {
+    Serial.println("HFR_CAPTURE|malloc=FAILED");
     esp_camera_fb_return(frame);
     return FaceFrameStatus::CAMERA_ERROR;
   }
 
-  // fmt2rgb888 produces the BGR888 byte order expected by ESP-WHO's
-  // detector/recognizer path (the official CameraWebServer uses the same flow).
   const bool converted = fmt2rgb888(frame->buf, frame->len, frame->format,
                                     face.bgr888);
   esp_camera_fb_return(frame);
   if (!converted) {
+    Serial.println("HFR_CAPTURE|conversion=FAILED");
     releaseCapturedFace(face);
     return FaceFrameStatus::CAMERA_ERROR;
   }
@@ -539,6 +542,7 @@ static FaceFrameStatus captureUsableFace(CapturedFace &face) {
     return FaceFrameStatus::NO_FACE;
   }
   if (results.size() != 1) {
+    Serial.printf("HFR_CAPTURE|multiple_faces=%u\n", static_cast<unsigned>(results.size()));
     releaseCapturedFace(face);
     return FaceFrameStatus::MULTIPLE_FACES;
   }
