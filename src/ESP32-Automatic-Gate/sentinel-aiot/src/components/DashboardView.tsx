@@ -154,6 +154,17 @@ export default function DashboardView({
             onLoad={handleFrameLoad}
             onError={handleFrameError}
           />
+          {streamState === "online" && hardware.authenticationSessionActive && (
+            <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+              <span className="flex items-center gap-2 px-3 py-1 rounded-lg bg-sky-500/90 text-white font-mono text-[10px] font-bold uppercase tracking-widest shadow-lg animate-pulse backdrop-blur-sm">
+                <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                📸 PHÁT HIỆN KHUÔN MẶT • ĐANG QUÉT AI
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-black/75 text-sky-300 font-mono text-[9px] border border-sky-500/40 backdrop-blur-sm">
+                CỰ LY GẦN
+              </span>
+            </div>
+          )}
           {streamState !== "online" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
               {streamState === "connecting" ? (
