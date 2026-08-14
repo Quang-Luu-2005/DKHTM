@@ -601,9 +601,9 @@ void loop() {
   process_esp_now_face_result();
   update_face_scan();
 
-  // Nút bấm khẩn cấp/Cứu hộ (Khi mất Wi-Fi hoặc cần tắt còi cảnh báo đưa về bình thường):
+  // Nút Reset Phiên Làm Việc Mới (New Session Reset):
   if (button.is_pressed()) {
-    Serial.println("EMERGENCY_BUTTON|PRESSED|Resetting alert & restoring normal mode");
+    Serial.println("NEW_SESSION_BUTTON|PRESSED|Resetting old state & starting fresh session");
     buzzer.is_siren_active = false;
     buzzer.no_sound();
     clear_rfid_authorization();
@@ -611,12 +611,14 @@ void loop() {
     cancel_face_scan();
     authenticationAlertSent = false;
     gateViolationAlertSent = false;
-    authenticationSessionActive = false;
     g_config.system_state = state_normal;
     gate.close();
     gate.state = GATE_CLOSED;
     led.light_red();
-    buzzer.high_pitch(150);
+
+    // Bắt đầu một phiên xác thực hoàn toàn mới
+    start_authentication_session(false, "manual_button_reset");
+    buzzer.high_pitch(120);
   }
 
   if (faceEnrollmentPending &&
