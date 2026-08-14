@@ -31,8 +31,8 @@ constexpr int CAM_PIN_PCLK = 22;
 constexpr int FLASH_LED_PIN = 4;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 5000;
 constexpr unsigned long ESP_NOW_RETRY_INTERVAL_MS = 3000;
-constexpr unsigned long FACE_DETECTION_INTERVAL_MS = 900;
-constexpr unsigned long FACE_CLEAR_TIMEOUT_MS = 1800;
+constexpr unsigned long FACE_DETECTION_INTERVAL_MS = 250;
+constexpr unsigned long FACE_CLEAR_TIMEOUT_MS = 1000;
 constexpr size_t DETECTION_BUFFER_SIZE = 320 * 240 * 3;
 
 httpd_handle_t controlServer = nullptr;
@@ -466,5 +466,5 @@ void loop() {
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
-  delay(100);
+  delay(10);
 }
