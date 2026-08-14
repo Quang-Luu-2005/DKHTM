@@ -601,6 +601,24 @@ void loop() {
   process_esp_now_face_result();
   update_face_scan();
 
+  // Nút bấm khẩn cấp/Cứu hộ (Khi mất Wi-Fi hoặc cần tắt còi cảnh báo đưa về bình thường):
+  if (button.is_pressed()) {
+    Serial.println("EMERGENCY_BUTTON|PRESSED|Resetting alert & restoring normal mode");
+    buzzer.is_siren_active = false;
+    buzzer.no_sound();
+    clear_rfid_authorization();
+    clear_failed_attempts();
+    cancel_face_scan();
+    authenticationAlertSent = false;
+    gateViolationAlertSent = false;
+    authenticationSessionActive = false;
+    g_config.system_state = state_normal;
+    gate.close();
+    gate.state = GATE_CLOSED;
+    led.light_red();
+    buzzer.high_pitch(150);
+  }
+
   if (faceEnrollmentPending &&
       millis() - faceEnrollmentStartedAt >= FACE_ENROLLMENT_TIMEOUT_MS) {
     mqtt_upload_face_enrollment("FAILED", faceEnrollmentEmployeeId.c_str(),
