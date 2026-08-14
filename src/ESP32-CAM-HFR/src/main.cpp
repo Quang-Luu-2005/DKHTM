@@ -260,21 +260,17 @@ static bool ensureEspNowPeer(const uint8_t *address) {
 static bool sendEspNowResult(const sentinel_now::Message &result,
                              const uint8_t *destination) {
   if (!espNowReady) return false;
-  if (!ensureEspNowPeer(destination)) {
-    Serial.println("ESP-NOW camera result failed: cannot add controller peer");
-    return false;
-  }
-  const esp_err_t sendResult = esp_now_send(
-      destination, reinterpret_cast<const uint8_t *>(&result),
-      sizeof(result));
+  ensureEspNowPeer(destination);
+  esp_now_send(destination, reinterpret_cast<const uint8_t *>(&result), sizeof(result));
+  const esp_err_t broadcastResult = esp_now_send(
+      BROADCAST_ADDRESS, reinterpret_cast<const uint8_t *>(&result), sizeof(result));
   Serial.printf(
-      "ESP-NOW RESULT unicast|type=%u|session=%lu|sequence=%lu|result=%s|to=%02X:%02X:%02X:%02X:%02X:%02X|code=%d\n",
+      "ESP-NOW RESULT sent|type=%u|session=%lu|sequence=%lu|result=%s|code=%d\n",
       static_cast<unsigned>(result.type),
       static_cast<unsigned long>(result.sessionId),
       static_cast<unsigned long>(result.sequence),
-      sentinel_now::resultName(result.result), destination[0], destination[1],
-      destination[2], destination[3], destination[4], destination[5], sendResult);
-  return sendResult == ESP_OK;
+      sentinel_now::resultName(result.result), broadcastResult);
+  return broadcastResult == ESP_OK;
 }
 
 static int readStoredEmbeddingCount() {

@@ -259,9 +259,7 @@ void process_esp_now_face_result() {
 
   if (result.type == sentinel_now::MessageType::ENROLL_PROGRESS ||
       result.type == sentinel_now::MessageType::ENROLL_RESULT) {
-    if (!faceEnrollmentPending ||
-        result.sequence != faceEnrollmentSequence ||
-        !faceEnrollmentEmployeeId.equalsIgnoreCase(result.employeeId)) {
+    if (!faceEnrollmentPending) {
       Serial.println("Ignored stale ESP-NOW enrollment result");
       return;
     }
@@ -276,10 +274,10 @@ void process_esp_now_face_result() {
 
     const bool success = result.result == sentinel_now::FaceResult::VERIFIED;
     mqtt_upload_face_enrollment(success ? "SUCCESS" : "FAILED",
-                                result.employeeId, "", result.attempt,
+                                faceEnrollmentEmployeeId.c_str(), "", result.attempt,
                                 result.reason);
     Serial.printf("Face enrollment finished|employee=%s|status=%s|reason=%s\n",
-                  result.employeeId, success ? "SUCCESS" : "FAILED",
+                  faceEnrollmentEmployeeId.c_str(), success ? "SUCCESS" : "FAILED",
                   result.reason);
     faceEnrollmentPending = false;
     faceEnrollmentSequence = 0;
