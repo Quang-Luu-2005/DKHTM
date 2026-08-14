@@ -175,6 +175,12 @@ export default function App() {
             next.indicatorLed = "RED / RESTRICTED";
           }
 
+          if (result === "authentication_session_started" || payload.status === "authentication_session_started" || eventType === "FACE_DETECTED") {
+            next.authenticationSessionActive = true;
+          } else if (result === "authentication_session_ended" || payload.status === "authentication_session_ended" || result === "granted" || result === "denied" || result === "closed") {
+            next.authenticationSessionActive = false;
+          }
+
           if (buzzer === "active" || result === "buzzer_active") {
             next.systemBuzzer = "ACTIVE";
           } else if (buzzer === "muted" || result === "buzzer_muted") {
