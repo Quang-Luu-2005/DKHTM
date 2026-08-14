@@ -23,7 +23,7 @@ const mqttUrl = process.env.MQTT_URL || (process.env.MQTT_SERVER
 const mqttUploadTopic = process.env.MQTT_UPLOAD_TOPIC || "/board/upload/data";
 const mqttCommandTopic = process.env.MQTT_COMMAND_TOPIC || "/board/get/data";
 const cameraStreamUrl = process.env.CAMERA_STREAM_URL ||
-  `http://${process.env.CAMERA_HOSTNAME || "sentinel-stream-cam"}.local:${process.env.STREAM_PORT || "81"}/stream`;
+  "https://emotion-unhitched-unvented.ngrok-free.dev";
 const enrollmentWindowMs = 30_000;
 const maxLocalRfidRecords = 20;
 const smtpPort = Number(process.env.SMTP_PORT || 465);
