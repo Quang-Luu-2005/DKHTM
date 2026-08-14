@@ -45,7 +45,7 @@ constexpr int CAM_PIN_VSYNC = 25;
 constexpr int CAM_PIN_HREF = 23;
 constexpr int CAM_PIN_PCLK = 22;
 constexpr int FLASH_LED_PIN = 4;
-constexpr int MIN_FACE_SIZE_PX = 70;
+constexpr int MIN_FACE_SIZE_PX = 45;
 constexpr uint32_t FLASH_ON_MS = 180;
 constexpr uint32_t FLASH_OFF_MS = 180;
 constexpr uint32_t FACE_STORE_MAGIC = 0x53465248; // "HFRS"
@@ -653,15 +653,15 @@ static bool sendEnrollmentUpdate(const sentinel_now::Message &request,
 
 static bool enrollOneView(const String &employeeId, const char *view,
                           int &enrolledFaceId, String &failureReason) {
-  Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=4000\n",
+  Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=2000\n",
                 employeeId.c_str(), view);
-  delay(4000);
+  delay(2000);
 
   CapturedFace face;
   int attemptsUsed = 0;
   const uint32_t startedAt = millis();
   const FaceFrameStatus status =
-      captureUsableFaceWithRetries(face, 10, 180, attemptsUsed);
+      captureUsableFaceWithRetries(face, 25, 120, attemptsUsed);
   if (status != FaceFrameStatus::READY) {
     failureReason = statusName(status);
     Serial.printf(
