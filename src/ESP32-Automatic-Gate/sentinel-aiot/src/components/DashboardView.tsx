@@ -56,10 +56,11 @@ export default function DashboardView({
   }, [streamVersion]);
 
   React.useEffect(() => {
-    if (streamState !== "online") return;
-    const frameTimer = window.setInterval(() => setFrameVersion(Date.now()), 500);
+    const frameTimer = window.setInterval(() => {
+      setFrameVersion(Date.now());
+    }, 350);
     return () => window.clearInterval(frameTimer);
-  }, [streamState, streamVersion]);
+  }, []);
 
   const reconnectStream = () => {
     setStreamState("connecting");
@@ -138,7 +139,7 @@ export default function DashboardView({
         <div className="relative aspect-video min-h-[240px] bg-black">
           <img
             key={streamVersion}
-            src={`/api/camera/stream?v=${streamVersion}`}
+            src={`/api/camera/capture?v=${streamVersion}-${frameVersion}`}
             alt="Luồng trực tiếp từ camera ESP32-CAM"
             className={`h-full w-full object-contain transition-opacity duration-300 ${streamState === "offline" ? "opacity-0" : "opacity-100"}`}
             onLoad={() => setStreamState("online")}
