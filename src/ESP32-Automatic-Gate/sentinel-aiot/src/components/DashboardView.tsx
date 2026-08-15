@@ -84,14 +84,13 @@ export default function DashboardView({
             Node uplink: ESP32_SEC_01 • Cổng chính sảnh
           </p>
           <h2 className="mt-2 font-serif text-3xl font-light tracking-wide text-[#F8FAFC]">
-            Giám sát xác thực tại cổng
+            HỆ THỐNG CỔNG AN NINH CHO CÔNG TY
           </h2>
         </div>
-        <div className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 font-mono text-[10px] uppercase tracking-widest ${
-          mqttConnected ? statusStyle.online : statusStyle.warning
-        }`}>
+        <div className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 font-mono text-[10px] uppercase tracking-widest ${mqttConnected ? statusStyle.online : statusStyle.warning
+          }`}>
           {mqttConnected ? <Radio className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-          {mqttConnected ? "HiveMQ đang kết nối" : "Mất kết nối telemetry"}
+          {mqttConnected ? "HiveMQ đã kết nối" : "Mất kết nối server"}
         </div>
       </section>
 
@@ -118,19 +117,18 @@ export default function DashboardView({
             </div>
             <div>
               <h3 className="font-serif text-lg font-light tracking-wide text-[#F8FAFC]">
-                Camera stream trực tiếp
+                CAMERA STREAM
               </h3>
               <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
-                ESP-DL Face Detect • Live JPEG nội bộ
+                ESP-DL Face Detect • Live JPEG
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`rounded-lg border px-2.5 py-1 font-mono text-[9px] uppercase ${
-              streamState === "online"
-                ? statusStyle.online
-                : streamState === "offline" ? statusStyle.warning : statusStyle.neutral
-            }`}>
+            <span className={`rounded-lg border px-2.5 py-1 font-mono text-[9px] uppercase ${streamState === "online"
+              ? statusStyle.online
+              : streamState === "offline" ? statusStyle.warning : statusStyle.neutral
+              }`}>
               {streamState === "online" ? "Đang phát" : streamState === "offline" ? "Mất tín hiệu" : "Đang kết nối"}
             </span>
             <button
@@ -158,7 +156,7 @@ export default function DashboardView({
             <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
               <span className="flex items-center gap-2 px-3 py-1 rounded-lg bg-sky-500/90 text-white font-mono text-[10px] font-bold uppercase tracking-widest shadow-lg animate-pulse backdrop-blur-sm">
                 <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                📸 PHÁT HIỆN KHUÔN MẶT • ĐANG QUÉT AI
+                ĐÃ PHÁT HIỆN 1 KHUÔN MẶT - ĐANG QUÉT ID
               </span>
               <span className="px-2.5 py-1 rounded-lg bg-black/75 text-sky-300 font-mono text-[9px] border border-sky-500/40 backdrop-blur-sm">
                 CỰ LY GẦN
@@ -173,7 +171,7 @@ export default function DashboardView({
                 <WifiOff className="h-7 w-7 text-amber-300" />
               )}
               <p className="font-mono text-[10px] uppercase tracking-widest text-[#64748B]">
-                {streamState === "connecting" ? "Đang nhận khung hình đầu tiên" : "Không kết nối được camera stream"}
+                {streamState === "connecting" ? "Đang nhận khung hình" : "Không kết nối được camera"}
               </p>
             </div>
           )}
@@ -215,7 +213,7 @@ export default function DashboardView({
               Điều khiển cổng thủ công
             </h3>
             <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
-              Gửi lệnh cưỡng bức tức thời tới ESP32 qua HiveMQ
+              Gửi lệnh tới ESP32 qua HiveMQ
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -246,7 +244,7 @@ export default function DashboardView({
               className="flex items-center gap-2 rounded-xl border border-[#334155] bg-[#1A1A1C] px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-[#94A3B8] transition-all hover:border-[#475569] hover:text-[#F8FAFC] active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`h-4 w-4 ${overrideLoading === "normal" ? "animate-spin" : ""}`} />
-              {overrideLoading === "normal" ? "Đang gửi..." : "Chế độ tự động"}
+              {overrideLoading === "normal" ? "Đang gửi..." : "Bình thường"}
             </button>
           </div>
         </div>
@@ -259,7 +257,7 @@ export default function DashboardView({
               Nhật ký gần nhất
             </h3>
             <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
-              Dữ liệu nhận qua HiveMQ • chỉ giám sát
+              Dữ liệu nhận qua HiveMQ
             </p>
           </div>
           <CheckCircle2 className="h-5 w-5 text-emerald-400" />
@@ -282,13 +280,12 @@ export default function DashboardView({
                 </div>
                 <span className="font-mono text-[10px] uppercase text-[#94A3B8]">{log.accessMethod}</span>
                 <span className="font-mono text-[10px] text-sky-400">{log.executionTime || "0.8s"}</span>
-                <span className={`w-fit rounded-lg border px-2.5 py-1 font-mono text-[9px] uppercase ${
-                  log.status === "ONLINE"
-                    ? statusStyle.online
-                    : log.status === "AUTH_ALERT"
-                      ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                      : statusStyle.warning
-                }`}>
+                <span className={`w-fit rounded-lg border px-2.5 py-1 font-mono text-[9px] uppercase ${log.status === "ONLINE"
+                  ? statusStyle.online
+                  : log.status === "AUTH_ALERT"
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                    : statusStyle.warning
+                  }`}>
                   {log.status === "ONLINE" ? "THÀNH CÔNG" : log.status === "AUTH_FAILURE" ? "TỪ CHỐI" : log.status}
                 </span>
               </div>
