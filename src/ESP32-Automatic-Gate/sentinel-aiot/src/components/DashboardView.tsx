@@ -80,9 +80,6 @@ export default function DashboardView({
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#64748B]">
-            Node uplink: ESP32_SEC_01 • Cổng chính sảnh
-          </p>
           <h2 className="mt-2 font-serif text-3xl font-light tracking-wide text-[#F8FAFC]">
             HỆ THỐNG CỔNG AN NINH CHO CÔNG TY
           </h2>
