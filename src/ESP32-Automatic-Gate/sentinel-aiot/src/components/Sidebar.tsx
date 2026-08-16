@@ -1,0 +1,138 @@
+import React from "react";
+import { Camera, LayoutDashboard, UserPlus, History, LifeBuoy, Settings2 } from "lucide-react";
+
+interface SidebarProps {
+  currentTab: string;
+  setCurrentTab: (tab: string) => void;
+}
+
+export default function Sidebar({
+  currentTab,
+  setCurrentTab,
+}: SidebarProps) {
+  const [previewFrame, setPreviewFrame] = React.useState(() => Date.now());
+  const [previewOnline, setPreviewOnline] = React.useState(true);
+
+  React.useEffect(() => {
+    if (currentTab === "dashboard") return;
+    setPreviewFrame(Date.now());
+    const timer = window.setInterval(() => setPreviewFrame(Date.now()), 750);
+    return () => window.clearInterval(timer);
+  }, [currentTab]);
+
+  const menuItems = [
+    { id: "dashboard", label: "Tổng quan hệ thống", icon: LayoutDashboard },
+    { id: "registration", label: "Quản lý nhân viên", icon: UserPlus },
+    { id: "logs", label: "Nhật ký vận hành", icon: History }
+  ];
+
+  const mobileMenuItems = [
+    { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
+    { id: "registration", label: "Nhân viên", icon: UserPlus },
+    { id: "logs", label: "Nhật ký", icon: History },
+    { id: "settings", label: "Cấu hình", icon: Settings2 },
+    { id: "support", label: "Hỗ trợ", icon: LifeBuoy }
+  ];
+
+  return (
+    <>
+      {/* Desktop Sidebar Administrative Navigation Rail (Visible on Large Screens) */}
+      <aside className="hidden lg:flex flex-col w-64 fixed left-0 top-16 bottom-0 bg-[#111113] border-r border-[#1E293B] py-8 px-4 z-40">
+        {/* Primary Sidebar Navigation */}
+        <nav className="flex-1 flex flex-col gap-2 mt-4">
+          {menuItems.map((item) => {
+            const isActive = currentTab === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setCurrentTab(item.id)}
+                className={`flex items-center gap-3.5 px-4 py-3 rounded-xl font-sans text-[10px] uppercase tracking-widest transition-all cursor-pointer border ${
+                  isActive
+                    ? "bg-[#1A1A1C] text-[#F8FAFC] border-[#334155]"
+                    : "text-[#64748B] hover:text-[#94A3B8] hover:bg-[#1A1A1C]/50 border-transparent"
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? "text-[#94A3B8]" : "text-[#64748B]"}`} />
+                {item.label}
+              </button>
+            );
+          })}
+
+          {currentTab !== "dashboard" && (
+            <section className="mt-2 overflow-hidden rounded-xl border border-[#1E293B] bg-[#0A0A0B] shadow-lg">
+              <div className="flex items-center justify-between border-b border-[#1E293B] px-3 py-2">
+                <div className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-widest text-[#94A3B8]">
+                  <Camera className="h-3.5 w-3.5 text-sky-300" />
+                  Camera COM10
+                </div>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    previewOnline ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]" : "bg-amber-400"
+                  }`}
+                  aria-label={previewOnline ? "Camera đang trực tuyến" : "Camera mất tín hiệu"}
+                />
+              </div>
+              <div className="relative aspect-video bg-black">
+                <img
+                  src={`/api/camera/capture?sidebar=${previewFrame}`}
+                  alt="Camera stream thu nhỏ ESP32-CAM"
+                  className={`h-full w-full object-cover transition-opacity ${previewOnline ? "opacity-100" : "opacity-25"}`}
+                  onLoad={() => setPreviewOnline(true)}
+                  onError={() => setPreviewOnline(false)}
+                />
+                {!previewOnline && (
+                  <div className="absolute inset-0 flex items-center justify-center px-3 text-center font-mono text-[8px] uppercase tracking-wider text-amber-300">
+                    Mất tín hiệu camera
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+        </nav>
+
+        {/* Footer / Emergency Trigger section */}
+        <div className="mt-auto pt-6 border-t border-[#1E293B] flex flex-col gap-3">
+          <button
+            onClick={() => setCurrentTab("support")}
+            className="flex items-center gap-4 px-4 py-2.5 font-sans text-[10px] uppercase tracking-widest text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#1A1A1C] rounded-xl transition-all cursor-pointer"
+          >
+            <LifeBuoy className="w-4 h-4" />
+            Hỗ trợ
+          </button>
+          <button
+            onClick={() => setCurrentTab("settings")}
+            className="flex items-center gap-4 px-4 py-2.5 font-sans text-[10px] uppercase tracking-widest text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#1A1A1C] rounded-xl transition-all cursor-pointer"
+          >
+            <Settings2 className="w-4 h-4" />
+            Cài đặt
+          </button>
+
+          <div className="rounded-xl border border-[#1E293B] bg-[#161618] px-4 py-3 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
+            Dashboard chỉ giám sát
+          </div>
+        </div>
+      </aside>
+
+      {/* Responsive Bottom Navigation Bar (Visible on Mobile and Tablet Screens) */}
+      <footer className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#111113] border-t border-[#1E293B] z-50 flex justify-around items-center px-4 shadow-2xl">
+        {mobileMenuItems.map((tab) => {
+          const isActive = currentTab === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setCurrentTab(tab.id)}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-colors ${
+                isActive ? "text-[#F8FAFC]" : "text-[#64748B] hover:text-[#94A3B8]"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="text-[9px] uppercase tracking-wider font-mono font-medium">{tab.label}</span>
+            </button>
+          );
+        })}
+      </footer>
+    </>
+  );
+}
