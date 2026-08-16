@@ -31,8 +31,8 @@ constexpr int CAM_PIN_PCLK = 22;
 constexpr int FLASH_LED_PIN = 4;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 5000;
 constexpr unsigned long ESP_NOW_RETRY_INTERVAL_MS = 3000;
-constexpr unsigned long FACE_DETECTION_INTERVAL_MS = 250;
-constexpr unsigned long FACE_CLEAR_TIMEOUT_MS = 1000;
+constexpr unsigned long FACE_DETECTION_INTERVAL_MS = 600;
+constexpr unsigned long FACE_CLEAR_TIMEOUT_MS = 1500;
 constexpr size_t DETECTION_BUFFER_SIZE = 320 * 240 * 3;
 
 httpd_handle_t controlServer = nullptr;
@@ -198,9 +198,10 @@ esp_err_t statusHandler(httpd_req_t *request) {
   char response[256];
   snprintf(response, sizeof(response),
            "{\"online\":true,\"hostname\":\"%s.local\",\"ip\":\"%s\","
-           "\"rssi\":%d,\"streamPort\":%u,\"flash\":%s,\"uptimeMs\":%lu}",
+           "\"rssi\":%d,\"streamPort\":%u,\"flash\":%s,\"faceDetected\":%s,\"faceCount\":%u,\"uptimeMs\":%lu}",
            CAMERA_HOSTNAME, WiFi.localIP().toString().c_str(), WiFi.RSSI(),
            CAMERA_STREAM_PORT, flashLedEnabled ? "true" : "false",
+           faceDetected ? "true" : "false", faceDetected ? 1 : 0,
            static_cast<unsigned long>(millis()));
   setCommonHeaders(request);
   httpd_resp_set_type(request, "application/json");
@@ -466,5 +467,5 @@ void loop() {
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
-  delay(10);
+  delay(30);
 }

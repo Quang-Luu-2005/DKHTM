@@ -225,6 +225,23 @@ export default function RegistrationView({
           </p>
         </div>
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={async () => {
+              if (confirm("Bạn có chắc chắn muốn XÓA SẠCH toàn bộ khuôn mặt đã lưu trong bộ nhớ Flash của Camera HFR về 0?")) {
+                try {
+                  const res = await fetch("http://172.20.10.5/clear", { signal: AbortSignal.timeout(3000) }).catch(() => fetch("/api/camera/hfr/clear"));
+                  const data = await res.json();
+                  alert(data.success ? "🎉 Đã xóa sạch toàn bộ Face ID trên Camera HFR!" : "Lỗi: " + (data.message || data.error));
+                } catch {
+                  alert("Không thể kết nối trực tiếp tới Camera HFR qua Wi-Fi.");
+                }
+              }
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 rounded-xl transition-all text-[9px] font-sans uppercase tracking-widest cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Xóa sạch Face ID Camera
+          </button>
           <button className="flex items-center gap-2 px-3.5 py-2 border border-[#1E293B] hover:border-[#334155] text-[#64748B] hover:text-[#94A3B8] rounded-xl transition-all text-[9px] font-sans uppercase tracking-widest cursor-pointer">
             <Download className="w-3.5 h-3.5" />
             Xuất dữ liệu

@@ -655,6 +655,45 @@ app.get("/api/users", (_request, response) => {
   response.json({ users: registeredUsers });
 });
 
+app.post("/api/camera/hfr/clear", async (_request, response) => {
+  const hfrUrl = process.env.HFR_CAMERA_URL || "http://172.20.10.5";
+  try {
+    const res = await fetch(`${hfrUrl}/clear`, { signal: AbortSignal.timeout(4_000) });
+    if (res.ok) {
+      const data = await res.json();
+      response.json(data);
+      return;
+    }
+    response.status(502).json({ error: `HFR returned HTTP ${res.status}` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Cannot reach HFR camera";
+    response.status(502).json({ error: message });
+  }
+});
+
+app.post("/api/camera/hfr/delete", async (request, response) => {
+  const empId = typeof request.body?.id === "string" ? request.body.id.trim() : "";
+  if (!empId) {
+    response.status(400).json({ error: "Missing employee id" });
+    return;
+  }
+  const hfrUrl = process.env.HFR_CAMERA_URL || "http://172.20.10.5";
+  try {
+    const res = await fetch(`${hfrUrl}/delete?id=${encodeURIComponent(empId)}`, {
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      response.json(data);
+      return;
+    }
+    response.status(502).json({ error: `HFR returned HTTP ${res.status}` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Cannot reach HFR camera";
+    response.status(502).json({ error: message });
+  }
+});
+
 app.get("/api/camera/status", async (_request, response) => {
   try {
     const statusUrl = new URL(cameraStreamUrl);

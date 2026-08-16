@@ -1,29 +1,30 @@
 #include <Arduino.h>
-#include <WiFi.h>
+#include "EspNowFaceProtocol.h"
+#include "env_config.generated.h"
 #include "esp_camera.h"
 #include "esp_heap_caps.h"
+#include "esp_http_server.h"
 #include "esp_now.h"
 #include "esp_partition.h"
 #include "esp_rom_crc.h"
 #include "esp_wifi.h"
-#include "img_converters.h"
-#include <cstring>
-#include "EspNowFaceProtocol.h"
-#include "env_config.generated.h"
 #include "face_recognition_112_v1_s16.hpp"
 #include "face_recognition_112_v1_s8.hpp"
 #include "human_face_detect_mnp01.hpp"
 #include "human_face_detect_msr01.hpp"
+#include "img_converters.h"
+#include <WiFi.h>
+#include <cstring>
 
 #ifndef HFR_QUANT_S16
 #define HFR_QUANT_S16 1
 #endif
 
 #if HFR_QUANT_S16
-using BenchmarkRecognizer = FaceRecognition112V1S16;
+    using BenchmarkRecognizer = FaceRecognition112V1S16;
 constexpr const char *MODEL_NAME = "FaceRecognition112V1S16";
 #else
-using BenchmarkRecognizer = FaceRecognition112V1S8;
+    using BenchmarkRecognizer = FaceRecognition112V1S8;
 constexpr const char *MODEL_NAME = "FaceRecognition112V1S8";
 #endif
 
@@ -105,13 +106,22 @@ struct CapturedFace {
 
 static const char *statusName(FaceFrameStatus status) {
   switch (status) {
-  case FaceFrameStatus::READY: return "READY";
-  case FaceFrameStatus::NO_FACE: return "NO_FACE";
-  case FaceFrameStatus::MULTIPLE_FACES: return "MULTIPLE_FACES";
-  case FaceFrameStatus::FACE_TOO_SMALL: return "FACE_TOO_SMALL";
-  default: return "CAMERA_ERROR";
+  case FaceFrameStatus::READY:
+    return "READY";
+  case FaceFrameStatus::NO_FACE:
+    return "NO_FACE";
+  case FaceFrameStatus::MULTIPLE_FACES:
+    return "MULTIPLE_FACES";
+  case FaceFrameStatus::FACE_TOO_SMALL:
+    return "FACE_TOO_SMALL";
+  default:
+    return "CAMERA_ERROR";
   }
 }
+
+static int persistEmbeddingsToFlash();
+static bool clearStoredEmbeddings();
+static int readStoredEmbeddingCount();
 
 static void printMemory(const char *stage) {
   Serial.printf(
@@ -139,7 +149,8 @@ static void onEspNowDataSent(const uint8_t *, esp_now_send_status_t status) {
 static void onEspNowDataReceived(const uint8_t *sender, const uint8_t *data,
                                  int length) {
   if (!sender || !data ||
-      length != static_cast<int>(sizeof(sentinel_now::Message))) return;
+      length != static_cast<int>(sizeof(sentinel_now::Message)))
+    return;
   sentinel_now::Message message = {};
   memcpy(&message, data, sizeof(message));
   const bool scanRequest =
@@ -161,7 +172,8 @@ static void onEspNowDataReceived(const uint8_t *sender, const uint8_t *data,
 }
 
 static bool addEspNowBroadcastPeer() {
-  if (esp_now_is_peer_exist(BROADCAST_ADDRESS)) return true;
+  if (esp_now_is_peer_exist(BROADCAST_ADDRESS))
+    return true;
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, BROADCAST_ADDRESS, sizeof(BROADCAST_ADDRESS));
   peer.channel = 0;
@@ -177,7 +189,8 @@ static bool selectEspNowChannelFromAccessPoint(uint8_t &primaryChannel) {
   const int networkCount = WiFi.scanNetworks(false, true);
   int targetRssi = -127;
   for (int index = 0; index < networkCount; ++index) {
-    if (WiFi.SSID(index) != WIFI_SSID) continue;
+    if (WiFi.SSID(index) != WIFI_SSID)
+      continue;
     primaryChannel = static_cast<uint8_t>(WiFi.channel(index));
     targetRssi = WiFi.RSSI(index);
     break;
@@ -185,17 +198,112 @@ static bool selectEspNowChannelFromAccessPoint(uint8_t &primaryChannel) {
   WiFi.scanDelete();
 
   if (primaryChannel == 0) {
-    Serial.printf("ESP-NOW camera setup failed: configured WiFi not visible|networks=%d\n",
+    Serial.printf("ESP-NOW camera setup failed: configured WiFi not "
+                  "visible|networks=%d\n",
                   networkCount);
     return false;
   }
   if (esp_wifi_set_channel(primaryChannel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
-    Serial.println("ESP-NOW camera setup failed: cannot select scanned WiFi channel");
+    Serial.println(
+        "ESP-NOW camera setup failed: cannot select scanned WiFi channel");
     return false;
   }
   Serial.printf("ESP-NOW camera channel fallback|channel=%u|rssi=%d\n",
                 primaryChannel, targetRssi);
   return true;
+}
+
+static httpd_handle_t hfrHttpServer = nullptr;
+
+static esp_err_t httpClearHandler(httpd_req_t *req) {
+  if (recognizer) {
+    recognizer->clear_id(false);
+  }
+  const bool ok = clearStoredEmbeddings();
+  const char *resp = ok ? "{\"success\":true,\"message\":\"CLEARED_ALL_FACES\"}"
+                        : "{\"success\":false,\"message\":\"CLEAR_FAILED\"}";
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  Serial.printf("HTTP_API|action=CLEAR_ALL|result=%s\n", ok ? "SUCCESS" : "FAILED");
+  return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t httpDeleteHandler(httpd_req_t *req) {
+  char query[64] = {};
+  char empId[32] = {};
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+    httpd_query_key_value(query, "id", empId, sizeof(empId));
+  }
+  if (strlen(empId) == 0) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    return httpd_resp_send(req, "{\"error\":\"Missing employee id\"}", HTTPD_RESP_USE_STRLEN);
+  }
+
+  int deletedCount = 0;
+  if (recognizer) {
+    const std::vector<face_info_t> previousIds =
+        recognizer->get_enrolled_ids_with_name(std::string(empId));
+    for (const face_info_t &face : previousIds) {
+      if (recognizer->delete_id(face.id, false) == ESP_OK) {
+        deletedCount++;
+      }
+    }
+    persistEmbeddingsToFlash();
+  }
+
+  char resp[128] = {};
+  snprintf(resp, sizeof(resp), "{\"success\":true,\"employee_id\":\"%s\",\"deleted\":%d}",
+           empId, deletedCount);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  Serial.printf("HTTP_API|action=DELETE_EMPLOYEE|id=%s|deleted=%d\n", empId, deletedCount);
+  return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t httpStatusHandler(httpd_req_t *req) {
+  const int ramCount = recognizer ? recognizer->get_enrolled_id_num() : 0;
+  const int flashCount = readStoredEmbeddingCount();
+  char resp[256] = {};
+  snprintf(resp, sizeof(resp),
+           "{\"online\":true,\"role\":\"HFR_FACE_RECOGNITION\",\"enrolled\":%d,\"persisted\":%d,\"esp_now\":%s,\"heap_free\":%u}",
+           ramCount, flashCount, espNowReady ? "true" : "false", ESP.getFreeHeap());
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+}
+
+static void startHfrHttpServer() {
+  if (hfrHttpServer || WiFi.status() != WL_CONNECTED) return;
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 80;
+  config.ctrl_port = 32770;
+  config.stack_size = 4096;
+
+  httpd_uri_t clearUri = {
+      .uri = "/clear",
+      .method = HTTP_GET,
+      .handler = httpClearHandler,
+      .user_ctx = nullptr};
+  httpd_uri_t deleteUri = {
+      .uri = "/delete",
+      .method = HTTP_GET,
+      .handler = httpDeleteHandler,
+      .user_ctx = nullptr};
+  httpd_uri_t statusUri = {
+      .uri = "/status",
+      .method = HTTP_GET,
+      .handler = httpStatusHandler,
+      .user_ctx = nullptr};
+
+  if (httpd_start(&hfrHttpServer, &config) == ESP_OK) {
+    httpd_register_uri_handler(hfrHttpServer, &clearUri);
+    httpd_register_uri_handler(hfrHttpServer, &deleteUri);
+    httpd_register_uri_handler(hfrHttpServer, &statusUri);
+    Serial.printf("HFR_HTTP_SERVER|started=1|ip=%s:80|endpoints=/clear,/delete,/status\n",
+                  WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("HFR_HTTP_SERVER|start=FAILED");
+  }
 }
 
 static bool setupEspNowTransport() {
@@ -220,10 +328,12 @@ static bool setupEspNowTransport() {
       Serial.println("ESP-NOW camera setup failed: cannot read WiFi channel");
       return false;
     }
+    startHfrHttpServer();
   } else {
     Serial.printf("ESP-NOW camera WiFi timeout|status=%d\n",
                   static_cast<int>(WiFi.status()));
-    if (!selectEspNowChannelFromAccessPoint(primaryChannel)) return false;
+    if (!selectEspNowChannelFromAccessPoint(primaryChannel))
+      return false;
   }
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW camera setup failed: esp_now_init");
@@ -242,13 +352,16 @@ static bool setupEspNowTransport() {
   Serial.printf("ESP-NOW camera ready|mac=%s|ip=%s|channel=%u|transport=%s\n",
                 WiFi.macAddress().c_str(), WiFi.localIP().toString().c_str(),
                 primaryChannel,
-                espNowUsesChannelFallback ? "channel_fallback" : "wifi_associated");
+                espNowUsesChannelFallback ? "channel_fallback"
+                                          : "wifi_associated");
   return true;
 }
 
 static bool ensureEspNowPeer(const uint8_t *address) {
-  if (!address) return false;
-  if (esp_now_is_peer_exist(address)) return true;
+  if (!address)
+    return false;
+  if (esp_now_is_peer_exist(address))
+    return true;
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, address, 6);
   peer.channel = 0;
@@ -259,28 +372,29 @@ static bool ensureEspNowPeer(const uint8_t *address) {
 
 static bool sendEspNowResult(const sentinel_now::Message &result,
                              const uint8_t *destination) {
-  if (!espNowReady) return false;
-  if (!ensureEspNowPeer(destination)) {
-    Serial.println("ESP-NOW camera result failed: cannot add controller peer");
+  if (!espNowReady)
     return false;
-  }
-  const esp_err_t sendResult = esp_now_send(
-      destination, reinterpret_cast<const uint8_t *>(&result),
-      sizeof(result));
-  Serial.printf(
-      "ESP-NOW RESULT unicast|type=%u|session=%lu|sequence=%lu|result=%s|to=%02X:%02X:%02X:%02X:%02X:%02X|code=%d\n",
-      static_cast<unsigned>(result.type),
-      static_cast<unsigned long>(result.sessionId),
-      static_cast<unsigned long>(result.sequence),
-      sentinel_now::resultName(result.result), destination[0], destination[1],
-      destination[2], destination[3], destination[4], destination[5], sendResult);
-  return sendResult == ESP_OK;
+  ensureEspNowPeer(destination);
+  esp_now_send(destination, reinterpret_cast<const uint8_t *>(&result),
+               sizeof(result));
+  const esp_err_t broadcastResult =
+      esp_now_send(BROADCAST_ADDRESS,
+                   reinterpret_cast<const uint8_t *>(&result), sizeof(result));
+  Serial.printf("ESP-NOW RESULT "
+                "sent|type=%u|session=%lu|sequence=%lu|result=%s|code=%d\n",
+                static_cast<unsigned>(result.type),
+                static_cast<unsigned long>(result.sessionId),
+                static_cast<unsigned long>(result.sequence),
+                sentinel_now::resultName(result.result), broadcastResult);
+  return broadcastResult == ESP_OK;
 }
 
 static int readStoredEmbeddingCount() {
-  if (!faceStorePartition) return -1;
+  if (!faceStorePartition)
+    return -1;
   FaceStoreHeader header = {};
-  if (esp_partition_read(faceStorePartition, 0, &header, sizeof(header)) != ESP_OK) {
+  if (esp_partition_read(faceStorePartition, 0, &header, sizeof(header)) !=
+      ESP_OK) {
     return -1;
   }
   if (header.magic != FACE_STORE_MAGIC ||
@@ -292,7 +406,8 @@ static int readStoredEmbeddingCount() {
 }
 
 static int persistEmbeddingsToFlash() {
-  if (!faceStorePartition || !recognizer) return -1;
+  if (!faceStorePartition || !recognizer)
+    return -1;
   std::vector<face_info_t> ids = recognizer->get_enrolled_ids();
   size_t payloadSize = 0;
   for (const face_info_t &info : ids) {
@@ -314,7 +429,8 @@ static int persistEmbeddingsToFlash() {
   if (payloadSize > 0) {
     payload = static_cast<uint8_t *>(
         heap_caps_malloc(payloadSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    if (!payload) return -1;
+    if (!payload)
+      return -1;
   }
 
   size_t cursor = 0;
@@ -326,17 +442,19 @@ static int persistEmbeddingsToFlash() {
     record.embeddingLength = static_cast<uint16_t>(embedding.get_size());
     record.rank = static_cast<uint8_t>(embedding.shape.size());
     record.exponent = static_cast<int8_t>(embedding.exponent);
-    for (size_t dimension = 0; dimension < embedding.shape.size(); ++dimension) {
+    for (size_t dimension = 0; dimension < embedding.shape.size();
+         ++dimension) {
       record.dimensions[dimension] = embedding.shape[dimension];
     }
     const size_t embeddingBytes =
         static_cast<size_t>(embedding.get_size()) * sizeof(float);
     record.embeddingCrc = esp_rom_crc32_le(
-        0, reinterpret_cast<const uint8_t *>(embedding.element), embeddingBytes);
-    Serial.printf(
-        "FACE_STORE_WRITE|id=%d|name=%s|length=%u|rank=%u|exponent=%d|crc=0x%08x\n",
-        record.sourceId, info.name.c_str(), record.embeddingLength,
-        record.rank, record.exponent, record.embeddingCrc);
+        0, reinterpret_cast<const uint8_t *>(embedding.element),
+        embeddingBytes);
+    Serial.printf("FACE_STORE_WRITE|id=%d|name=%s|length=%u|rank=%u|exponent=%"
+                  "d|crc=0x%08x\n",
+                  record.sourceId, info.name.c_str(), record.embeddingLength,
+                  record.rank, record.exponent, record.embeddingCrc);
     memcpy(payload + cursor, &record, sizeof(record));
     cursor += sizeof(record);
     memcpy(payload + cursor, info.name.data(), info.name.size());
@@ -351,34 +469,42 @@ static int persistEmbeddingsToFlash() {
       payloadSize > 0 ? esp_rom_crc32_le(0, payload, payloadSize) : 0};
   const size_t bytesToErase =
       ((sizeof(header) + payloadSize + 4095) / 4096) * 4096;
-  esp_err_t result = esp_partition_erase_range(faceStorePartition, 0, bytesToErase);
+  esp_err_t result =
+      esp_partition_erase_range(faceStorePartition, 0, bytesToErase);
   if (result == ESP_OK) {
-    result = esp_partition_write(faceStorePartition, 0, &header, sizeof(header));
+    result =
+        esp_partition_write(faceStorePartition, 0, &header, sizeof(header));
   }
   if (result == ESP_OK && payloadSize > 0) {
     result = esp_partition_write(faceStorePartition, sizeof(header), payload,
                                  payloadSize);
   }
-  if (payload) heap_caps_free(payload);
+  if (payload)
+    heap_caps_free(payload);
   return result == ESP_OK ? static_cast<int>(ids.size()) : -1;
 }
 
 static int restoreEmbeddingsFromFlash() {
-  if (!faceStorePartition || !recognizer) return -1;
+  if (!faceStorePartition || !recognizer)
+    return -1;
   FaceStoreHeader header = {};
-  if (esp_partition_read(faceStorePartition, 0, &header, sizeof(header)) != ESP_OK) {
+  if (esp_partition_read(faceStorePartition, 0, &header, sizeof(header)) !=
+      ESP_OK) {
     return -1;
   }
   if (header.magic != FACE_STORE_MAGIC ||
       header.version != FACE_STORE_VERSION) {
     return 0;
   }
-  if (header.payloadSize > faceStorePartition->size - sizeof(header)) return -1;
-  if (header.count == 0) return 0;
+  if (header.payloadSize > faceStorePartition->size - sizeof(header))
+    return -1;
+  if (header.count == 0)
+    return 0;
 
-  uint8_t *payload = static_cast<uint8_t *>(
-      heap_caps_malloc(header.payloadSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!payload) return -1;
+  uint8_t *payload = static_cast<uint8_t *>(heap_caps_malloc(
+      header.payloadSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!payload)
+    return -1;
   if (esp_partition_read(faceStorePartition, sizeof(header), payload,
                          header.payloadSize) != ESP_OK ||
       esp_rom_crc32_le(0, payload, header.payloadSize) != header.payloadCrc) {
@@ -417,7 +543,8 @@ static int restoreEmbeddingsFromFlash() {
       shape.push_back(record.dimensions[dimension]);
       shapeElements *= static_cast<size_t>(record.dimensions[dimension]);
     }
-    if (restored < 0 || shapeElements != record.embeddingLength) break;
+    if (restored < 0 || shapeElements != record.embeddingLength)
+      break;
     const uint32_t embeddingCrc =
         esp_rom_crc32_le(0, payload + cursor, embeddingBytes);
     if (embeddingCrc != record.embeddingCrc) {
@@ -433,10 +560,11 @@ static int restoreEmbeddingsFromFlash() {
     memcpy(embedding.element, payload + cursor, embeddingBytes);
     cursor += embeddingBytes;
     const int restoredId = recognizer->enroll_id(embedding, name, false);
-    Serial.printf(
-        "FACE_STORE_RESTORE|source_id=%d|restored_id=%d|name=%s|length=%u|rank=%u|exponent=%d|crc=0x%08x\n",
-        record.sourceId, restoredId, name.c_str(), record.embeddingLength,
-        record.rank, record.exponent, embeddingCrc);
+    Serial.printf("FACE_STORE_RESTORE|source_id=%d|restored_id=%d|name=%s|"
+                  "length=%u|rank=%u|exponent=%d|crc=0x%08x\n",
+                  record.sourceId, restoredId, name.c_str(),
+                  record.embeddingLength, record.rank, record.exponent,
+                  embeddingCrc);
     if (restoredId < 0) {
       restored = -1;
       break;
@@ -448,7 +576,8 @@ static int restoreEmbeddingsFromFlash() {
 }
 
 static bool clearStoredEmbeddings() {
-  if (!faceStorePartition) return false;
+  if (!faceStorePartition)
+    return false;
   return esp_partition_erase_range(faceStorePartition, 0,
                                    faceStorePartition->size) == ESP_OK;
 }
@@ -474,16 +603,35 @@ static bool initializeCamera() {
   config.pin_pwdn = CAM_PIN_PWDN;
   config.pin_reset = CAM_PIN_RESET;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_RGB565;
+  config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_QVGA;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.jpeg_quality = 10;
+  config.fb_count = psramFound() ? 2 : 1;
+  config.grab_mode = psramFound() ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   const esp_err_t result = esp_camera_init(&config);
-  Serial.printf("CAMERA|init=%s|code=0x%x\n",
-                result == ESP_OK ? "SUCCESS" : "FAILED", result);
-  return result == ESP_OK;
+  if (result != ESP_OK) {
+    Serial.printf("CAMERA|init=FAILED|code=0x%x\n", result);
+    return false;
+  }
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor) {
+    sensor->set_vflip(sensor, 0);
+    sensor->set_hmirror(sensor, 0);
+    sensor->set_brightness(sensor, 1); // -2 to 2: Hơi tăng sáng nhẹ
+    sensor->set_contrast(sensor, 1);   // -2 to 2: Tăng tương phản đường nét mặt
+    sensor->set_saturation(sensor, 0); // -2 to 2
+    sensor->set_whitebal(sensor, 1);   // Bật AWB
+    sensor->set_awb_gain(sensor, 1);   // Tự động chỉnh gain AWB
+    sensor->set_wb_mode(sensor, 0);    // Auto WB
+    sensor->set_exposure_ctrl(sensor, 1); // Bật tự động phơi sáng AEC
+    sensor->set_aec2(sensor, 1);          // Bật AEC nâng cao
+    sensor->set_gain_ctrl(sensor, 1);     // Bật AGC
+    sensor->set_agc_gain(sensor, 0);
+    sensor->set_gainceiling(sensor, (gainceiling_t)2);
+  }
+  Serial.println("CAMERA|init=SUCCESS|format=JPEG|size=QVGA|optimized=TRUE");
+  return true;
 }
 
 static void releaseCapturedFace(CapturedFace &face) {
@@ -493,50 +641,75 @@ static void releaseCapturedFace(CapturedFace &face) {
   }
 }
 
+static void flushCameraBuffers() {
+  for (int i = 0; i < 2; ++i) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb)
+      esp_camera_fb_return(fb);
+    delay(15);
+  }
+}
+
 static FaceFrameStatus captureUsableFace(CapturedFace &face) {
   camera_fb_t *frame = esp_camera_fb_get();
   if (!frame) {
+    Serial.println("HFR_CAPTURE|frame=NULL");
     return FaceFrameStatus::CAMERA_ERROR;
   }
 
-  face.width = frame->width;
-  face.height = frame->height;
-  const size_t rgbSize = static_cast<size_t>(face.width) * face.height * 3;
+  const int width = frame->width > 0 ? frame->width : 320;
+  const int height = frame->height > 0 ? frame->height : 240;
+  face.width = width;
+  face.height = height;
+
+  const size_t rgbSize = static_cast<size_t>(width) * height * 3;
   face.bgr888 = static_cast<uint8_t *>(
       heap_caps_malloc(rgbSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!face.bgr888) {
+    Serial.println("HFR_CAPTURE|malloc=FAILED");
     esp_camera_fb_return(frame);
     return FaceFrameStatus::CAMERA_ERROR;
   }
 
-  // fmt2rgb888 produces the BGR888 byte order expected by ESP-WHO's
-  // detector/recognizer path (the official CameraWebServer uses the same flow).
-  const bool converted = fmt2rgb888(frame->buf, frame->len, frame->format,
-                                    face.bgr888);
+  const bool converted =
+      fmt2rgb888(frame->buf, frame->len, frame->format, face.bgr888);
   esp_camera_fb_return(frame);
   if (!converted) {
+    Serial.println("HFR_CAPTURE|conversion=FAILED");
     releaseCapturedFace(face);
     return FaceFrameStatus::CAMERA_ERROR;
   }
 
-  std::list<dl::detect::result_t> &candidates = stageOneDetector->infer(
-      face.bgr888, {face.height, face.width, 3});
-  std::list<dl::detect::result_t> &results = stageTwoDetector->infer(
-      face.bgr888, {face.height, face.width, 3}, candidates);
-
-  if (results.empty()) {
+  std::list<dl::detect::result_t> &candidates =
+      stageOneDetector->infer(face.bgr888, {height, width, 3});
+  if (candidates.empty()) {
     releaseCapturedFace(face);
     return FaceFrameStatus::NO_FACE;
   }
-  if (results.size() != 1) {
+
+  std::list<dl::detect::result_t> &results =
+      stageTwoDetector->infer(face.bgr888, {height, width, 3}, candidates);
+
+  // Nếu Stage 2 tìm thấy kết quả thì ưu tiên dùng Stage 2; nếu không thì
+  // fallback sang Stage 1
+  std::list<dl::detect::result_t> &finalFaces =
+      !results.empty() ? results : candidates;
+
+  if (finalFaces.empty()) {
+    releaseCapturedFace(face);
+    return FaceFrameStatus::NO_FACE;
+  }
+  if (finalFaces.size() > 1) {
+    Serial.printf("HFR_CAPTURE|multiple_faces=%u\n",
+                  static_cast<unsigned>(finalFaces.size()));
     releaseCapturedFace(face);
     return FaceFrameStatus::MULTIPLE_FACES;
   }
 
-  const dl::detect::result_t &detectedFace = results.front();
-  const int width = detectedFace.box[2] - detectedFace.box[0] + 1;
-  const int height = detectedFace.box[3] - detectedFace.box[1] + 1;
-  if (width < MIN_FACE_SIZE_PX || height < MIN_FACE_SIZE_PX) {
+  const dl::detect::result_t &detectedFace = finalFaces.front();
+  const int boxWidth = detectedFace.box[2] - detectedFace.box[0] + 1;
+  const int boxHeight = detectedFace.box[3] - detectedFace.box[1] + 1;
+  if (boxWidth < MIN_FACE_SIZE_PX || boxHeight < MIN_FACE_SIZE_PX) {
     releaseCapturedFace(face);
     return FaceFrameStatus::FACE_TOO_SMALL;
   }
@@ -544,9 +717,10 @@ static FaceFrameStatus captureUsableFace(CapturedFace &face) {
   return FaceFrameStatus::READY;
 }
 
-static FaceFrameStatus captureUsableFaceWithRetries(
-    CapturedFace &face, int maxAttempts, uint32_t retryDelayMs,
-    int &attemptsUsed) {
+static FaceFrameStatus captureUsableFaceWithRetries(CapturedFace &face,
+                                                    int maxAttempts,
+                                                    uint32_t retryDelayMs,
+                                                    int &attemptsUsed) {
   FaceFrameStatus lastStatus = FaceFrameStatus::CAMERA_ERROR;
   attemptsUsed = 0;
   for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
@@ -564,28 +738,32 @@ static FaceFrameStatus captureUsableFaceWithRetries(
 
 static sentinel_now::FaceResult transportStatus(FaceFrameStatus status) {
   switch (status) {
-  case FaceFrameStatus::NO_FACE: return sentinel_now::FaceResult::NO_FACE;
+  case FaceFrameStatus::NO_FACE:
+    return sentinel_now::FaceResult::NO_FACE;
   case FaceFrameStatus::MULTIPLE_FACES:
     return sentinel_now::FaceResult::MULTIPLE_FACES;
   case FaceFrameStatus::FACE_TOO_SMALL:
     return sentinel_now::FaceResult::FACE_TOO_SMALL;
   case FaceFrameStatus::CAMERA_ERROR:
     return sentinel_now::FaceResult::CAMERA_ERROR;
-  default: return sentinel_now::FaceResult::NOT_RUN;
+  default:
+    return sentinel_now::FaceResult::NOT_RUN;
   }
 }
 
-static sentinel_now::Message performRecognition(
-    const sentinel_now::Message &request) {
-  sentinel_now::Message response = sentinel_now::makeMessage(
-      sentinel_now::MessageType::SCAN_RESULT, request.sequence,
-      request.sessionId, millis());
+static sentinel_now::Message
+performRecognition(const sentinel_now::Message &request) {
+  sentinel_now::Message response =
+      sentinel_now::makeMessage(sentinel_now::MessageType::SCAN_RESULT,
+                                request.sequence, request.sessionId, millis());
   response.attempt = request.attempt;
+
+  flushCameraBuffers();
   CapturedFace face;
   int attemptsUsed = 0;
   const uint32_t startedAt = millis();
   const FaceFrameStatus status =
-      captureUsableFaceWithRetries(face, 3, 120, attemptsUsed);
+      captureUsableFaceWithRetries(face, 6, 80, attemptsUsed);
   const uint32_t detectionMs = millis() - startedAt;
   if (status != FaceFrameStatus::READY) {
     response.result = transportStatus(status);
@@ -613,7 +791,8 @@ static sentinel_now::Message performRecognition(
     sentinel_now::copyText(response.reason, sizeof(response.reason),
                            "face_matched");
     Serial.printf(
-        "SCAN_RESULT|status=VERIFIED|employeeId=%s|faceId=%d|similarity=%.4f|detection_ms=%u|recognition_ms=%u|total_ms=%u\n",
+        "SCAN_RESULT|status=VERIFIED|employeeId=%s|faceId=%d|similarity=%.4f|"
+        "detection_ms=%u|recognition_ms=%u|total_ms=%u\n",
         result.name.c_str(), result.id, result.similarity, detectionMs,
         recognitionMs, millis() - startedAt);
   } else {
@@ -621,9 +800,10 @@ static sentinel_now::Message performRecognition(
     response.similarity = result.similarity;
     sentinel_now::copyText(response.reason, sizeof(response.reason),
                            "unknown_face");
-    Serial.printf(
-        "SCAN_RESULT|status=UNKNOWN|similarity=%.4f|detection_ms=%u|recognition_ms=%u|total_ms=%u\n",
-        result.similarity, detectionMs, recognitionMs, millis() - startedAt);
+    Serial.printf("SCAN_RESULT|status=UNKNOWN|similarity=%.4f|detection_ms=%u|"
+                  "recognition_ms=%u|total_ms=%u\n",
+                  result.similarity, detectionMs, recognitionMs,
+                  millis() - startedAt);
   }
   printMemory("after_scan");
   return response;
@@ -639,10 +819,9 @@ static bool sendEnrollmentUpdate(const sentinel_now::Message &request,
                                  const uint8_t *destination,
                                  sentinel_now::MessageType type,
                                  sentinel_now::FaceResult result,
-                                 uint8_t completedViews,
-                                 const char *reason) {
-  sentinel_now::Message response = sentinel_now::makeMessage(
-      type, request.sequence, 0, millis());
+                                 uint8_t completedViews, const char *reason) {
+  sentinel_now::Message response =
+      sentinel_now::makeMessage(type, request.sequence, 0, millis());
   response.result = result;
   response.attempt = completedViews;
   sentinel_now::copyText(response.employeeId, sizeof(response.employeeId),
@@ -653,20 +832,21 @@ static bool sendEnrollmentUpdate(const sentinel_now::Message &request,
 
 static bool enrollOneView(const String &employeeId, const char *view,
                           int &enrolledFaceId, String &failureReason) {
-  Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=2000\n",
+  Serial.printf("ENROLL_PROMPT|%s|LOOK_%s|capture_in_ms=4500\n",
                 employeeId.c_str(), view);
-  delay(2000);
+  delay(4500);
+  flushCameraBuffers();
 
   CapturedFace face;
   int attemptsUsed = 0;
   const uint32_t startedAt = millis();
   const FaceFrameStatus status =
-      captureUsableFaceWithRetries(face, 25, 120, attemptsUsed);
+      captureUsableFaceWithRetries(face, 50, 100, attemptsUsed);
   if (status != FaceFrameStatus::READY) {
     failureReason = statusName(status);
-    Serial.printf(
-        "ENROLL_VIEW_RESULT|%s|%s|FAILED|reason=%s|attempts=%d\n",
-        employeeId.c_str(), view, failureReason.c_str(), attemptsUsed);
+    Serial.printf("ENROLL_VIEW_RESULT|%s|%s|FAILED|reason=%s|attempts=%d\n",
+                  employeeId.c_str(), view, failureReason.c_str(),
+                  attemptsUsed);
     return false;
   }
 
@@ -677,14 +857,15 @@ static bool enrollOneView(const String &employeeId, const char *view,
   enrolledFaceId = recognizer->enroll_id(
       image, face.landmarks, std::string(employeeId.c_str()), false);
   releaseCapturedFace(face);
-  if (enrolledFaceId < 0) failureReason = "EMBEDDING_FAILED";
+  if (enrolledFaceId < 0)
+    failureReason = "EMBEDDING_FAILED";
   Serial.printf(
       "ENROLL_VIEW_RESULT|%s|%s|%s|faceId=%d|attempts=%d|elapsed_ms=%u\n",
       employeeId.c_str(), view, enrolledFaceId >= 0 ? "SUCCESS" : "FAILED",
       enrolledFaceId, attemptsUsed, millis() - startedAt);
   if (enrolledFaceId >= 0) {
-    Serial.printf("ENROLL_SIGNAL|%s|%s|FLASH_3_PULSES\n",
-                  employeeId.c_str(), view);
+    Serial.printf("ENROLL_SIGNAL|%s|%s|FLASH_3_PULSES\n", employeeId.c_str(),
+                  view);
     flashEnrollmentSuccess();
   }
   return enrolledFaceId >= 0;
@@ -717,8 +898,8 @@ static bool runEnrollment(const String &employeeId,
         }
       }
       persistEmbeddingsToFlash();
-      Serial.printf("ENROLL_RESULT|%s|FAILED|reason=%s\n",
-                    employeeId.c_str(), failureReason.c_str());
+      Serial.printf("ENROLL_RESULT|%s|FAILED|reason=%s\n", employeeId.c_str(),
+                    failureReason.c_str());
       if (networkRequest && destination) {
         sendEnrollmentUpdate(*networkRequest, destination,
                              sentinel_now::MessageType::ENROLL_RESULT,
@@ -742,9 +923,9 @@ static bool runEnrollment(const String &employeeId,
   const int persistedIds = persistEmbeddingsToFlash();
   const int partitionState = readStoredEmbeddingCount();
   if (persistedIds != ramIds || persistedIds < 3) {
-    Serial.printf(
-        "ENROLL_RESULT|%s|FAILED|reason=FLASH_WRITE_FAILED|ram=%d|persisted=%d|partition_check=%d\n",
-        employeeId.c_str(), ramIds, persistedIds, partitionState);
+    Serial.printf("ENROLL_RESULT|%s|FAILED|reason=FLASH_WRITE_FAILED|ram=%d|"
+                  "persisted=%d|partition_check=%d\n",
+                  employeeId.c_str(), ramIds, persistedIds, partitionState);
     if (networkRequest && destination) {
       sendEnrollmentUpdate(*networkRequest, destination,
                            sentinel_now::MessageType::ENROLL_RESULT,
@@ -753,9 +934,9 @@ static bool runEnrollment(const String &employeeId,
     }
     return false;
   }
-  Serial.printf(
-      "ENROLL_RESULT|%s|SUCCESS|embeddings=3|stored=%d|persisted=%d|partition_check=%d\n",
-      employeeId.c_str(), ramIds, persistedIds, partitionState);
+  Serial.printf("ENROLL_RESULT|%s|SUCCESS|embeddings=3|stored=%d|persisted=%d|"
+                "partition_check=%d\n",
+                employeeId.c_str(), ramIds, persistedIds, partitionState);
   if (networkRequest && destination) {
     sendEnrollmentUpdate(*networkRequest, destination,
                          sentinel_now::MessageType::ENROLL_RESULT,
@@ -777,7 +958,8 @@ static void processEspNowRequest() {
     available = true;
   }
   portEXIT_CRITICAL(&espNowRequestMux);
-  if (!available || !recognizer) return;
+  if (!available || !recognizer)
+    return;
 
   if (request.type == sentinel_now::MessageType::ENROLL_REQUEST) {
     Serial.printf("ESP-NOW ENROLL_REQUEST received|employee=%s|sequence=%lu\n",
@@ -795,9 +977,10 @@ static void processEspNowRequest() {
     return;
   }
 
-  Serial.printf("ESP-NOW SCAN_REQUEST received|session=%lu|sequence=%lu|attempt=%u\n",
-                static_cast<unsigned long>(request.sessionId),
-                static_cast<unsigned long>(request.sequence), request.attempt);
+  Serial.printf(
+      "ESP-NOW SCAN_REQUEST received|session=%lu|sequence=%lu|attempt=%u\n",
+      static_cast<unsigned long>(request.sessionId),
+      static_cast<unsigned long>(request.sequence), request.attempt);
   lastScanResult = performRecognition(request);
   memcpy(lastResultDestination, sender, sizeof(lastResultDestination));
   sendEspNowResult(lastScanResult, lastResultDestination);
@@ -814,15 +997,17 @@ static void processCommand(String command) {
     Serial.printf("CLEAR_RESULT|%s\n",
                   clearStoredEmbeddings() ? "SUCCESS" : "FAILED");
   } else if (command == "STATUS" || command == "DUMP_VECTORS") {
-    Serial.printf("STATUS|model=%s|enrolled=%d|persisted=%d|esp_now=%s|transport=%s\n",
-                  MODEL_NAME, recognizer->get_enrolled_id_num(),
-                  readStoredEmbeddingCount(), espNowReady ? "ready" : "offline",
-                  espNowUsesChannelFallback ? "channel_fallback" : "wifi_associated");
+    Serial.printf(
+        "STATUS|model=%s|enrolled=%d|persisted=%d|esp_now=%s|transport=%s\n",
+        MODEL_NAME, recognizer->get_enrolled_id_num(),
+        readStoredEmbeddingCount(), espNowReady ? "ready" : "offline",
+        espNowUsesChannelFallback ? "channel_fallback" : "wifi_associated");
     const int count = readStoredEmbeddingCount();
     Serial.printf("FACE_VECTORS|count=%d|status=READY|dimensions=512\n", count);
     printMemory("status");
   } else if (!command.isEmpty()) {
-    Serial.println("ERROR|UNKNOWN_COMMAND|use=STATUS,SCAN,ENROLL|employeeId,CLEAR");
+    Serial.println(
+        "ERROR|UNKNOWN_COMMAND|use=STATUS,SCAN,ENROLL|employeeId,CLEAR");
   }
 }
 
@@ -833,15 +1018,16 @@ void setup() {
   digitalWrite(FLASH_LED_PIN, LOW);
   Serial.println("HFR_BENCHMARK|BOOT");
   Serial.printf("BOARD|chip=%s|revision=%u|flash=%u|cpu_mhz=%u\n",
-                ESP.getChipModel(), ESP.getChipRevision(), ESP.getFlashChipSize(),
-                ESP.getCpuFreqMHz());
+                ESP.getChipModel(), ESP.getChipRevision(),
+                ESP.getFlashChipSize(), ESP.getCpuFreqMHz());
   printMemory("boot");
 
   if (!psramFound()) {
     Serial.println("HFR_BENCHMARK|FATAL|PSRAM_NOT_FOUND");
     return;
   }
-  if (!initializeCamera()) return;
+  if (!initializeCamera())
+    return;
   printMemory("after_camera");
 
   const uint32_t detectorStartedAt = millis();
@@ -862,10 +1048,10 @@ void setup() {
       ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
   const int partitionSet = faceStorePartition ? 1 : 0;
   const int restoredIds = partitionSet ? restoreEmbeddingsFromFlash() : -1;
-  Serial.printf(
-      "HFR_BENCHMARK|MODEL_READY|name=%s|init_ms=%u|partition_set=%d|restored=%d|threshold=%.3f\n",
-      MODEL_NAME, millis() - modelStartedAt, partitionSet, restoredIds,
-      recognizer->get_thresh());
+  Serial.printf("HFR_BENCHMARK|MODEL_READY|name=%s|init_ms=%u|partition_set=%d|"
+                "restored=%d|threshold=%.3f\n",
+                MODEL_NAME, millis() - modelStartedAt, partitionSet,
+                restoredIds, recognizer->get_thresh());
   printMemory("ready");
   setupEspNowTransport();
   lastWiFiRetryAt = millis();
@@ -883,6 +1069,9 @@ void loop() {
     lastWiFiRetryAt = millis();
     Serial.println("ESP-NOW camera WiFi reconnect requested");
     WiFi.reconnect();
+  }
+  if (WiFi.status() == WL_CONNECTED && !hfrHttpServer) {
+    startHfrHttpServer();
   }
   processEspNowRequest();
   if (recognizer && Serial.available()) {

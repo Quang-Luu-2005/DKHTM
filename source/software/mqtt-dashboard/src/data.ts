@@ -15,16 +15,12 @@ export const INITIAL_AUTHENTICATION_ALERT: AuthenticationAlert | null = null;
 
 // LocalStorage helpers
 export function getUsers(): User[] {
-  const stored = localStorage.getItem("sentinel_users");
-  if (!stored) {
-    localStorage.setItem("sentinel_users", JSON.stringify([]));
-    return [];
-  }
   try {
+    const stored = localStorage.getItem("sentinel_users");
+    if (!stored) return [];
     const existing = JSON.parse(stored) as User[];
-    return Array.isArray(existing) ? existing.filter((u) => !u.id.startsWith("SENT-")) : [];
+    return Array.isArray(existing) ? existing : [];
   } catch {
-    localStorage.setItem("sentinel_users", JSON.stringify([]));
     return [];
   }
 }
