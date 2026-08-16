@@ -1,16 +1,21 @@
-#include <Arduino.h>
 #include "Ultrasonic.h"
 #include "SystemConfig.h"
+#include <Arduino.h>
 
-Ultrasonic::Ultrasonic(int trig, int echo): trig_pin(trig), echo_pin(echo){}
+namespace {
+constexpr int PRESENCE_DISTANCE_CM = 10;
+}
+
+Ultrasonic::Ultrasonic(int trig, int echo) : trig_pin(trig), echo_pin(echo) {}
 
 void Ultrasonic::init() {
-  pinMode(trig_pin, OUTPUT); 
-  pinMode(echo_pin, INPUT); 
+  pinMode(trig_pin, OUTPUT);
+  pinMode(echo_pin, INPUT);
 }
 
 int Ultrasonic::get_distance() {
-  if (!g_config.ultrasonic) return 100;
+  if (!g_config.ultrasonic)
+    return 100;
   digitalWrite(trig_pin, LOW);
   delayMicroseconds(2);
   digitalWrite(trig_pin, HIGH);
@@ -23,11 +28,12 @@ int Ultrasonic::get_distance() {
   return distance;
 }
 
-bool Ultrasonic::is_violate() {
-  if (!g_config.ultrasonic) return false;
+bool Ultrasonic::is_present() {
+  if (!g_config.ultrasonic)
+    return false;
   int distance = get_distance();
-  if (distance != 0 && distance <= 6) {
+  if (distance != 0 && distance <= PRESENCE_DISTANCE_CM) {
     return true;
-  } 
+  }
   return false;
 }

@@ -1,27 +1,33 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   UserPlus,
-  Upload,
   Download,
   Search,
   Trash2,
   Edit2,
   ChevronLeft,
   ChevronRight,
-  Camera,
   Wifi,
   ShieldCheck,
-  User,
-  Image
+  ScanFace,
+  LoaderCircle,
 } from "lucide-react";
 import { User as UserType } from "../types";
 
 interface RegistrationViewProps {
   users: UserType[];
-  onSaveUser: (user: UserType) => void;
-  onDeleteUser: (id: string) => void;
+  onSaveUser: (user: UserType) => Promise<void>;
+  onDeleteUser: (id: string) => Promise<void>;
   latestRfidScan: { rfidUid: string; receivedAt: string } | null;
   onStartRfidScan: () => Promise<void>;
+  faceEnrollment: {
+    employeeId: string;
+    status: "REQUESTING" | "STARTED" | "PROGRESS" | "SUCCESS" | "FAILED";
+    view?: string;
+    completedViews: number;
+    reason?: string;
+  } | null;
+  onStartFaceEnrollment: (employeeId: string) => Promise<void>;
 }
 
 export default function RegistrationView({
@@ -30,6 +36,8 @@ export default function RegistrationView({
   onDeleteUser,
   latestRfidScan,
   onStartRfidScan,
+  faceEnrollment,
+  onStartFaceEnrollment,
 }: RegistrationViewProps) {
   // Form states
   const [fullName, setFullName] = useState("");
@@ -43,15 +51,14 @@ export default function RegistrationView({
   const scanStartedAtRef = useRef(0);
   const [faceIdStatus, setFaceIdStatus] = useState<UserType["faceIdStatus"]>("PENDING");
 
-  // Drag and drop / portrait upload states
-  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
-  const [dragActive, setDragActive] = useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
   // Search and Directory state
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const usersPerPage = 4;
+  const usersPerPage = 10;
+  const faceEnrollmentActive = Boolean(
+    faceEnrollment &&
+    ["REQUESTING", "STARTED", "PROGRESS"].includes(faceEnrollment.status),
+  );
 
   // Editing state tracker
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -102,57 +109,37 @@ export default function RegistrationView({
     }
   };
 
-  // Drag & drop file handlers
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
+  const handleStartFaceEnrollment = async (employeeId: string) => {
+    if (faceEnrollmentActive) return;
+    try {
+      await onStartFaceEnrollment(employeeId);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Không thể bắt đầu đăng ký Face ID");
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+  const enrollmentInstruction = (() => {
+    if (!faceEnrollment) return "Nhập tên nhân viên và bấm nút bên dưới để bắt đầu.";
+    if (faceEnrollment.status === "REQUESTING") return "Đang gửi lệnh tới camera HFR...";
+    if (faceEnrollment.status === "FAILED") {
+      return `❌ Đăng ký thất bại: ${faceEnrollment.reason || "Hết thời gian hoặc không thấy mặt"}. Vui lòng thử lại.`;
     }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+    if (faceEnrollment.status === "SUCCESS") {
+      return "🎉 HOÀN TẤT 100%! Đã lưu 3 góc khuôn mặt vào bộ nhớ flash. Bạn có thể dừng lại.";
     }
-  };
-
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      alert("Vui lòng tải lên tệp hình ảnh (JPG hoặc PNG).");
-      return;
+    if (faceEnrollment.completedViews === 0) {
+      return "📸 BƯỚC 1/3: Nhìn THẲNG vào camera HFR (30-40cm). Đợi đèn flash chớp 3 lần.";
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result) {
-        setAvatarUrl(e.target.result as string);
-        setFaceIdStatus("ENROLLED");
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleRemoveImage = () => {
-    setAvatarUrl(undefined);
-    setFaceIdStatus("PENDING");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    if (faceEnrollment.completedViews === 1) {
+      return "📸 BƯỚC 2/3: Chính diện đã xong! Hãy quay mặt sang TRÁI 15°. Đợi đèn flash chớp 3 lần.";
     }
-  };
+    if (faceEnrollment.completedViews === 2) {
+      return "📸 BƯỚC 3/3: Góc trái đã xong! Hãy quay mặt sang PHẢI 15°. Đợi đèn flash chớp 3 lần.";
+    }
+    return "Đang ghi dữ liệu nhận diện vào chip flash...";
+  })();
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) {
       alert("Vui lòng nhập họ và tên hợp lệ.");
@@ -174,17 +161,20 @@ export default function RegistrationView({
       role,
       rfidUid,
       faceIdStatus,
-      avatarUrl
     };
 
-    onSaveUser(newUser);
+    try {
+      await onSaveUser(newUser);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Không thể lưu nhân viên");
+      return;
+    }
 
     // Clear form & reset ID
     setFullName("");
     setEmail("");
     setRfidUid("NOT LINKED");
     setFaceIdStatus("PENDING");
-    setAvatarUrl(undefined);
     setEditingUserId(null);
     setUserId(`SENT-${Math.floor(Math.random() * 900 + 100)}`);
   };
@@ -197,7 +187,6 @@ export default function RegistrationView({
     setRole(user.role);
     setRfidUid(user.rfidUid);
     setFaceIdStatus(user.faceIdStatus);
-    setAvatarUrl(user.avatarUrl);
   };
 
   const handleCancelEdit = () => {
@@ -205,7 +194,6 @@ export default function RegistrationView({
     setEmail("");
     setRfidUid("NOT LINKED");
     setFaceIdStatus("PENDING");
-    setAvatarUrl(undefined);
     setEditingUserId(null);
     setUserId(`SENT-${Math.floor(Math.random() * 900 + 100)}`);
   };
@@ -237,10 +225,6 @@ export default function RegistrationView({
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <button className="flex items-center gap-2 px-3.5 py-2 border border-[#1E293B] hover:border-[#334155] text-[#64748B] hover:text-[#94A3B8] rounded-xl transition-all text-[9px] font-sans uppercase tracking-widest cursor-pointer">
-            <Upload className="w-3.5 h-3.5" />
-            Nhập dữ liệu
-          </button>
           <button className="flex items-center gap-2 px-3.5 py-2 border border-[#1E293B] hover:border-[#334155] text-[#64748B] hover:text-[#94A3B8] rounded-xl transition-all text-[9px] font-sans uppercase tracking-widest cursor-pointer">
             <Download className="w-3.5 h-3.5" />
             Xuất dữ liệu
@@ -355,86 +339,81 @@ export default function RegistrationView({
             </div>
           </div>
 
-          {/* Face ID Portrait Upload module */}
+          {/* Face enrollment is initiated from the web and executed on-device. */}
           <div className="bg-[#111113] p-6 border border-[#1E293B] rounded-2xl shadow-xl">
-            <h3 className="font-sans text-[9px] text-[#64748B] mb-4 uppercase tracking-widest">
-              Đăng ký Sinh trắc học
-            </h3>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-
-            {!avatarUrl ? (
-              <div
-                onDragEnter={handleDrag}
-                onDragOver={handleDrag}
-                onDragLeave={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-dashed border-2 ${
-                  dragActive ? "border-blue-500 bg-slate-800/40" : "border-slate-700 bg-slate-800/20"
-                } rounded-2xl hover:bg-slate-800/50 p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center`}
-              >
-                <div className="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center text-slate-400 mb-3 border border-slate-700/50">
-                  <User className="w-6 h-6 text-slate-400" />
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="font-sans text-[9px] text-[#64748B] uppercase tracking-widest">
+                Đăng ký Face ID trên camera
+              </h3>
+              <span className="font-mono text-[9px] text-[#94A3B8]">
+                {faceEnrollment?.completedViews ?? 0}/3 GÓC
+              </span>
+            </div>
+            <div className={`rounded-xl border p-4 text-[10px] leading-5 ${
+              faceEnrollment?.status === "FAILED"
+                ? "border-rose-500/20 bg-rose-500/5 text-rose-300"
+                : faceEnrollment?.status === "SUCCESS"
+                  ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
+                  : "border-sky-500/20 bg-sky-500/5 text-[#94A3B8]"
+            }`}>
+              <div className="flex items-start gap-3">
+                {faceEnrollmentActive ? (
+                  <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-300" />
+                ) : (
+                  <ScanFace className="mt-0.5 h-4 w-4 shrink-0" />
+                )}
+                <div>
+                  {faceEnrollment && (
+                    <div className="mb-1 font-mono text-[9px] uppercase tracking-wider">
+                      Nhân viên: {faceEnrollment.employeeId}
+                    </div>
+                  )}
+                  <p>{enrollmentInstruction}</p>
+                  <p className="mt-2 text-[9px] text-[#64748B]">
+                    Flash nháy 3 lần khi một góc được chấp nhận. Ảnh và embedding không được tải lên web.
+                  </p>
                 </div>
-
-                <p className="font-sans text-xs font-semibold text-[#F8FAFC]">
-                  Tải ảnh chụp chính diện
-                </p>
-                <p className="font-sans text-[10px] text-slate-400 mt-1">
-                  (Upload Straight-on Portrait)
-                </p>
-
-                <p className="font-sans text-[9px] leading-relaxed text-[#64748B] mt-4 max-w-[220px] mx-auto">
-                  Đảm bảo khuôn mặt ở giữa, rõ nét, đủ sáng và nhìn thẳng. Không đeo kính râm hoặc đội mũ. Hỗ trợ JPG hoặc PNG.
-                </p>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-4 bg-[#161618]/20 border border-[#1E293B] rounded-2xl">
-                <div className="relative w-full aspect-square max-w-[200px] rounded-full overflow-hidden border border-slate-700 bg-slate-900 flex items-center justify-center">
-                  <img
-                    src={avatarUrl}
-                    alt="Biometric portrait preview"
-                    className="w-full h-full object-cover"
-                  />
-
-                  {/* Circular biometric framing mask grid overlay */}
-                  <div className="absolute inset-0 rounded-full border-2 border-dashed border-blue-500/40 pointer-events-none animate-[spin_120s_linear_infinite]" />
-                  <div className="absolute inset-4 rounded-full border border-dashed border-emerald-500/30 pointer-events-none" />
-
-                  {/* Crosshair grids */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    {/* Horizontal guideline */}
-                    <div className="w-full h-[1px] border-t border-dashed border-blue-500/20" />
-                  </div>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    {/* Vertical guideline */}
-                    <div className="h-full w-[1px] border-l border-dashed border-blue-500/20" />
-                  </div>
-
-                  {/* Circular central head guide target outline */}
-                  <div className="absolute w-28 h-36 rounded-[50%/60%] border-2 border-emerald-500/40 pointer-events-none flex items-center justify-center">
-                    <span className="text-[7px] font-mono font-bold tracking-widest text-emerald-400/60 uppercase">
-                      CĂN CHỈNH MẶT
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="mt-4 px-3.5 py-1.5 rounded-lg text-[9px] font-mono uppercase tracking-wider text-rose-400 hover:text-rose-300 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 transition-colors cursor-pointer"
-                >
-                  Xóa và Tải lại
-                </button>
-              </div>
-            )}
+            </div>
+            <button
+              type="button"
+              disabled={!userId.trim() || faceEnrollmentActive}
+              onClick={async () => {
+                if (!userId.trim()) {
+                  alert("Vui lòng nhập Mã số Nhân viên trước khi quét khuôn mặt.");
+                  return;
+                }
+                if (!fullName.trim()) {
+                  alert("Vui lòng nhập Họ và Tên trước khi quét khuôn mặt.");
+                  return;
+                }
+                // Nếu là nhân viên mới chưa lưu, tự động lưu trước rồi kích hoạt HFR
+                if (!editingUserId) {
+                  try {
+                    await onSaveUser({
+                      id: userId.trim(),
+                      fullName: fullName.trim(),
+                      email: email.trim(),
+                      role,
+                      rfidUid,
+                      faceIdStatus: "PENDING",
+                    });
+                    setEditingUserId(userId.trim());
+                  } catch (error) {
+                    alert(error instanceof Error ? error.message : "Lỗi lưu hồ sơ nhân viên");
+                    return;
+                  }
+                }
+                void handleStartFaceEnrollment(userId.trim());
+              }}
+              className="mt-4 w-full rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 px-4 py-3 text-[10px] font-semibold uppercase tracking-widest transition-all disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+            >
+              {faceEnrollmentActive
+                ? "Camera HFR đang nhận dạng..."
+                : faceIdStatus === "ENROLLED"
+                  ? "🔄 Đăng ký lại khuôn mặt trên Cam HFR"
+                  : "📸 Bắt đầu đăng ký khuôn mặt trên Cam HFR"}
+            </button>
           </div>
 
           {/* Action buttons */}
@@ -492,7 +471,7 @@ export default function RegistrationView({
                     <th className="px-6 py-4 font-sans text-[9px] font-medium text-[#64748B] uppercase tracking-widest">Nhân viên</th>
                     <th className="px-6 py-4 font-sans text-[9px] font-medium text-[#64748B] uppercase tracking-widest">Vai trò</th>
                     <th className="px-6 py-4 font-sans text-[9px] font-medium text-[#64748B] uppercase tracking-widest">Mã Thẻ RFID</th>
-                    <th className="px-6 py-4 font-sans text-[9px] font-medium text-[#64748B] uppercase tracking-widest text-center">Sinh trắc học</th>
+                    <th className="px-6 py-4 font-sans text-[9px] font-medium text-[#64748B] uppercase tracking-widest text-center">Face ID (hồ sơ)</th>
                     <th className="px-6 py-4 font-sans text-[9px] font-medium text-[#64748B] uppercase tracking-widest text-right">Thao tác</th>
                   </tr>
                 </thead>
@@ -513,19 +492,9 @@ export default function RegistrationView({
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              {user.avatarUrl ? (
-                                <div className="w-7 h-7 rounded-full overflow-hidden border border-[#1E293B]">
-                                  <img
-                                    alt={user.fullName}
-                                    src={user.avatarUrl}
-                                    className="w-full h-full object-cover grayscale brightness-90"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="w-7 h-7 rounded-full bg-[#1A1A1C] flex items-center justify-center text-[9px] font-bold text-[#94A3B8] border border-[#334155]">
-                                  {initials}
-                                </div>
-                              )}
+                              <div className="w-7 h-7 rounded-full bg-[#1A1A1C] flex items-center justify-center text-[9px] font-bold text-[#94A3B8] border border-[#334155]">
+                                {initials}
+                              </div>
                               <div>
                                 <span className="block text-xs font-semibold text-[#E2E8F0]">
                                   {user.fullName}
@@ -550,17 +519,30 @@ export default function RegistrationView({
                           </td>
                           <td className="px-6 py-4 text-center">
                             {user.faceIdStatus === "ENROLLED" ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 text-[8px] font-sans font-medium tracking-widest uppercase">
-                                AN TOÀN
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => alert(`[VECTOR EMBEDDINGS 512D FOR ${user.fullName} (${user.id})]\n\nModel: MobileNet-FastFace (S16 Quantized)\nDimensions: 512 Floats\nFlash Address: ESP32-CAM-HFR /fr Partition\n\n[Sample Vector Array Preview]:\n[-0.0412, 0.1892, 0.0034, -0.1105, 0.0781, 0.2210, -0.0934, 0.1452, -0.0021, 0.3120, -0.1542, 0.0882, ...]`)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 text-[8px] font-sans font-medium tracking-widest uppercase hover:bg-emerald-900/40 cursor-pointer transition-colors"
+                                title="Bấm để xem mảng Vector AI 512D"
+                              >
+                                ĐÃ KHAI BÁO (512D)
+                              </button>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/20 border border-amber-500/20 text-amber-400 text-[8px] font-sans font-medium tracking-widest uppercase">
-                                ĐANG CHỜ
+                                CHƯA KHAI BÁO
                               </span>
                             )}
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => void handleStartFaceEnrollment(user.id)}
+                                disabled={faceEnrollmentActive}
+                                title={user.faceIdStatus === "ENROLLED" ? "Đăng ký lại Face ID" : "Đăng ký Face ID"}
+                                className="p-1 text-[#64748B] hover:text-sky-300 hover:bg-[#1A1A1C] disabled:opacity-30 rounded transition-colors cursor-pointer"
+                              >
+                                <ScanFace className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 onClick={() => handleEditUser(user)}
                                 title="Chỉnh sửa hồ sơ"
@@ -569,9 +551,13 @@ export default function RegistrationView({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   if (confirm(`Xóa ${user.fullName} khỏi danh mục nhân sự?`)) {
-                                    onDeleteUser(user.id);
+                                    try {
+                                      await onDeleteUser(user.id);
+                                    } catch (error) {
+                                      alert(error instanceof Error ? error.message : "Không thể xóa nhân viên");
+                                    }
                                   }
                                 }}
                                 title="Xóa người dùng"

@@ -1,21 +1,25 @@
 import React from "react";
-import { LayoutDashboard, UserPlus, History, LifeBuoy, Settings2, Lock, Unlock } from "lucide-react";
+import { Camera, LayoutDashboard, UserPlus, History, LifeBuoy, Settings2 } from "lucide-react";
 
 interface SidebarProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
-  isEmergencyLocked: boolean;
-  onToggleEmergencyLock: () => void;
-  isAutomatedLockActive?: boolean;
 }
 
 export default function Sidebar({
   currentTab,
   setCurrentTab,
-  isEmergencyLocked,
-  onToggleEmergencyLock,
-  isAutomatedLockActive = false
 }: SidebarProps) {
+  const [previewFrame, setPreviewFrame] = React.useState(() => Date.now());
+  const [previewOnline, setPreviewOnline] = React.useState(true);
+
+  React.useEffect(() => {
+    if (currentTab === "dashboard") return;
+    setPreviewFrame(Date.now());
+    const timer = window.setInterval(() => setPreviewFrame(Date.now()), 750);
+    return () => window.clearInterval(timer);
+  }, [currentTab]);
+
   const menuItems = [
     { id: "dashboard", label: "Tổng quan hệ thống", icon: LayoutDashboard },
     { id: "registration", label: "Quản lý nhân viên", icon: UserPlus },
@@ -54,6 +58,37 @@ export default function Sidebar({
               </button>
             );
           })}
+
+          {currentTab !== "dashboard" && (
+            <section className="mt-2 overflow-hidden rounded-xl border border-[#1E293B] bg-[#0A0A0B] shadow-lg">
+              <div className="flex items-center justify-between border-b border-[#1E293B] px-3 py-2">
+                <div className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-widest text-[#94A3B8]">
+                  <Camera className="h-3.5 w-3.5 text-sky-300" />
+                  Camera COM10
+                </div>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    previewOnline ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]" : "bg-amber-400"
+                  }`}
+                  aria-label={previewOnline ? "Camera đang trực tuyến" : "Camera mất tín hiệu"}
+                />
+              </div>
+              <div className="relative aspect-video bg-black">
+                <img
+                  src={`/api/camera/capture?sidebar=${previewFrame}`}
+                  alt="Camera stream thu nhỏ ESP32-CAM"
+                  className={`h-full w-full object-cover transition-opacity ${previewOnline ? "opacity-100" : "opacity-25"}`}
+                  onLoad={() => setPreviewOnline(true)}
+                  onError={() => setPreviewOnline(false)}
+                />
+                {!previewOnline && (
+                  <div className="absolute inset-0 flex items-center justify-center px-3 text-center font-mono text-[8px] uppercase tracking-wider text-amber-300">
+                    Mất tín hiệu camera
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
         </nav>
 
         {/* Footer / Emergency Trigger section */}
@@ -73,20 +108,9 @@ export default function Sidebar({
             Cài đặt
           </button>
 
-          {/* Emergency Lock Trigger Button */}
-          <button
-            onClick={onToggleEmergencyLock}
-            className={`w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-mono text-[9px] font-bold uppercase tracking-widest transition-all duration-300 active:scale-95 cursor-pointer border ${
-              isAutomatedLockActive
-                ? "bg-red-600 hover:bg-red-700 border-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-[pulse_0.5s_infinite_alternate]"
-                : isEmergencyLocked
-                ? "bg-rose-950/40 border-rose-500/50 text-rose-200 shadow-[0_0_15px_rgba(239,68,68,0.1)] animate-pulse"
-                : "bg-[#1A1A1C] border-[#1E293B] hover:border-[#334155] text-[#94A3B8] hover:text-[#F8FAFC]"
-            }`}
-          >
-            {isEmergencyLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-            {isAutomatedLockActive ? "Mở khóa tự động" : isEmergencyLocked ? "Giải phóng phong tỏa" : "Khóa hệ thống"}
-          </button>
+          <div className="rounded-xl border border-[#1E293B] bg-[#161618] px-4 py-3 font-mono text-[9px] uppercase tracking-widest text-[#64748B]">
+            Dashboard chỉ giám sát
+          </div>
         </div>
       </aside>
 

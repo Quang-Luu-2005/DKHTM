@@ -4,7 +4,6 @@ import { Activity, Cpu, Settings, Sun, Moon } from "lucide-react";
 interface HeaderProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
-  onSimulateViolation: (type?: "FACE_MISMATCH" | "GATE_JUMPING" | "TAILGATING") => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
 }
@@ -12,7 +11,6 @@ interface HeaderProps {
 export default function Header({
   currentTab,
   setCurrentTab,
-  onSimulateViolation,
   theme,
   onToggleTheme
 }: HeaderProps) {
@@ -32,31 +30,6 @@ export default function Header({
 
       {/* Telemetry Status Controls & Admin profile */}
       <div className="flex items-center gap-4">
-        {/* Violation Trigger Buttons - for visual interaction and testing */}
-        <div className="flex items-center gap-1.5 mr-2">
-          <button
-            onClick={() => onSimulateViolation("FACE_MISMATCH")}
-            title="Giả lập lỗi xác thực khuôn mặt sinh trắc học"
-            className="px-2.5 py-1.5 text-[8.5px] uppercase tracking-wider border border-[#1E293B] bg-[#161618] hover:bg-[#1C1C1F] text-[#94A3B8] rounded-lg active:scale-95 transition-all cursor-pointer font-mono font-medium"
-          >
-            Lỗi khuôn mặt
-          </button>
-          <button
-            onClick={() => onSimulateViolation("GATE_JUMPING")}
-            title="Giả lập vi phạm nhảy qua cổng (Kích hoạt Khóa tự động khẩn cấp)"
-            className="px-2.5 py-1.5 text-[8.5px] uppercase tracking-wider border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg active:scale-95 transition-all cursor-pointer font-mono font-semibold shadow-[0_0_8px_rgba(239,68,68,0.1)]"
-          >
-            Nhảy cổng
-          </button>
-          <button
-            onClick={() => onSimulateViolation("TAILGATING")}
-            title="Giả lập vi phạm bám đuôi (Kích hoạt Khóa tự động khẩn cấp)"
-            className="px-2.5 py-1.5 text-[8.5px] uppercase tracking-wider border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg active:scale-95 transition-all cursor-pointer font-mono font-semibold"
-          >
-            Bám đuôi
-          </button>
-        </div>
-
         {/* Telemetry icons */}
         <div className="flex items-center gap-1">
           {/* Light/Dark Theme Toggle */}

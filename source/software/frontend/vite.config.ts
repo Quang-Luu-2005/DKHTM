@@ -6,6 +6,9 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    // Browser-side face models are intentionally excluded. Recognition runs
+    // on the ESP32-CAM and only result events reach this dashboard.
+    publicDir: false as const,
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

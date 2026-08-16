@@ -8,7 +8,6 @@ void SystemConfig::normal_run() {
   servo = 1;
   camera = 1;
   led = 1;
-  violation = 0;
 }
 void SystemConfig::always_open_run() {
   system_state = state_always_open;
