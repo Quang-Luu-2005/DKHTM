@@ -130,26 +130,15 @@
 \end{frame}
 
 % Trang 4
-\begin{frame}{Sản phẩm cuối cùng đang làm được gì?}
-  \begin{columns}[T,onlytextwidth]
-    \column{0.48\textwidth}
-      \textbf{Tại cổng}
-      \begin{itemize}
-        \item Phát hiện người tiến vào vùng cổng và phát hiện trèo khi cổng chưa mở.
-        \item Nhận diện khuôn mặt đã đăng ký ngay trên camera.
-        \item Đọc thẻ, phân biệt thẻ hợp lệ và không hợp lệ.
-        \item Mở hoặc đóng thanh chắn, đổi đèn báo và phát tín hiệu xác nhận.
-      \end{itemize}
+\begin{frame}{Sản phẩm cuối cùng trên trang quản lý}
+  \centering
+  \includegraphics[width=0.94\textwidth,height=0.69\textheight,keepaspectratio]{assets/dashboard-overview.png}
 
-    \column{0.48\textwidth}
-      \textbf{Trên trang quản lý}
-      \begin{itemize}
-        \item Quản lý hồ sơ, vai trò, email và thẻ của người dùng.
-        \item Đăng ký khuôn mặt theo ba góc nhìn.
-        \item Xem trực tiếp camera, lịch sử xác thực và cảnh báo gần nhất.
-        \item Gửi email đúng nhóm quản trị hoặc an ninh khi có cảnh báo.
-      \end{itemize}
-  \end{columns}
+  \vspace{0.35em}
+  \begin{beamercolorbox}[rounded=true,sep=0.55em,wd=0.94\textwidth]{block body}
+    \centering\small
+    Camera trực tiếp \quad--\quad Trạng thái cổng \quad--\quad Cảnh báo \quad--\quad Điều khiển thủ công
+  \end{beamercolorbox}
 \end{frame}
 
 % Trang 5
@@ -183,11 +172,28 @@
 
 % Trang 6
 \begin{frame}{Các phần từng chưa hoàn thành: kết quả cuối (1/2)}
-  \begin{itemize}
-    \item \textbf{\color{Success}Đăng ký và nhận diện khuôn mặt -- Hoàn thành:} camera nhận ba góc mặt, lưu dữ liệu ngay trên thiết bị, nhận diện và gửi kết quả về cổng.
-    \item \textbf{\color{Success}Phân nhóm email -- Hoàn thành:} cảnh báo được gửi tới người có vai trò Quản trị viên hoặc Nhân viên an ninh; email cá nhân dùng cho thông báo lượt vào hợp lệ.
-    \item \textbf{\color{Success}Luồng camera -- Hoàn thành:} trang quản lý hiển thị trực tiếp hình ảnh từ camera; việc nhận diện vẫn diễn ra tại camera và kết quả được gửi về cổng.
-  \end{itemize}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.59\textwidth}
+      \centering
+      \includegraphics[width=\linewidth]{assets/camera-stream.png}
+
+      \vspace{0.25em}
+      {\footnotesize Luồng camera trực tiếp và trạng thái nhận diện trên dashboard.}
+
+    \column{0.37\textwidth}
+      \small
+      \begin{itemize}
+        \item \textbf{\color{Success}Nhận diện khuôn mặt -- Hoàn thành}
+
+        Đăng ký ba góc mặt và xử lý ngay trên camera.
+        \item \textbf{\color{Success}Luồng camera -- Hoàn thành}
+
+        Hình ảnh trực tiếp được hiển thị trên trang quản lý.
+        \item \textbf{\color{Success}Phân nhóm email -- Hoàn thành}
+
+        Cảnh báo được gửi đúng vai trò.
+      \end{itemize}
+  \end{columns}
 \end{frame}
 
 % Trang 7
@@ -230,7 +236,7 @@
 % Trang 9
 \begin{frame}{Mục tiêu 2: Phát hiện trèo bằng cảm biến siêu âm}
   \begin{columns}[T,onlytextwidth]
-    \column{0.64\textwidth}
+    \column{0.57\textwidth}
       \small
       \begin{block}{Mục tiêu ban đầu}
         Phát hiện vượt cổng trái phép, giữ khóa và gửi cảnh báo.
@@ -246,12 +252,12 @@
         \textbf{Đạt mục tiêu phát hiện và cảnh báo.}
       \end{alertblock}
 
-    \column{0.32\textwidth}
+    \column{0.39\textwidth}
       \centering
-      \includegraphics[width=\linewidth]{assets/ultrasonic-detection.png}
+      \includegraphics[width=\linewidth]{assets/violation-alert.png}
       \vspace{0.25em}
 
-      {\footnotesize Cảm biến kết hợp với trạng thái đóng/mở của cổng.}
+      {\footnotesize Cảnh báo thực tế từ cảm biến HC-SR04.}
   \end{columns}
 \end{frame}
 
